@@ -299,6 +299,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Clean Architecture flow của Products API: `Controller -> IProductService -> IUnitOfWork -> IProductRepository -> GenericRepository -> AppDbContext`.
 - `IGenericRepository<TEntity>` cung cấp CRUD persistence dùng lại qua interface; repository chuyên biệt thêm query theo aggregate.
 - `IUnitOfWork` chứa các repository interfaces và `EfUnitOfWork` giữ transaction boundary; controller/service không gọi trực tiếp `DbContext`.
+- Interface được tổ chức theo layer: `Application/Interfaces/Services` chứa service contracts; `Application/Interfaces/Repositories` chứa `IGenericRepository`, repository contracts và `IUnitOfWork`.
+- Controller chỉ phụ thuộc `IProductService`; service chỉ phụ thuộc `IUnitOfWork`; UoW expose repository interfaces; repository kế thừa generic repository và Infrastructure là layer duy nhất truy cập `AppDbContext`.
 - Local environment chạy bằng `Development` qua file `.env` trong backend.
 
 ### Database local
