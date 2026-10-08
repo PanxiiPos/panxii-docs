@@ -39,6 +39,7 @@ Khi bắt đầu một feature mới, đọc theo thứ tự sau:
 17. release/release_management.md
 18. development_workflow.md
 19. commit_convention.md
+20. task_risk.md
 ```
 
 Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh backend/frontend bên dưới, nhưng luôn bắt đầu bằng business rule và architecture.
@@ -56,6 +57,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [setup_env.md](setup_env.md) | Cài SDK, khởi tạo source, package Flutter, Docker local và môi trường |
 | [commit_convention.md](commit_convention.md) | Quy ước Conventional Commits, scope, breaking change, PR và checklist trước commit |
 | [development_workflow.md](development_workflow.md) | Quy trình tạo branch, Pull Request, test, merge và bảo vệ `main` |
+| [task_risk.md](task_risk.md) | Task/risk register cho tenant context, authentication, error contract và Unicode database |
 
 ### 2.2. Architecture
 
