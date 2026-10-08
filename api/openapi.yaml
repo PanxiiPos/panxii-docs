@@ -1,0 +1,577 @@
+openapi: 3.0.3
+info:
+  title: POS SaaS API
+  version: 1.0.0
+  description: Canonical API contract for ASP.NET Core backend and Flutter mobile.
+servers:
+  - url: https://api.example.com/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Products
+  - name: Customers
+  - name: Invoices
+  - name: Sync
+  - name: Settings
+paths:
+  /auth/login:
+    post:
+      operationId: login
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessLoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [Auth]
+      responses:
+        '200': { description: Session revoked, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessLogoutResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /products:
+    get:
+      operationId: listProducts
+      tags: [Products]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: Product collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessProductListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createProduct
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProductRequest' }
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessProductResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{id}:
+    patch:
+      operationId: updateProduct
+      tags: [Products]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProductRequest' }
+      responses:
+        '200': { description: Product updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /invoices/sync:
+    post:
+      operationId: syncInvoice
+      tags: [Invoices]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+        - { $ref: '#/components/parameters/DeviceId' }
+        - { $ref: '#/components/parameters/CorrelationId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncInvoiceRequest' }
+      responses:
+        '201':
+          description: Invoice applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessOperationResponse' }
+        '200':
+          description: Idempotent retry already applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessOperationResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /sync/pull:
+    get:
+      operationId: pullChanges
+      tags: [Sync]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: Incremental changes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessSyncResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [Products]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: Category collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryListResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createCategory
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCategoryRequest' }
+      responses:
+        '201': { description: Category created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [Customers]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: Customer collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerListResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: createCustomer
+      tags: [Customers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCustomerRequest' }
+      responses:
+        '201': { description: Customer created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /customers/{id}:
+    patch:
+      operationId: updateCustomer
+      tags: [Customers]
+      parameters:
+        - { $ref: '#/components/parameters/CustomerId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCustomerRequest' }
+      responses:
+        '200': { description: Customer updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories/{id}:
+    patch:
+      operationId: updateCategory
+      tags: [Products]
+      parameters:
+        - { $ref: '#/components/parameters/CategoryId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCategoryRequest' }
+      responses:
+        '200': { description: Category updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/bulk-price:
+    post:
+      operationId: bulkUpdateProductPrices
+      tags: [Products]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkPriceRequest' }
+      responses:
+        '200': { description: Bulk update result, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessOperationResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [Invoices]
+      parameters:
+        - { $ref: '#/components/parameters/InvoiceId' }
+      responses:
+        '200': { description: Invoice, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessInvoiceResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /invoices/{id}/reverse:
+    post:
+      operationId: reverseInvoice
+      tags: [Invoices]
+      parameters:
+        - { $ref: '#/components/parameters/InvoiceId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+        - { $ref: '#/components/parameters/DeviceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReverseInvoiceRequest' }
+      responses:
+        '201': { description: Reversal created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessOperationResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /invoices/{id}/correction:
+    post:
+      operationId: correctInvoice
+      tags: [Invoices]
+      parameters:
+        - { $ref: '#/components/parameters/InvoiceId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+        - { $ref: '#/components/parameters/DeviceId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CorrectionInvoiceRequest' }
+      responses:
+        '201': { description: Corrected invoice created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessOperationResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /settings/effective:
+    get:
+      operationId: getEffectiveSettings
+      tags: [Settings]
+      responses:
+        '200': { description: Effective settings, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessSettingsResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /settings/{key}:
+    put:
+      operationId: updateSetting
+      tags: [Settings]
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, maxLength: 120 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSettingRequest' }
+      responses:
+        '200': { description: Setting updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessSettingResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /config/version:
+    get:
+      operationId: getVersionConfig
+      security: []
+      tags: [Settings]
+      responses:
+        '200': { description: Version configuration, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessVersionResponse' } } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Search: { name: search, in: query, required: false, schema: { type: string, maxLength: 120 } }
+    Cursor: { name: cursor, in: query, required: false, schema: { type: string, nullable: true } }
+    PageSize: { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    DeviceId: { name: X-Device-Id, in: header, required: true, schema: { type: string } }
+    CorrelationId: { name: X-Correlation-Id, in: header, required: false, schema: { type: string, format: uuid } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+    InvoiceId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    ProductId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    CustomerId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    CategoryId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Unauthorized: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Forbidden: { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    Conflict: { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    BusinessError: { description: Business rule rejection, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  schemas:
+    Meta:
+      type: object
+      required: [correlationId, serverTimeUtc, apiVersion]
+      properties:
+        correlationId: { type: string, format: uuid }
+        serverTimeUtc: { type: string, format: date-time }
+        apiVersion: { type: string, example: v1 }
+        paging: { $ref: '#/components/schemas/Paging' }
+    Paging:
+      type: object
+      required: [hasMore, pageSize]
+      properties:
+        nextCursor: { type: string, nullable: true }
+        hasMore: { type: boolean }
+        pageSize: { type: integer, minimum: 1, maximum: 200 }
+    ErrorResponse:
+      type: object
+      required: [data, error, meta]
+      properties:
+        data: { type: object, nullable: true }
+        error:
+          type: object
+          required: [code, args, fieldErrors, retryable]
+          properties:
+            code: { type: string, example: ERR_PRODUCT_NOT_FOUND }
+            args: { type: object, additionalProperties: true }
+            fieldErrors: { type: array, items: { $ref: '#/components/schemas/FieldError' } }
+            retryable: { type: boolean }
+        meta: { $ref: '#/components/schemas/Meta' }
+    FieldError:
+      type: object
+      required: [field, code, args]
+      properties:
+        field: { type: string }
+        code: { type: string }
+        args: { type: object, additionalProperties: true }
+    LoginRequest:
+      type: object
+      required: [username, password, deviceId, platform, appVersion]
+      properties:
+        username: { type: string, maxLength: 120 }
+        password: { type: string, format: password }
+        deviceId: { type: string, maxLength: 160 }
+        platform: { type: string, enum: [Android, iOS, Web] }
+        appVersion: { type: string }
+    RefreshRequest:
+      type: object
+      required: [refreshToken, deviceId]
+      properties:
+        refreshToken: { type: string, format: password }
+        deviceId: { type: string }
+    CreateProductRequest:
+      type: object
+      required: [sku, name, unit, basePrice, taxRate]
+      properties:
+        sku: { type: string, maxLength: 64 }
+        name: { type: string, maxLength: 200 }
+        unit: { type: string, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0 }
+        taxRate: { type: number, format: decimal, minimum: 0 }
+        categoryId: { type: string, format: uuid, nullable: true }
+    UpdateProductRequest:
+      type: object
+      required: [expectedVersion]
+      properties:
+        name: { type: string, maxLength: 200 }
+        unit: { type: string, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0 }
+        taxRate: { type: number, format: decimal, minimum: 0 }
+        categoryId: { type: string, format: uuid, nullable: true }
+        expectedVersion: { type: integer, format: int64 }
+    CreateCategoryRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, maxLength: 64 }
+        name: { type: string, maxLength: 160 }
+        parentId: { type: string, format: uuid, nullable: true }
+    UpdateCategoryRequest:
+      type: object
+      required: [expectedVersion]
+      properties:
+        name: { type: string, maxLength: 160 }
+        parentId: { type: string, format: uuid, nullable: true }
+        expectedVersion: { type: integer, format: int64 }
+    CreateCustomerRequest:
+      type: object
+      required: [code, fullName]
+      properties:
+        code: { type: string, maxLength: 64 }
+        fullName: { type: string, maxLength: 160 }
+        phone: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        address: { type: string, nullable: true }
+    UpdateCustomerRequest:
+      type: object
+      required: [expectedVersion]
+      properties:
+        fullName: { type: string, maxLength: 160 }
+        phone: { type: string, nullable: true }
+        email: { type: string, format: email, nullable: true }
+        address: { type: string, nullable: true }
+        expectedVersion: { type: integer, format: int64 }
+    BulkPriceRequest:
+      type: object
+      required: [productIds, mode, value]
+      properties:
+        productIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        mode: { type: string, enum: [Percentage, FixedAmount] }
+        value: { type: number, format: decimal }
+        expectedVersions: { type: object, additionalProperties: { type: integer, format: int64 } }
+    ReverseInvoiceRequest:
+      type: object
+      required: [adminUserId, adminPin, reasonCode]
+      properties:
+        adminUserId: { type: string, format: uuid }
+        adminPin: { type: string, format: password }
+        reasonCode: { type: string, maxLength: 80 }
+    CorrectionInvoiceRequest:
+      type: object
+      required: [reasonCode, details]
+      properties:
+        reasonCode: { type: string, maxLength: 80 }
+        details: { type: array, minItems: 1, items: { type: object } }
+    UpdateSettingRequest:
+      type: object
+      required: [value, expectedVersion]
+      properties:
+        value: { type: object, additionalProperties: true }
+        expectedVersion: { type: integer, format: int64 }
+    SyncInvoiceRequest:
+      type: object
+      required: [clientOperationId, payloadVersion, invoice]
+      properties:
+        clientOperationId: { type: string, format: uuid }
+        payloadVersion: { type: integer, minimum: 1 }
+        invoice: { $ref: '#/components/schemas/Invoice' }
+    Invoice:
+      type: object
+      required: [id, invoiceType, currencyCode, totalAmount, details]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
+        currencyCode: { type: string, minLength: 3, maxLength: 3 }
+        totalAmount: { type: number, format: decimal }
+        details: { type: array, items: { type: object } }
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sku: { type: string }
+        name: { type: string }
+        basePrice: { type: number, format: decimal }
+        version: { type: integer, format: int64 }
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        parentId: { type: string, format: uuid, nullable: true }
+    Customer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        fullName: { type: string }
+        phone: { type: string, nullable: true }
+    Setting:
+      type: object
+      properties:
+        key: { type: string }
+        value: { type: object, additionalProperties: true }
+        version: { type: integer, format: int64 }
+    OperationResult:
+      type: object
+      required: [operationId, status, created]
+      properties:
+        operationId: { type: string, format: uuid }
+        status: { type: string, enum: [Applied, AlreadyApplied, Rejected] }
+        created: { type: boolean }
+        resource: { type: object, nullable: true }
+    SuccessLoginResponse:
+      type: object
+      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessTokenResponse:
+      type: object
+      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessLogoutResponse:
+      type: object
+      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/Product' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductListResponse:
+      type: object
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/Product' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessCategoryResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/Category' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessCategoryListResponse:
+      type: object
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/Category' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessCustomerResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/Customer' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessCustomerListResponse:
+      type: object
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/Customer' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessInvoiceResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/Invoice' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessSettingsResponse:
+      type: object
+      properties: { data: { type: object, additionalProperties: true }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessSettingResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/Setting' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessVersionResponse:
+      type: object
+      properties: { data: { type: object, additionalProperties: true }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessOperationResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/OperationResult' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessSyncResponse:
+      type: object
+      properties: { data: { type: array, items: { type: object } }, meta: { $ref: '#/components/schemas/Meta' } }
