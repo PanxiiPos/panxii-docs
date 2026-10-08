@@ -37,6 +37,8 @@ Khi bắt đầu một feature mới, đọc theo thứ tự sau:
 15. testing/risk_based_testing_spec.md nếu chạm rủi ro P0/P1
 16. infrastructure/infrastructure_setup.md
 17. release/release_management.md
+18. development_workflow.md
+19. commit_convention.md
 ```
 
 Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh backend/frontend bên dưới, nhưng luôn bắt đầu bằng business rule và architecture.
@@ -53,6 +55,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [SDLC&Architecture.md](SDLC%26Architecture.md) | Master plan, technology stack, lifecycle phát triển và triển khai |
 | [setup_env.md](setup_env.md) | Cài SDK, khởi tạo source, package Flutter, Docker local và môi trường |
 | [commit_convention.md](commit_convention.md) | Quy ước Conventional Commits, scope, breaking change, PR và checklist trước commit |
+| [development_workflow.md](development_workflow.md) | Quy trình tạo branch, Pull Request, test, merge và bảo vệ `main` |
 
 ### 2.2. Architecture
 
