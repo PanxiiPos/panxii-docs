@@ -285,6 +285,50 @@ Khi phát hiện mâu thuẫn, ưu tiên kiểm tra theo thứ tự:
 
 Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR và cập nhật các tài liệu liên quan.
 
+## 5. Trạng thái triển khai hiện tại
+
+### Backend
+
+- ASP.NET Core 8 Clean Architecture đã có base code Domain, Application, Infrastructure và WebApi.
+- OpenAPI/Swagger v1 đã cấu hình:
+	- UI: `http://localhost:5099/swagger`
+	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
+- API health check: `GET http://localhost:5099/api/v1/health`.
+- Local environment chạy bằng `Development` qua file `.env` trong backend.
+
+### Database local
+
+- MySQL 8 chạy bằng Docker container `panxii_mysql_dev`.
+- Connection local: `127.0.0.1:3306`.
+- Database: `PanxiiDev`.
+- User: `panxii_app`.
+- EF Core migrations đã apply:
+	- `InitialPosSchema`.
+	- `AddDatabaseForeignKeys`.
+- Schema hiện có các bảng `tenants`, `users`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
+- Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
+
+Khởi động database local:
+
+```powershell
+cd backend
+docker compose -f docker-compose.local.yml up -d --wait
+dotnet ef database update `
+	--project Panxii.Infrastructure/Panxii.Infrastructure.csproj `
+	--startup-project Panxii.WebApi/Panxii.WebApi.csproj
+```
+
+Khởi động API Development:
+
+```powershell
+dotnet run --project backend/Panxii.WebApi/Panxii.WebApi.csproj `
+	--urls http://localhost:5099
+```
+
+### Quy tắc cập nhật README
+
+`Document/README.md` là README tổng hợp duy nhất của dự án. Khi có thay đổi kiến trúc, database, API, môi trường hoặc workflow, cập nhật file này; không cập nhật các README riêng trong `backend/`, `mobile/` hoặc repository khác nếu không có yêu cầu riêng.
+
 ## 6. Tài liệu cần bổ sung khi bật module mới
 
 Các module sau chưa phải core hiện tại; chỉ tạo tài liệu khi bắt đầu triển khai:
