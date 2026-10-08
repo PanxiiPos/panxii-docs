@@ -52,6 +52,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [business_rule.md](business_rule.md) | Quy tắc nghiệp vụ bất khả xâm phạm: RBAC, reverse invoice, offline sync, i18n, feature flags |
 | [SDLC&Architecture.md](SDLC%26Architecture.md) | Master plan, technology stack, lifecycle phát triển và triển khai |
 | [setup_env.md](setup_env.md) | Cài SDK, khởi tạo source, package Flutter, Docker local và môi trường |
+| [commit_convention.md](commit_convention.md) | Quy ước Conventional Commits, scope, breaking change, PR và checklist trước commit |
 
 ### 2.2. Architecture
 
