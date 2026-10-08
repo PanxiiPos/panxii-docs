@@ -296,6 +296,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - API health check: `GET http://localhost:5099/api/v1/health`.
 - Products query API: `GET http://localhost:5099/api/v1/products?search=&page=1&pageSize=50`.
 - Products API trả `data` + `meta.correlationId` + `meta.paging`, hỗ trợ tìm theo tên/SKU/barcode và tenant filter.
+- Clean Architecture flow của Products API: `Controller -> Application Query -> IProductRepository -> GenericRepository -> AppDbContext`.
+- `IUnitOfWork`/`EfUnitOfWork` đã được đăng ký cho transaction boundary; controller và application không gọi trực tiếp `DbContext`.
 - Local environment chạy bằng `Development` qua file `.env` trong backend.
 
 ### Database local
