@@ -294,6 +294,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- UI: `http://localhost:5099/swagger`
 	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
 - API health check: `GET http://localhost:5099/api/v1/health`.
+- Products query API: `GET http://localhost:5099/api/v1/products?search=&page=1&pageSize=50`.
+- Products API trả `data` + `meta.correlationId` + `meta.paging`, hỗ trợ tìm theo tên/SKU/barcode và tenant filter.
 - Local environment chạy bằng `Development` qua file `.env` trong backend.
 
 ### Database local
