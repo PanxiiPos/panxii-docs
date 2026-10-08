@@ -152,11 +152,23 @@ Dau `!` la tuy chon de nhan manh; footer `BREAKING CHANGE` van phai neu ro tac d
 ## 8. Commit va pull request
 
 - Khong commit truc tiep vao `main` cho feature/bugfix.
+- Tao feature branch moi tu nhanh moi nhat ma feature can lam nen; khong mac dinh tao tu `main` neu feature phu thuoc code chua merge.
+- Co the xep tang feature branch: feature moi tao tu feature branch truoc do khi can dung code cua feature do. Ghi ro nhanh nen/dependency trong PR.
+- Feature cu hon co the merge vao `main` ngay khi da on dinh va pass cac quality gate. Feature moi phu thuoc van tiep tuc tren nhanh cua minh; cap nhat/rebase voi `main` khi can va chi merge sau khi da fix, test va on dinh.
 - Mot PR nen tap trung mot muc tieu va co commit co y nghia.
 - Rebase/squash theo quy dinh cua PR; khong dung merge commit neu khong can luu lich su nhanh.
 - Trước khi push, chay test phu hop voi scope thay doi.
 - PR title dung cung cu phap Conventional Commits.
 - PR body phai co summary, test da chay, migration/rollback va risk neu co.
+
+Tao nhanh feature tu nhanh nen da cap nhat:
+
+```powershell
+git fetch origin
+git switch <base-branch>
+git pull --ff-only
+git switch -c feature/<feature-name>
+```
 
 ## 9. Checklist truoc commit
 
