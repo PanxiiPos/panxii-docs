@@ -15,9 +15,13 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | Code | HTTP | Retry | i18n key | Ý nghĩa |
 |---|---:|---:|---|---|
 | `ERR_INVALID_REQUEST` | 400 | No | `errors.invalidRequest` | JSON/schema sai |
+| `ERR_INVALID_PAGING` | 400 | No | `errors.invalidPaging` | Page hoặc page size không hợp lệ |
 | `ERR_INVALID_ENUM` | 400 | No | `errors.invalidEnum` | Enum không hợp lệ |
 | `ERR_INVALID_DECIMAL` | 400 | No | `errors.invalidDecimal` | Precision/range sai |
+| `ERR_UNAUTHENTICATED` | 401 | No | `errors.unauthenticated` | Request chưa xác thực |
 | `ERR_ACCESS_DENIED` | 403 | No | `errors.accessDenied` | Không đủ quyền |
+| `ERR_NOT_FOUND` | 404 | No | `errors.notFound` | Route/resource không tồn tại |
+| `ERR_CONFLICT` | 409 | No | `errors.conflict` | Request xung đột trạng thái hiện tại |
 | `ERR_TENANT_INACTIVE` | 422 | No | `errors.tenantInactive` | Tenant bị khóa |
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |
 | `ERR_PRODUCT_NOT_FOUND` | 404 | No | `errors.productNotFound` | Không thấy product |

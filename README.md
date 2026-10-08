@@ -296,6 +296,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- UI: `http://localhost:5099/swagger`
 	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
 - API health check: `GET http://localhost:5099/api/v1/health`.
+- Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
+- MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
 - Products query API: `GET http://localhost:5099/api/v1/products?search=&page=1&pageSize=50`.
 - Products API trả `data` + `meta.correlationId` + `meta.paging`, hỗ trợ tìm theo tên/SKU/barcode và tenant filter.
 - Clean Architecture flow của Products API: `Controller -> IProductService -> IUnitOfWork -> IProductRepository -> GenericRepository -> AppDbContext`.

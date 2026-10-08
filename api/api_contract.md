@@ -16,7 +16,12 @@
 | `X-Tenant-Id` | Không | Không được tin giá trị này; server lấy tenant từ token |
 | `X-Device-Id` | Có với mobile | Định danh thiết bị đã đăng ký |
 | `X-Correlation-Id` | Khuyến nghị | Truy vết request |
+| `Accept-Language` | Không | `vi` hoặc `en`; mặc định `vi` |
 | `Idempotency-Key` | Có với command retry | Nên bằng `ClientOperationId` |
+
+Backend localization middleware chọn culture từ `Accept-Language` và trả `Content-Language`. Backend không dịch thông báo nghiệp vụ; mobile vẫn dịch `error.code` theo locale người dùng.
+
+Correlation middleware chấp nhận `X-Correlation-Id` dạng UUID hợp lệ hoặc tự tạo UUID mới, lưu cho request, rồi trả lại trong response header và `meta.correlationId`. MVC result filter chuẩn hóa response thành công/lỗi; exception middleware ánh xạ exception và HTTP error không có body sang error envelope.
 
 ### Response thành công
 
@@ -30,19 +35,24 @@
 }
 ```
 
-### Response lỗi đa ngôn ngữ
+### Response lỗi có hỗ trợ đa ngôn ngữ
 
-API không trả text nghiệp vụ hardcode. Mobile dùng `errorCode` để tra `vi.json`/`en.json`.
+API không trả text nghiệp vụ hardcode. Mobile dùng `error.code` để tra `vi.json`/`en.json`.
 
 ```json
 {
+  "data": null,
   "error": {
     "code": "ERR_PRODUCT_NOT_FOUND",
     "args": { "productId": "uuid" },
     "fieldErrors": [],
     "retryable": false
   },
-  "meta": { "correlationId": "uuid" }
+  "meta": {
+    "correlationId": "uuid",
+    "serverTimeUtc": "2026-10-08T10:00:00Z",
+    "apiVersion": "v1"
+  }
 }
 ```
 
@@ -714,6 +724,10 @@ Client chỉ lưu `nextCursor` sau khi toàn bộ `changes` đã upsert vào SQL
 | Code | Tình huống |
 |---|---|
 | `ERR_INVALID_REQUEST` | JSON/schema không hợp lệ |
+| `ERR_INVALID_PAGING` | Page hoặc page size không hợp lệ |
+| `ERR_UNAUTHENTICATED` | Request chưa xác thực |
+| `ERR_NOT_FOUND` | Route/resource không tồn tại |
+| `ERR_CONFLICT` | Request xung đột trạng thái hiện tại |
 | `ERR_IDEMPOTENCY_KEY_MISMATCH` | Header và body operation id khác nhau |
 | `ERR_IDEMPOTENCY_KEY_REUSED` | Một key dùng cho payload khác |
 | `ERR_UNSUPPORTED_PAYLOAD_VERSION` | Server không hỗ trợ payload version |
