@@ -307,6 +307,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- `AddDatabaseForeignKeys`.
 - Schema hiện có các bảng `tenants`, `users`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
+- Development seed script: `backend/database/seed-development.sql`.
+- Dữ liệu development hiện có: 1 tenant, 2 users, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
 
 Khởi động database local:
 
@@ -316,6 +318,11 @@ docker compose -f docker-compose.local.yml up -d --wait
 dotnet ef database update `
 	--project Panxii.Infrastructure/Panxii.Infrastructure.csproj `
 	--startup-project Panxii.WebApi/Panxii.WebApi.csproj
+
+# Seed data development
+$sql = Get-Content -Raw database/seed-development.sql
+$sql | docker exec -i panxii_mysql_dev mysql `
+	--host=127.0.0.1 --user=panxii_app --password=panxii_local_only --database=PanxiiDev
 ```
 
 Khởi động API Development:
