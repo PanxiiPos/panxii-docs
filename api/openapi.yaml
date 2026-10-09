@@ -20,6 +20,10 @@ paths:
       operationId: login
       security: []
       tags: [Auth]
+      parameters:
+        - { name: X-Device-Id, in: header, required: false, schema: { type: string, maxLength: 160 } }
+        - { name: X-Platform, in: header, required: false, schema: { type: string, maxLength: 32 } }
+        - { name: X-App-Version, in: header, required: false, schema: { type: string, maxLength: 32 } }
       requestBody:
         required: true
         content:
@@ -33,6 +37,8 @@ paths:
               schema: { $ref: '#/components/schemas/SuccessLoginResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+        '429': { description: Rate limited, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /auth/refresh:
     post:
       operationId: refreshToken
@@ -50,6 +56,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessTokenResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Rate limited, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   /auth/logout:
     post:
       operationId: logout
@@ -386,19 +393,15 @@ components:
         args: { type: object, additionalProperties: true }
     LoginRequest:
       type: object
-      required: [username, password, deviceId, platform, appVersion]
+      required: [username, password]
       properties:
         username: { type: string, maxLength: 120 }
         password: { type: string, format: password }
-        deviceId: { type: string, maxLength: 160 }
-        platform: { type: string, enum: [Android, iOS, Web] }
-        appVersion: { type: string }
     RefreshRequest:
       type: object
-      required: [refreshToken, deviceId]
+      required: [refreshToken]
       properties:
         refreshToken: { type: string, format: password }
-        deviceId: { type: string }
     CreateProductRequest:
       type: object
       required: [sku, name, unit, basePrice, taxRate]
@@ -532,13 +535,40 @@ components:
         resource: { type: object, nullable: true }
     SuccessLoginResponse:
       type: object
-      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { $ref: '#/components/schemas/LoginResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessTokenResponse:
       type: object
-      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { $ref: '#/components/schemas/TokenResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessLogoutResponse:
       type: object
-      properties: { data: { type: object }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { type: object, properties: { revoked: { type: boolean } } }, meta: { $ref: '#/components/schemas/Meta' } }
+    LoginResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresAtUtc, refreshToken, user, device]
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresAtUtc: { type: string, format: date-time }
+        refreshToken: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            tenantId: { type: string, format: uuid, nullable: true }
+            role: { type: string, enum: [SuperAdmin, TenantAdmin, Staff] }
+            displayName: { type: string }
+        device:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            isRevoked: { type: boolean }
+    TokenResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresAtUtc, refreshToken, refreshTokenExpiresAtUtc]
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresAtUtc: { type: string, format: date-time }
+        refreshToken: { type: string }
+        refreshTokenExpiresAtUtc: { type: string, format: date-time }
     SuccessProductResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/Product' }, meta: { $ref: '#/components/schemas/Meta' } }

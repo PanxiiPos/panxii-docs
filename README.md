@@ -296,6 +296,9 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- UI: `http://localhost:5099/swagger`
 	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
 - API health check: `GET http://localhost:5099/api/v1/health`.
+- Auth API: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`; login body chỉ cần username/password, không cần nhập tenant hay device metadata.
+- JWT tenant user có tenant/role/device/session claims; JWT SuperAdmin không có `tenant_id` và session lưu riêng trong `platform_admin_sessions`. Role policies bảo vệ Products, logout/revoke được kiểm tra server-side trên mỗi request, login/refresh rate limit 10 request/phút/IP.
+- Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
 - MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
 - Products query API: `GET http://localhost:5099/api/v1/products?search=&page=1&pageSize=50`.
@@ -316,10 +319,12 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - EF Core migrations đã apply:
 	- `InitialPosSchema`.
 	- `AddDatabaseForeignKeys`.
-- Schema hiện có các bảng `tenants`, `users`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
+- Migrations `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex` và `SeparatePlatformAdmin` thêm session persistence và tách global SuperAdmin; apply bằng lệnh `dotnet ef database update` ở dưới.
+- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
 - Development seed script: `backend/database/seed-development.sql`.
-- Dữ liệu development hiện có: 1 tenant, 2 users, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
+- Tài khoản development (chỉ dùng local; seed reset mật khẩu theo role): `superadmin` / `SuperAdmin123`, `demo.admin` / `TenantAdmin123`, `demo.staff` / `Staff123`.
+- Dữ liệu development: 1 tenant (`DEMO`), 2 tenant users, 1 platform admin, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
 
 Khởi động database local:
 

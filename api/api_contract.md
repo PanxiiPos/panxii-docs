@@ -14,7 +14,9 @@
 |---|---:|---|
 | `Authorization` | Có, trừ login/version | JWT |
 | `X-Tenant-Id` | Không | Không được tin giá trị này; server lấy tenant từ token |
-| `X-Device-Id` | Có với mobile | Định danh thiết bị đã đăng ký |
+| `X-Device-Id` | Không | Client tự gửi ID ổn định; server tự sinh ID nếu thiếu |
+| `X-Platform` | Không | Platform client; có thể suy ra từ User-Agent |
+| `X-App-Version` | Không | Version app; có thể suy ra từ User-Agent |
 | `X-Correlation-Id` | Khuyến nghị | Truy vết request |
 | `Accept-Language` | Không | `vi` hoặc `en`; mặc định `vi` |
 | `Idempotency-Key` | Có với command retry | Nên bằng `ClientOperationId` |
@@ -85,12 +87,11 @@ Request:
 ```json
 {
   "username": "cashier01",
-  "password": "secret",
-  "deviceId": "device-uuid",
-  "platform": "Android",
-  "appVersion": "2.1.0"
+  "password": "secret"
 }
 ```
+
+Login chỉ nhận username/password. Server tìm user theo username trên mọi tenant và xác định tenant từ tài khoản có password khớp. Nếu cùng username/password khớp nhiều tài khoản, server từ chối để tránh chọn nhầm tenant. Client có thể tự gửi `X-Device-Id`, `X-Platform`, `X-App-Version`; nếu thiếu, server lấy platform/version từ User-Agent và tự sinh device ID.
 
 Response 200:
 
@@ -98,11 +99,11 @@ Response 200:
 {
   "data": {
     "accessToken": "jwt",
-    "expiresAtUtc": "2026-10-08T11:00:00Z",
+    "accessTokenExpiresAtUtc": "2026-10-08T10:15:00Z",
     "refreshToken": "opaque-token",
     "user": {
       "id": "uuid",
-      "tenantId": "uuid",
+      "tenantId": "uuid-or-null",
       "role": "Staff",
       "displayName": "Cashier"
     },
@@ -115,11 +116,13 @@ Errors: `ERR_INVALID_CREDENTIALS`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, 
 
 ### `POST /auth/refresh`
 
-Nhận refresh token, kiểm tra hash trong `user_devices`, trạng thái user/device và rotate token. Không lưu plaintext refresh token.
+Request: `{ "refreshToken": "opaque-token" }`. Tenant user được kiểm tra trong `user_devices`; SuperAdmin được kiểm tra trong `platform_admin_sessions`. Cả hai đều kiểm tra trạng thái account/session và rotate token; không lưu plaintext refresh token. Refresh token cũ dùng lại sẽ bị từ chối.
 
 ### `POST /auth/logout`
 
-Thu hồi session hiện tại. Không xóa dữ liệu server.
+Thu hồi session hiện tại. Mọi request có access token thuộc session bị revoke sẽ bị từ chối ngay; không xóa dữ liệu server.
+
+Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login và refresh bị giới hạn 10 request/phút/IP. Password dùng BCrypt; secret ký JWT lấy từ `JWT_SECRET_KEY` và tối thiểu 32 byte.
 
 ## 3. Products, categories và customers
 
@@ -610,10 +613,7 @@ Request `LoginRequest`:
 ```json
 {
   "username": "cashier01",
-  "password": "secret",
-  "deviceId": "device-uuid",
-  "platform": "Android",
-  "appVersion": "2.1.0"
+  "password": "secret"
 }
 ```
 
@@ -623,7 +623,7 @@ Response `LoginResponse`:
 {
   "accessToken": "jwt",
   "refreshToken": "opaque-token",
-  "accessTokenExpiresAtUtc": "2026-10-08T11:00:00Z",
+  "accessTokenExpiresAtUtc": "2026-10-08T10:15:00Z",
   "refreshTokenExpiresAtUtc": "2026-11-07T10:00:00Z",
   "user": {},
   "device": { "id": "uuid", "isRevoked": false }

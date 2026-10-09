@@ -29,6 +29,7 @@ Database phải hỗ trợ SaaS multi-tenant, bán hàng offline-first, đồng 
 |---|---|---:|---|
 | Nền tảng | `tenants` | Không | Chỉ trạng thái bằng quyền SuperAdmin |
 | Danh tính | `users`, `user_devices` | Có | Có, theo chính sách audit |
+| Quản trị nền tảng | `platform_admins`, `platform_admin_sessions` | Không | Có, theo chính sách audit |
 | Danh mục | `categories`, `products`, `customers` | Có | Có trước khi phát sinh giao dịch |
 | Giao dịch | `invoices`, `invoice_details` | Có | Không sửa/xóa nội dung sau sync |
 | Cấu hình | `app_settings` | Có thể null | Có, theo phạm vi cấu hình |
@@ -55,6 +56,7 @@ erDiagram
     CUSTOMERS ||--o{ INVOICES : buys
     USERS ||--o{ USER_DEVICES : signs_in
     USERS ||--o{ INVOICES : creates
+    PLATFORM_ADMINS ||--o{ PLATFORM_ADMIN_SESSIONS : signs_in
     INVOICES ||--|{ INVOICE_DETAILS : contains
     INVOICES ||--o| INVOICES : reverses
     INVOICES ||--o{ SYNC_OPERATIONS : syncs
@@ -114,23 +116,29 @@ Unique `Code`. Không xóa vật lý tenant đã có dữ liệu.
 
 ### 4.2. `users`
 
-Tài khoản thuộc tenant. `SuperAdmin` có thể dùng `TenantId = NULL` để quản trị nền tảng.
+`users` chỉ chứa chủ cửa hàng/doanh nghiệp (`TenantAdmin`) và nhân viên (`Staff`); mọi user đều thuộc một tenant. `SuperAdmin` là account toàn cục, được lưu riêng trong `platform_admins` và không có `TenantId`.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
-| `TenantId` | `CHAR(36)` | Có | FK `tenants`; null cho SuperAdmin hệ thống |
+| `TenantId` | `CHAR(36)` | Không | FK `tenants`; bắt buộc với TenantAdmin/Staff |
 | `Username` | `VARCHAR(120)` | Không | Unique trong tenant |
 | `DisplayName` | `VARCHAR(160)` | Không | Tên hiển thị |
 | `Email` | `VARCHAR(254)` | Có | Email |
 | `PasswordHash` | `VARCHAR(255)` | Không | Argon2id/bcrypt |
-| `Role` | `VARCHAR(20)` | Không | `SuperAdmin`, `TenantAdmin`, `Staff` |
+| `Role` | `VARCHAR(20)` | Không | `TenantAdmin`, `Staff` |
 | `Status` | `VARCHAR(20)` | Không | `Active`, `Locked`, `Disabled` |
 | `AdminPinHash` | `VARCHAR(255)` | Có | PIN TenantAdmin, nếu có |
 | `LastLoginAt` | `DATETIME(6)` | Có | Audit đăng nhập |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-`TenantAdmin` và `Staff` bắt buộc có `TenantId`; chỉ `SuperAdmin` mới được null `TenantId`. Quyền phải lấy từ claim đã ký và kiểm tra tenant server-side.
+Login nhận username/password; server tìm tenant user trên mọi tenant và tìm platform admin toàn cục. Nếu cặp username/password khớp nhiều account, login bị từ chối. Tenant users luôn được giới hạn theo tenant; platform admin không được gán vào tenant.
+
+### 4.2.1. `platform_admins` và `platform_admin_sessions`
+
+Hai bảng này lưu identity và session của SuperAdmin, tách khỏi dữ liệu cửa hàng. `platform_admins` có `Id`, `Username` (unique toàn cục), `DisplayName`, `Email`, `PasswordHash`, `Status`, `LastLoginAt` và audit fields. `platform_admin_sessions` lưu `UserId`, `DeviceId`, `Platform`, `AppVersion`, `SessionId`, `RefreshTokenHash`, hạn refresh, revoke state và thời gian audit; có FK trực tiếp tới `platform_admins`.
+
+JWT của SuperAdmin có `sub`, `role=SuperAdmin`, `device_id`, `session_id` nhưng không có `tenant_id`. API xác thực session qua `platform_admin_sessions`.
 
 ### 4.3. `user_devices`
 
@@ -142,15 +150,16 @@ Quản lý session, thiết bị và remote kill-switch.
 | `TenantId` | `CHAR(36)` | Không | FK tenant |
 | `UserId` | `CHAR(36)` | Không | FK user |
 | `DeviceId` | `VARCHAR(160)` | Không | ID ổn định do app tạo |
-| `DeviceName` | `VARCHAR(120)` | Có | Tên thiết bị |
-| `Platform` | `VARCHAR(20)` | Không | `Android`, `iOS`, `Web` |
+| `Platform` | `VARCHAR(32)` | Không | Nền tảng client |
 | `AppVersion` | `VARCHAR(32)` | Không | Version native |
-| `RefreshTokenHash` | `CHAR(64)` | Có | Chỉ lưu hash token |
+| `SessionId` | `CHAR(36)` | Không | Session claim trong JWT, unique |
+| `RefreshTokenHash` | `CHAR(64)` | Không | SHA-256; không lưu plaintext |
+| `RefreshTokenExpiresAt` | `DATETIME(6)` | Không | Hạn refresh token |
 | `IsRevoked` | `TINYINT(1)` | Không | Kill-switch |
-| `RevokedAt`, `LastSeenAt` | `DATETIME(6)` | Có | Trạng thái session |
+| `LastSeenAt` | `DATETIME(6)` | Không | Lần refresh gần nhất |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, DeviceId)`, index `(UserId, IsRevoked)`. Khi revoke, API trả `401`; mobile xóa SQLite và force logout.
+Composite FK `(TenantId, UserId)` tới `users`; unique `SessionId` và `RefreshTokenHash`; index `(TenantId, UserId, DeviceId)`. Khi revoke, API trả `401` ngay cả với access token đã cấp; mobile xóa SQLite và force logout.
 
 ### 4.4. `categories`
 
