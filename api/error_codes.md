@@ -19,6 +19,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVALID_ENUM` | 400 | No | `errors.invalidEnum` | Enum không hợp lệ |
 | `ERR_INVALID_DECIMAL` | 400 | No | `errors.invalidDecimal` | Precision/range sai |
 | `ERR_UNAUTHENTICATED` | 401 | No | `errors.unauthenticated` | Request chưa xác thực |
+| `ERR_INVALID_CREDENTIALS` | 401 | No | `errors.invalidCredentials` | Tenant/user/password không hợp lệ |
 | `ERR_ACCESS_DENIED` | 403 | No | `errors.accessDenied` | Không đủ quyền |
 | `ERR_NOT_FOUND` | 404 | No | `errors.notFound` | Route/resource không tồn tại |
 | `ERR_CONFLICT` | 409 | No | `errors.conflict` | Request xung đột trạng thái hiện tại |

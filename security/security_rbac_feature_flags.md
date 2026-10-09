@@ -12,7 +12,7 @@ MySQL và RabbitMQ không mở public. Client không được truy cập trực 
 
 ## 2. JWT và session
 
-JWT tối thiểu có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`, `iat`, `exp`. Không đặt thông tin nhạy cảm hoặc quyền thay đổi thường xuyên vào token quá dài.
+JWT tenant user có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`, `iat`, `exp`. JWT SuperAdmin là global identity nên không có `tenant_id`; session được kiểm tra trong `platform_admin_sessions`. Không đặt thông tin nhạy cảm hoặc quyền thay đổi thường xuyên vào token quá dài.
 
 - Access token ngắn hạn.
 - Refresh token opaque, rotate mỗi lần refresh.
@@ -36,7 +36,7 @@ JWT tối thiểu có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jt
 | Quản lý users tenant | Platform policy | Có | Không |
 | Revoke device | Có platform | Có trong tenant | Không |
 
-Authorization phải kiểm tra cả role và `TenantId`; role không đủ để cấp quyền cross-tenant.
+Authorization tenant phải kiểm tra cả role và `TenantId`; role không đủ để cấp quyền cross-tenant. SuperAdmin là platform scope riêng, không giả lập bằng một tenant cửa hàng.
 
 ## 4. Quy tắc tenant isolation
 

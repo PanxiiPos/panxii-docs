@@ -4,14 +4,15 @@
 
 | Actor | Phạm vi |
 |---|---|
-| SuperAdmin | Tenant lifecycle, global flags, platform support |
+| SuperAdmin | Quản trị toàn nền tảng: tenant lifecycle, global flags, platform support; không thuộc tenant |
 | TenantAdmin | Dữ liệu tenant, bulk price, reverse/correction, tenant flags |
 | Staff | Tạo invoice, tìm product/customer, reverse khi có PIN Admin |
 | Device Worker | Sync outbox, pull changes, xử lý revoke |
 
 ## 2. Core aggregates
 
-- `Tenant`: status, timezone, currency, lifecycle.
+- `Tenant`: cửa hàng/doanh nghiệp trong SaaS; status, timezone, currency, lifecycle. Đây là ranh giới dữ liệu, không phải người thuê nhà.
+- `PlatformAdmin`: SuperAdmin toàn cục, không có tenant membership.
 - `User`: role, status, tenant membership.
 - `UserDevice`: session, app version, revoke state.
 - `Product`: price, active state, version.
