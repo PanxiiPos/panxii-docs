@@ -105,14 +105,16 @@ Bảng gốc của SaaS, không có `TenantId`.
 | `Id` | `CHAR(36)` | Không | PK |
 | `Code` | `VARCHAR(32)` | Không | Mã tenant duy nhất |
 | `Name` | `VARCHAR(160)` | Không | Tên cửa hàng |
-| `Status` | `VARCHAR(20)` | Không | `Active`, `Suspended`, `Closed` |
+| `Status` | `VARCHAR(20)` | Không | Enum `Active`, `Suspended`, `Closed` |
 | `TimeZone` | `VARCHAR(64)` | Không | Ví dụ `Asia/Ho_Chi_Minh` |
 | `CurrencyCode` | `CHAR(3)` | Không | Mặc định `VND` |
 | `IsDeleted` | `TINYINT(1)` | Không | Soft delete cấp nền tảng |
-| `CreatedAt`, `UpdatedAt` | `DATETIME(6)` | Có | Audit |
+| `CreatedAt` | `DATETIME(6)` | Không | Thời gian tạo |
+| `UpdatedAt` | `DATETIME(6)` | Có | Thời gian cập nhật |
+| `Version` | `BIGINT` | Không | Optimistic concurrency, mặc định 1 |
 | `ExtraDataJson` | `JSON` | Có | Metadata nền tảng |
 
-Unique `Code`. Không xóa vật lý tenant đã có dữ liệu.
+Unique `Code`. Chỉ SuperAdmin được quản lý tenant. Onboarding tạo tenant và TenantAdmin đầu tiên trong cùng transaction. DELETE đặt `IsDeleted = true`, `Status = Closed`, revoke device/session; không xóa vật lý tenant hoặc dữ liệu nghiệp vụ.
 
 ### 4.2. `users`
 

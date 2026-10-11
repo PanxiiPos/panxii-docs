@@ -47,6 +47,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_SYNC_CONFLICT` | 409 | No | `errors.syncConflict` | Xung đột version |
 | `ERR_CURSOR_EXPIRED` | 409 | No | `errors.cursorExpired` | Cursor hết hạn |
 | `ERR_TENANT_NOT_FOUND` | 404 | No | `errors.tenantNotFound` | Không thấy tenant |
+| `ERR_DUPLICATE_TENANT_CODE` | 409 | No | `errors.duplicateTenantCode` | Tenant code đã tồn tại |
 | `ERR_TENANT_ADMIN_NOT_FOUND` | 404 | No | `errors.tenantAdminNotFound` | Không thấy TenantAdmin trong tenant |
 | `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.tenantAdminDeleteRequiresDeactivation` | TenantAdmin có lịch sử, chỉ được deactivate |
 | `ERR_FEATURE_FLAG_NOT_FOUND` | 404 | No | `errors.featureFlagNotFound` | Feature flag không có trong registry |

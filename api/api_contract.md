@@ -360,6 +360,60 @@ Errors: `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IM
 
 Request dùng `{ "value": <value theo schema>, "expectedVersion": 12 }`. Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in, không thay đổi quyền, giá hoặc dữ liệu invoice. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
 
+### SuperAdmin quản lý tenant và onboarding TenantAdmin
+
+Chỉ SuperAdmin được quản lý tenant. Tạo tenant và tài khoản TenantAdmin đầu tiên là một use case/transaction: nếu tạo account thất bại, tenant cũng không được lưu. Password chỉ được hash, không trả về hoặc ghi log. Các API quản lý TenantAdmin ở `/platform/tenants/{tenantId}/admins` dùng để quản lý thêm account sau onboarding.
+
+#### `GET /platform/tenants?search=&page=&pageSize=&includeDeleted=`
+
+Liệt kê tenant, mặc định không gồm tenant đã soft-delete. `includeDeleted=true` chỉ dành cho SuperAdmin. Response có paging chuẩn.
+
+#### `POST /platform/tenants`
+
+Tạo cửa hàng và TenantAdmin đầu tiên. Request:
+
+```json
+{
+  "code": "CAFE-001",
+  "name": "Cafe Store",
+  "timeZone": "Asia/Ho_Chi_Minh",
+  "currencyCode": "VND",
+  "tenantAdmin": {
+    "username": "cafe.admin",
+    "initialPassword": "one-time-secret",
+    "displayName": "Cafe Owner",
+    "email": "owner@example.com",
+    "phone": "0900000000"
+  }
+}
+```
+
+`code` duy nhất toàn hệ thống; username duy nhất trong tenant mới. Response `201` trả `{ tenant, tenantAdmin }`, không chứa credential. Tenant mới có `status: Active`, version ban đầu `1`.
+
+#### `GET /platform/tenants/{tenantId}?includeDeleted=`
+
+Đọc thông tin tenant. Tenant đã soft-delete chỉ được đọc khi `includeDeleted=true`.
+
+#### `PATCH /platform/tenants/{tenantId}`
+
+Cập nhật `code`, `name`, `timeZone`, `currencyCode`. Không nhận status hoặc `isDeleted`; dùng lifecycle endpoints bên dưới. Bắt buộc `expectedVersion`; mismatch trả `409 ERR_VERSION_CONFLICT`.
+
+#### `POST /platform/tenants/{tenantId}/suspend`
+
+Đặt `status: Suspended`, revoke toàn bộ tenant user devices/sessions để các token hiện hành mất hiệu lực.
+
+#### `POST /platform/tenants/{tenantId}/reactivate`
+
+Đặt tenant chưa bị xóa về `status: Active`. Các session đã revoke không được khôi phục; users cần đăng nhập lại.
+
+#### `DELETE /platform/tenants/{tenantId}`
+
+Soft-delete tenant: đặt `isDeleted: true`, `status: Closed`, revoke toàn bộ devices/sessions và ghi audit. Không xóa vật lý tenant, users hoặc dữ liệu nghiệp vụ. Tenant đã xóa không thể reactivate.
+
+`PlatformTenant` gồm `id`, `code`, `name`, `status` (`Active`/`Suspended`/`Closed`), `timeZone`, `currencyCode`, `isDeleted`, `version`, `createdAtUtc`, `updatedAtUtc`.
+
+Errors: `ERR_TENANT_NOT_FOUND`, `ERR_DUPLICATE_TENANT_CODE`, `ERR_INVALID_REQUEST`, `ERR_INVALID_PAGING`, `ERR_VERSION_CONFLICT`.
+
 ### SuperAdmin quản lý tài khoản TenantAdmin
 
 Các endpoint dưới đây chỉ dành cho **SuperAdmin**. `{tenantId}` xác định tenant đích; server phải kiểm tra tenant tồn tại và tenant scope trên mọi thao tác. Không cho client thay đổi role: tài khoản do nhóm API này quản lý luôn có role `TenantAdmin`.
@@ -460,7 +514,7 @@ Errors: `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_INVALID_REQUEST`, `ERR_VERSION_CONFLI
 
 `ERR_ACCESS_DENIED`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_INVALID_CREDENTIALS`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_IMMUTABLE`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_ADMIN_PIN_INVALID`, `ERR_SYNC_DUPLICATE`, `ERR_SYNC_PAYLOAD_MISMATCH`, `ERR_SYNC_CONFLICT`, `ERR_STAFF_NOT_FOUND`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_SETTING_NOT_FOUND`, `ERR_FORCE_UPDATE_REQUIRED`.
 
-Platform admin errors: `ERR_TENANT_NOT_FOUND`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`, `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
+Platform admin errors: `ERR_TENANT_NOT_FOUND`, `ERR_DUPLICATE_TENANT_CODE`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`, `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
 
 Mobile map cùng key trong `vi.json` và `en.json`; không map theo HTTP status đơn thuần.
 
@@ -759,6 +813,13 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 | GET | `/sync/pull` | `cursor,limit` | `SyncChange[]` + paging | 200 |
 | GET | `/settings/effective` | Không body | `EffectiveSettings` | 200 |
 | PUT | `/settings/{key}` | `UpdateSettingRequest` + version; TenantAdmin tenant scope | `Setting` | 200 |
+| GET | `/platform/tenants` | query `search,page,pageSize,includeDeleted` | `PlatformTenant[]` + paging | 200 |
+| POST | `/platform/tenants` | `CreatePlatformTenantRequest` including initial `TenantAdmin` | `CreatePlatformTenantResponse` | 201 |
+| GET | `/platform/tenants/{tenantId}` | path `tenantId`; optional `includeDeleted` | `PlatformTenant` | 200 |
+| PATCH | `/platform/tenants/{tenantId}` | `UpdatePlatformTenantRequest` + `expectedVersion` | `PlatformTenant` | 200 |
+| POST | `/platform/tenants/{tenantId}/suspend` | Không body | `PlatformTenant` | 200 |
+| POST | `/platform/tenants/{tenantId}/reactivate` | Không body | `PlatformTenant` | 200 |
+| DELETE | `/platform/tenants/{tenantId}` | path `tenantId` | `DeletePlatformTenantResponse` (soft-delete) | 200 |
 | GET | `/platform/tenants/{tenantId}/admins` | query `search,page,pageSize` | `TenantAdminAccount[]` + paging | 200 |
 | POST | `/platform/tenants/{tenantId}/admins` | `CreateTenantAdminRequest` | `TenantAdminAccount` | 201 |
 | GET | `/platform/tenants/{tenantId}/admins/{userId}` | path `tenantId,userId` | `TenantAdminAccount` | 200 |
@@ -910,6 +971,7 @@ Client chỉ lưu `nextCursor` sau khi toàn bộ `changes` đã upsert vào SQL
 | `ERR_DUPLICATE_USERNAME` | Username đã tồn tại trong tenant |
 | `ERR_SETTING_NOT_FOUND` | Setting không có trong registry |
 | `ERR_TENANT_NOT_FOUND` | Tenant platform đích không tồn tại |
+| `ERR_DUPLICATE_TENANT_CODE` | Tenant code đã được sử dụng |
 | `ERR_TENANT_ADMIN_NOT_FOUND` | TenantAdmin không tồn tại trong tenant chỉ định |
 | `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION` | Tài khoản có lịch sử/dependency, không thể hard-delete |
 | `ERR_FEATURE_FLAG_NOT_FOUND` | Feature flag không có trong registry |
