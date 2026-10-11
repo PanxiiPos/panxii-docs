@@ -438,7 +438,7 @@ Errors: `ERR_TENANT_NOT_FOUND`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USE
 }
 ```
 
-Server validate kiểu/range theo flag registry, không chấp nhận key tùy ý; cập nhật version, ghi audit và phát event để client làm mới cache. `expectedVersion` bắt buộc để tránh ghi đè thay đổi đồng thời. Tenant override (nếu có) vẫn ưu tiên hơn global theo thứ tự `Tenant override > Global > Application default`.
+Server validate kiểu/range theo flag registry, không chấp nhận key tùy ý; cập nhật version và ghi audit cùng transaction. Client cần đọc lại cấu hình để nhận giá trị mới; backend hiện chưa phát realtime cache-invalidation event. `expectedVersion` bắt buộc để tránh ghi đè thay đổi đồng thời. Tenant override (nếu có) vẫn ưu tiên hơn global theo thứ tự `Tenant override > Global > Application default`.
 
 Errors: `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_INVALID_REQUEST`, `ERR_VERSION_CONFLICT`.
 
