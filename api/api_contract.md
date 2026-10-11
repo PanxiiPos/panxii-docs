@@ -126,10 +126,12 @@ Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login
 
 ## 3. Products, categories và customers
 
-### `GET /products?search=&page=&pageSize=&updatedSince=`
+TenantAdmin có quyền quản lý sản phẩm trong tenant; Staff chỉ được tìm/xem sản phẩm active. Mọi thao tác lấy tenant từ JWT, không nhận tenant scope do client quyết định.
+
+### `GET /products?search=&page=&pageSize=&updatedSince=&includeInactive=`
 
 **Role:** Staff, TenantAdmin.  
-Trả danh sách sản phẩm active hoặc thay đổi sau `updatedSince` để pull incremental.
+Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental.
 
 ```json
 {
@@ -164,6 +166,14 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 
 **Role:** TenantAdmin. Có `expectedVersion`; nếu version không khớp trả `409 ERR_SYNC_CONFLICT`. Staff không được sửa giá gốc.
 
+### `POST /products/{id}/deactivate`
+
+**Role:** TenantAdmin. Vô hiệu hóa sản phẩm, giữ nguyên dữ liệu lịch sử; không cho invoice mới sử dụng sản phẩm inactive. Request có `expectedVersion`; trả Product đã cập nhật.
+
+### `DELETE /products/{id}?expectedVersion=`
+
+**Role:** TenantAdmin. Chỉ hard-delete sản phẩm chưa được tham chiếu bởi invoice hoặc dữ liệu lịch sử. Nếu đã được sử dụng, trả `409 ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION`; hãy dùng endpoint deactivate. Response `200` là `DeletionResult` trong success envelope.
+
 ### `POST /products/bulk-price`
 
 **Role:** TenantAdmin. Request:
@@ -178,6 +188,38 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 ```
 
 Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
+
+### TenantAdmin quản lý tài khoản Staff
+
+Các endpoint sau chỉ dành cho TenantAdmin và chỉ tác động đến tài khoản role `Staff` thuộc tenant trong JWT. Không nhận `tenantId` hoặc `role` từ request để xác định quyền.
+
+#### `GET /tenant/staff?search=&page=&pageSize=`
+
+Liệt kê Staff của tenant, bao gồm tài khoản inactive; response có paging và không chứa credential.
+
+#### `POST /tenant/staff`
+
+Tạo tài khoản Staff. Request gồm `username`, `initialPassword`, `displayName`, `email`, `phone`. Username duy nhất trong tenant; password chỉ dùng một lần lúc tạo, không trả về và không ghi log. Response `201` trả `StaffAccount`.
+
+#### `GET /tenant/staff/{userId}`
+
+Đọc tài khoản Staff trong tenant hiện tại; user ngoài tenant hoặc không phải Staff trả `404 ERR_STAFF_NOT_FOUND`.
+
+#### `PATCH /tenant/staff/{userId}`
+
+Cập nhật `username`, `displayName`, `email`, `phone`; bắt buộc `expectedVersion`. Không nhận tenant, role, status hoặc credential. Version cũ trả `409 ERR_VERSION_CONFLICT`.
+
+#### `POST /tenant/staff/{userId}/deactivate`
+
+Vô hiệu hóa Staff và revoke toàn bộ device/session của user ngay lập tức. Dữ liệu lịch sử được giữ lại. Response trả `StaffAccount` với status `Inactive`.
+
+#### `DELETE /tenant/staff/{userId}`
+
+Hard-delete chỉ khi Staff chưa được dùng và không có dữ liệu nghiệp vụ/device/session cần giữ. Nếu có lịch sử/dependency, trả `409 ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`; dùng deactivate để giữ audit và tham chiếu lịch sử. Response `200` trả `{ "id": "uuid", "deleted": true }` trong envelope.
+
+`StaffAccount` gồm `id`, `tenantId`, `username`, `displayName`, `email`, `phone`, `status` (`Active`/`Inactive`), `version`, `createdAtUtc`, `updatedAtUtc`; không gồm password/hash, PIN hoặc token.
+
+Errors: `ERR_STAFF_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`.
 
 ### `GET /customers?search=&updatedSince=` và `POST /customers`
 
@@ -249,6 +291,8 @@ Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `E
 
 **Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse.
 
+Staff và TenantAdmin được in invoice đã đọc trên thiết bị client. App dựng bản in từ invoice snapshot và `ReceiptTemplate` trong `/settings/effective`, rồi gửi tới máy in local/Bluetooth; in không thay đổi invoice và không có server-side print endpoint. Nếu in lỗi, mobile dùng `ERR_PRINT_FAILED`; invoice không rollback.
+
 ### `POST /invoices/{id}/reverse`
 
 **Role:** TenantAdmin hoặc Staff kèm PIN hợp lệ. Request:
@@ -282,6 +326,25 @@ Errors: `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IM
     "EnableInventory": false,
     "EnableBluetoothPrint": true,
     "AutoRoundMoney": true,
+    "storeProfile": {
+      "storeName": "Panxii Store",
+      "address": null,
+      "phone": null,
+      "taxCode": null
+    },
+    "receiptTemplate": {
+      "templateId": "Standard",
+      "showStoreAddress": true,
+      "showTaxBreakdown": true,
+      "footerText": null
+    },
+    "productDisplay": {
+      "layout": "Grid",
+      "sortBy": "Name",
+      "showSku": true,
+      "showBarcode": false,
+      "showCategory": true
+    },
     "settingsVersion": 12
   }
 }
@@ -289,7 +352,95 @@ Errors: `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IM
 
 ### `PUT /settings/{key}`
 
-**Role:** TenantAdmin với tenant setting; SuperAdmin với global setting. Giá trị phải validate theo schema của key.
+**Role:** TenantAdmin với tenant setting. Giá trị phải validate theo schema của key. Các key cấu hình cửa hàng gồm:
+
+- `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null }`.
+- `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null }`; `templateId` chỉ nhận template được app hỗ trợ.
+- `ProductDisplay`: `{ "layout": "Grid", "sortBy": "Name", "showSku": true, "showBarcode": false, "showCategory": true }`; `layout` là `Grid`/`List`, `sortBy` là `Name`/`Sku`.
+
+Request dùng `{ "value": <value theo schema>, "expectedVersion": 12 }`. Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in, không thay đổi quyền, giá hoặc dữ liệu invoice. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+
+### SuperAdmin quản lý tài khoản TenantAdmin
+
+Các endpoint dưới đây chỉ dành cho **SuperAdmin**. `{tenantId}` xác định tenant đích; server phải kiểm tra tenant tồn tại và tenant scope trên mọi thao tác. Không cho client thay đổi role: tài khoản do nhóm API này quản lý luôn có role `TenantAdmin`.
+
+#### `GET /platform/tenants/{tenantId}/admins?search=&page=&pageSize=`
+
+Liệt kê tài khoản TenantAdmin của tenant, gồm cả tài khoản đã vô hiệu hóa. Response dùng collection envelope và paging chuẩn; không trả password, password hash, PIN hoặc token.
+
+#### `POST /platform/tenants/{tenantId}/admins`
+
+Tạo tài khoản TenantAdmin trong tenant. Request:
+
+```json
+{
+  "username": "store.admin",
+  "initialPassword": "one-time-secret",
+  "displayName": "Store Admin",
+  "email": "admin@example.com",
+  "phone": "0900000000"
+}
+```
+
+`username` phải duy nhất trong tenant. `initialPassword` chỉ dùng lúc tạo và tuyệt đối không được trả lại hoặc ghi log. Response `201` trả resource `TenantAdminAccount` và không chứa credential.
+
+#### `GET /platform/tenants/{tenantId}/admins/{userId}`
+
+Đọc chi tiết tài khoản trong đúng tenant; tài khoản không thuộc tenant trả `404`.
+
+#### `PATCH /platform/tenants/{tenantId}/admins/{userId}`
+
+Cập nhật thông tin được phép của tài khoản, không nhận `tenantId`, `role`, status hoặc credential. Bắt buộc `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
+
+```json
+{
+  "username": "store.admin",
+  "displayName": "Store Administrator",
+  "email": "admin@example.com",
+  "phone": "0900000000",
+  "expectedVersion": 3
+}
+```
+
+#### `POST /platform/tenants/{tenantId}/admins/{userId}/deactivate`
+
+Vô hiệu hóa tài khoản. Server phải revoke toàn bộ device/session của user ngay trong cùng thao tác nghiệp vụ; các access token/session đã revoke không được tiếp tục truy cập API. Ghi audit before/after và actor SuperAdmin. Không xóa dữ liệu lịch sử.
+
+#### `DELETE /platform/tenants/{tenantId}/admins/{userId}`
+
+Hard-delete chỉ được phép khi tài khoản chưa được dùng và không có dữ liệu nghiệp vụ/device/session cần giữ. Nếu có lịch sử hoặc dependency, trả `409 ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`; dùng endpoint deactivate để giữ audit và tham chiếu lịch sử. Response `200` dùng `DeletionResult` trong envelope.
+
+```json
+{
+  "data": { "id": "uuid", "deleted": true },
+  "meta": { "correlationId": "uuid", "serverTimeUtc": "2026-10-08T10:00:00Z", "apiVersion": "v1" }
+}
+```
+
+`TenantAdminAccount` gồm `id`, `tenantId`, `username`, `displayName`, `email`, `phone`, `status` (`Active`/`Inactive`), `version`, `createdAtUtc`, `updatedAtUtc`. Không bao gồm password/hash, PIN, refresh token hoặc secret.
+
+Errors: `ERR_TENANT_NOT_FOUND`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`, `ERR_VERSION_CONFLICT`.
+
+### SuperAdmin cấu hình global feature flags
+
+#### `GET /platform/feature-flags`
+
+**Role:** SuperAdmin. Liệt kê cấu hình global hiện tại theo registry; mỗi item gồm `key`, `value`, `scope` (`Global`), `version`, `updatedAtUtc`. Collection luôn có `meta.paging` theo quy ước chung.
+
+#### `PUT /platform/feature-flags/{key}`
+
+**Role:** SuperAdmin. Cập nhật giá trị global của flag đã đăng ký. Request:
+
+```json
+{
+  "value": true,
+  "expectedVersion": 12
+}
+```
+
+Server validate kiểu/range theo flag registry, không chấp nhận key tùy ý; cập nhật version, ghi audit và phát event để client làm mới cache. `expectedVersion` bắt buộc để tránh ghi đè thay đổi đồng thời. Tenant override (nếu có) vẫn ưu tiên hơn global theo thứ tự `Tenant override > Global > Application default`.
+
+Errors: `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_INVALID_REQUEST`, `ERR_VERSION_CONFLICT`.
 
 ### `GET /config/version`
 
@@ -307,7 +458,9 @@ Errors: `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IM
 
 ## 7. Error code chuẩn
 
-`ERR_ACCESS_DENIED`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_INVALID_CREDENTIALS`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_IMMUTABLE`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_ADMIN_PIN_INVALID`, `ERR_SYNC_DUPLICATE`, `ERR_SYNC_PAYLOAD_MISMATCH`, `ERR_SYNC_CONFLICT`, `ERR_FORCE_UPDATE_REQUIRED`.
+`ERR_ACCESS_DENIED`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_INVALID_CREDENTIALS`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_IMMUTABLE`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_ADMIN_PIN_INVALID`, `ERR_SYNC_DUPLICATE`, `ERR_SYNC_PAYLOAD_MISMATCH`, `ERR_SYNC_CONFLICT`, `ERR_STAFF_NOT_FOUND`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_SETTING_NOT_FOUND`, `ERR_FORCE_UPDATE_REQUIRED`.
+
+Platform admin errors: `ERR_TENANT_NOT_FOUND`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`, `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
 
 Mobile map cùng key trong `vi.json` và `en.json`; không map theo HTTP status đơn thuần.
 
@@ -581,10 +734,18 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 | POST | `/auth/login` | `LoginRequest` | `LoginResponse` | 200 |
 | POST | `/auth/refresh` | `RefreshTokenRequest` | `TokenResponse` | 200 |
 | POST | `/auth/logout` | Không body | `LogoutResult` | 200 |
-| GET | `/products` | query `search,page,pageSize,updatedSince,cursor` | `Product[]` + paging | 200 |
+| GET | `/products` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Product[]` + paging | 200 |
 | POST | `/products` | `CreateProductRequest` | `Product` | 201 |
 | PATCH | `/products/{id}` | `UpdateProductRequest` + `expectedVersion` | `Product` | 200 |
+| POST | `/products/{id}/deactivate` | `expectedVersion` | `Product` | 200 |
+| DELETE | `/products/{id}` | query `expectedVersion` | `DeletionResult` | 200 |
 | POST | `/products/bulk-price` | `BulkPriceRequest` | `BulkPriceResult` | 200 |
+| GET | `/tenant/staff` | query `search,page,pageSize` | `StaffAccount[]` + paging | 200 |
+| POST | `/tenant/staff` | `CreateStaffRequest` | `StaffAccount` | 201 |
+| GET | `/tenant/staff/{userId}` | path `userId` | `StaffAccount` | 200 |
+| PATCH | `/tenant/staff/{userId}` | `UpdateStaffRequest` + `expectedVersion` | `StaffAccount` | 200 |
+| POST | `/tenant/staff/{userId}/deactivate` | Không body | `StaffAccount` | 200 |
+| DELETE | `/tenant/staff/{userId}` | path `userId` | `DeletionResult` | 200 |
 | GET | `/categories` | query filter/cursor | `Category[]` + paging | 200 |
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
@@ -597,7 +758,15 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 | POST | `/invoices/{id}/correction` | `CorrectionInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
 | GET | `/sync/pull` | `cursor,limit` | `SyncChange[]` + paging | 200 |
 | GET | `/settings/effective` | Không body | `EffectiveSettings` | 200 |
-| PUT | `/settings/{key}` | `UpdateSettingRequest` + version | `Setting` | 200 |
+| PUT | `/settings/{key}` | `UpdateSettingRequest` + version; TenantAdmin tenant scope | `Setting` | 200 |
+| GET | `/platform/tenants/{tenantId}/admins` | query `search,page,pageSize` | `TenantAdminAccount[]` + paging | 200 |
+| POST | `/platform/tenants/{tenantId}/admins` | `CreateTenantAdminRequest` | `TenantAdminAccount` | 201 |
+| GET | `/platform/tenants/{tenantId}/admins/{userId}` | path `tenantId,userId` | `TenantAdminAccount` | 200 |
+| PATCH | `/platform/tenants/{tenantId}/admins/{userId}` | `UpdateTenantAdminRequest` + `expectedVersion` | `TenantAdminAccount` | 200 |
+| POST | `/platform/tenants/{tenantId}/admins/{userId}/deactivate` | Không body | `TenantAdminAccount` | 200 |
+| DELETE | `/platform/tenants/{tenantId}/admins/{userId}` | path `tenantId,userId` | `DeletionResult` | 200 |
+| GET | `/platform/feature-flags` | Không body | `FeatureFlag[]` + paging | 200 |
+| PUT | `/platform/feature-flags/{key}` | `UpdateGlobalFeatureFlagRequest` + version | `FeatureFlag` | 200 |
 | GET | `/config/version` | Không body | `VersionConfig` | 200 |
 
 Tất cả endpoint trong bảng đều trả `meta.correlationId`. Endpoint collection luôn trả `meta.paging`, kể cả khi `data` rỗng.
@@ -735,6 +904,15 @@ Client chỉ lưu `nextCursor` sau khi toàn bộ `changes` đã upsert vào SQL
 | `ERR_INVALID_DECIMAL` | Tiền/số lượng sai precision hoặc range |
 | `ERR_VERSION_CONFLICT` | `expectedVersion` đã cũ |
 | `ERR_CURSOR_EXPIRED` | Cursor pull không còn hợp lệ |
+| `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION` | Product có lịch sử/dependency, không thể hard-delete |
+| `ERR_STAFF_NOT_FOUND` | Staff không tồn tại trong tenant hiện tại |
+| `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION` | Staff có lịch sử/dependency, không thể hard-delete |
+| `ERR_DUPLICATE_USERNAME` | Username đã tồn tại trong tenant |
+| `ERR_SETTING_NOT_FOUND` | Setting không có trong registry |
+| `ERR_TENANT_NOT_FOUND` | Tenant platform đích không tồn tại |
+| `ERR_TENANT_ADMIN_NOT_FOUND` | TenantAdmin không tồn tại trong tenant chỉ định |
+| `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION` | Tài khoản có lịch sử/dependency, không thể hard-delete |
+| `ERR_FEATURE_FLAG_NOT_FOUND` | Feature flag không có trong registry |
 
 ## 14. Definition of Done cho một API
 

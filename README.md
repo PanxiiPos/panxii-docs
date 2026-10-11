@@ -298,6 +298,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - API health check: `GET http://localhost:5099/api/v1/health`.
 - Auth API: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`; login body chỉ cần username/password, không cần nhập tenant hay device metadata.
 - JWT tenant user có tenant/role/device/session claims; JWT SuperAdmin không có `tenant_id` và session lưu riêng trong `platform_admin_sessions`. Role policies bảo vệ Products, logout/revoke được kiểm tra server-side trên mỗi request, login/refresh rate limit 10 request/phút/IP.
+- API contract định nghĩa nhóm SuperAdmin quản lý tài khoản TenantAdmin theo tenant (xem/tạo/sửa/vô hiệu hóa/xóa có điều kiện) và đọc/cập nhật global feature flags; đây là phạm vi contract, không khẳng định backend đã triển khai.
+- API contract định nghĩa TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm và cấu hình cửa hàng; Staff xem sản phẩm, tạo invoice và in tại thiết bị client. Đây là phạm vi contract, chưa khẳng định backend đã triển khai.
 - Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
 - MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
