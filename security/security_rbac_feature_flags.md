@@ -33,7 +33,9 @@ JWT tenant user có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`
 | Đọc invoice tenant | Platform support | Có | Có theo tenant |
 | Reverse invoice | Không mặc định | Có | Chỉ PIN Admin |
 | Sửa/xóa invoice synced | Không | Không | Không |
+| In invoice trên thiết bị client | Không mặc định | Có | Có theo tenant |
 | Quản lý users tenant | Platform policy | Có | Không |
+| Quản lý tài khoản Staff | Không | Có trong tenant | Không |
 | Revoke device | Có platform | Có trong tenant | Không |
 
 Authorization tenant phải kiểm tra cả role và `TenantId`; role không đủ để cấp quyền cross-tenant. SuperAdmin là platform scope riêng, không giả lập bằng một tenant cửa hàng.

@@ -11,11 +11,14 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
     *   Cấu hình `Global Feature Flags` (Bật/tắt module Kho, Chấm công cho toàn hệ thống).
 *   **`TenantAdmin` (Chủ cửa hàng):**
     *   Full quyền CRUD đối với dữ liệu thuộc `TenantId` của mình.
+    *   Quản lý tài khoản Staff; thêm/sửa/vô hiệu hóa sản phẩm và chỉ xóa sản phẩm chưa có dữ liệu lịch sử.
+    *   Cấu hình thông tin hiển thị cửa hàng, mẫu hóa đơn và cách hiển thị sản phẩm.
     *   Đổi giá hàng loạt (Bulk Update).
     *   Duyệt thực hiện Bút toán đảo ngược (Hủy/Sửa hóa đơn).
     *   Cấu hình `Tenant Feature Flags` (Tự động làm tròn tiền, In Bluetooth).
 *   **`Staff` (Nhân viên/Thu ngân):**
     *   Chỉ được: Lập hóa đơn mới, tìm kiếm khách hàng/sản phẩm.
+    *   Được in hóa đơn trên thiết bị client; Bluetooth phụ thuộc cấu hình cửa hàng/feature flag.
     *   KHÔNG được: Sửa giá gốc sản phẩm, Hủy hóa đơn đã Sync (muốn hủy phải có PIN của Admin).
 
 ---

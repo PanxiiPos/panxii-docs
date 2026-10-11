@@ -27,8 +27,14 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |
 | `ERR_PRODUCT_NOT_FOUND` | 404 | No | `errors.productNotFound` | Không thấy product |
 | `ERR_PRODUCT_INACTIVE` | 422 | No | `errors.productInactive` | Product ngừng bán |
+| `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.productDeleteRequiresDeactivation` | Product có lịch sử, chỉ được deactivate |
 | `ERR_DUPLICATE_SKU` | 409 | No | `errors.duplicateSku` | SKU trùng |
 | `ERR_DUPLICATE_BARCODE` | 409 | No | `errors.duplicateBarcode` | Barcode trùng |
+| `ERR_STAFF_NOT_FOUND` | 404 | No | `errors.staffNotFound` | Không thấy Staff trong tenant |
+| `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.staffDeleteRequiresDeactivation` | Staff có lịch sử, chỉ được deactivate |
+| `ERR_DUPLICATE_USERNAME` | 409 | No | `errors.duplicateUsername` | Username đã tồn tại trong tenant |
+| `ERR_VERSION_CONFLICT` | 409 | No | `errors.versionConflict` | expectedVersion đã cũ |
+| `ERR_SETTING_NOT_FOUND` | 404 | No | `errors.settingNotFound` | Setting không có trong registry |
 | `ERR_CUSTOMER_PHONE_REQUIRED` | 422 | No | `errors.customerPhoneRequired` | Flag yêu cầu phone |
 | `ERR_INVOICE_NOT_FOUND` | 404 | No | `errors.invoiceNotFound` | Không thấy invoice |
 | `ERR_INVOICE_IMMUTABLE` | 422 | No | `errors.invoiceImmutable` | Invoice đã sync |
@@ -40,6 +46,10 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_SYNC_PAYLOAD_MISMATCH` | 409 | No | `errors.syncPayloadMismatch` | Payload retry khác |
 | `ERR_SYNC_CONFLICT` | 409 | No | `errors.syncConflict` | Xung đột version |
 | `ERR_CURSOR_EXPIRED` | 409 | No | `errors.cursorExpired` | Cursor hết hạn |
+| `ERR_TENANT_NOT_FOUND` | 404 | No | `errors.tenantNotFound` | Không thấy tenant |
+| `ERR_TENANT_ADMIN_NOT_FOUND` | 404 | No | `errors.tenantAdminNotFound` | Không thấy TenantAdmin trong tenant |
+| `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.tenantAdminDeleteRequiresDeactivation` | TenantAdmin có lịch sử, chỉ được deactivate |
+| `ERR_FEATURE_FLAG_NOT_FOUND` | 404 | No | `errors.featureFlagNotFound` | Feature flag không có trong registry |
 | `ERR_FORCE_UPDATE_REQUIRED` | 426 | No | `errors.forceUpdateRequired` | App native quá cũ |
 | `ERR_RATE_LIMITED` | 429 | Yes | `errors.rateLimited` | Quá tốc độ request |
 | `ERR_SERVICE_UNAVAILABLE` | 503 | Yes | `errors.serviceUnavailable` | Dependency tạm unavailable |
