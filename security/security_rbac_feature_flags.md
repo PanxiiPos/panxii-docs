@@ -28,10 +28,11 @@ JWT tenant user có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`
 | Global feature flags | Có | Không | Không |
 | Tenant feature flags | Không | Có | Không |
 | CRUD products/categories | Theo platform | Có | Đọc/tìm kiếm |
+| Customer data | Không trực tiếp | CRUD trong tenant | Đọc/tìm kiếm trong tenant |
 | Bulk update giá | Không trực tiếp | Có | Không |
 | Tạo invoice | Không bắt buộc | Có | Có |
 | Đọc invoice tenant | Platform support | Có | Có theo tenant |
-| Reverse invoice | Không mặc định | Có | Chỉ PIN Admin |
+| Reverse invoice | Không mặc định | Có | Không |
 | Sửa/xóa invoice synced | Không | Không | Không |
 | In invoice trên thiết bị client | Không mặc định | Có | Có theo tenant |
 | Quản lý users tenant | Platform policy | Có | Không |
@@ -87,7 +88,6 @@ Các flag ban đầu:
 | `EnableAttendance` | bool | false | Chặn module chấm công |
 | `EnableBluetoothPrint` | bool | false | Cho phép cấu hình máy in |
 | `AutoRoundMoney` | bool | false | Server tính rounding theo rule |
-| `RequireAdminPinForReverse` | bool | true | Bắt PIN khi Staff reverse |
 
 UI chỉ ẩn/disable trải nghiệm; mọi rule quan trọng phải kiểm tra lại tại API.
 
@@ -131,7 +131,7 @@ Không lưu raw password, PIN hoặc token trong Before/After JSON.
 - Tenant A không thể đọc/sửa tenant B bằng body, query hoặc URL.
 - JWT hết hạn/revoked bị từ chối.
 - Staff không sửa BasePrice/bulk update.
-- Staff không reverse nếu PIN sai hoặc thiếu.
+- Staff không được reverse/correction invoice, kể cả khi gửi PIN Admin; TenantAdmin là role duy nhất được thực hiện các use case này.
 - Feature flag server enforcement hoạt động khi client giả mạo UI.
 - Payload sync thay đổi sau khi ký/hash bị từ chối.
 - SQL injection, oversized body, brute force login và replay refresh token được kiểm tra.

@@ -130,7 +130,7 @@ Unique `Code`. Chỉ SuperAdmin được quản lý tenant. Onboarding tạo ten
 | `PasswordHash` | `VARCHAR(255)` | Không | Argon2id/bcrypt |
 | `Role` | `VARCHAR(20)` | Không | `TenantAdmin`, `Staff` |
 | `Status` | `VARCHAR(20)` | Không | `Active`, `Locked`, `Disabled` |
-| `AdminPinHash` | `VARCHAR(255)` | Có | PIN TenantAdmin, nếu có |
+| `AdminPinHash` | `VARCHAR(255)` | Có | PIN TenantAdmin legacy; không dùng để cấp quyền reverse invoice v1 |
 | `LastLoginAt` | `DATETIME(6)` | Có | Audit đăng nhập |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
@@ -191,14 +191,14 @@ Giá hiện tại nằm ở đây; giá lúc bán phải snapshot vào `invoice_
 | `Barcode` | `VARCHAR(64)` | Có | Mã quét |
 | `Name` | `VARCHAR(200)` | Không | Tên sản phẩm |
 | `Unit` | `VARCHAR(32)` | Không | Đơn vị tính |
-| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, >= 0 |
+| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, > 0 |
 | `CostPrice` | `DECIMAL(19,4)` | Có | Giá vốn nếu bật kho |
-| `TaxRate` | `DECIMAL(9,4)` | Không | Thuế |
+| `TaxRate` | `DECIMAL(9,4)` | Không | Giữ 0 trong v1; nghiệp vụ thuế thuộc phần mở rộng sau |
 | `IsActive` | `TINYINT(1)` | Không | Đang bán |
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, Sku)`; barcode nên unique theo tenant nếu có giá trị. Bulk update chỉ cho TenantAdmin, dùng transaction và tăng `Version`.
+Unique `(TenantId, Sku)`; barcode nên unique theo tenant nếu có giá trị. Bulk update chỉ cho TenantAdmin, nhận magnitude dương cùng operation `Increase`/`Decrease`, giá sau cập nhật phải > 0; transaction và tăng `Version`.
 
 ### 4.6. `customers`
 
@@ -235,7 +235,7 @@ Sổ giao dịch. Sau `Synced`, không được thay đổi nội dung, tổng t
 | `SyncedAt` | `DATETIME(6)` | Có | Server nhận thành công |
 | `Subtotal` | `DECIMAL(19,4)` | Không | Tổng trước giảm/thuế |
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá |
-| `TaxAmount` | `DECIMAL(19,4)` | Không | Thuế |
+| `TaxAmount` | `DECIMAL(19,4)` | Không | Giữ 0 trong v1; thuế là phần mở rộng sau |
 | `RoundingAmount` | `DECIMAL(19,4)` | Không | Làm tròn |
 | `TotalAmount` | `DECIMAL(19,4)` | Không | Tổng thanh toán |
 | `CurrencyCode` | `CHAR(3)` | Không | Snapshot tiền tệ |
@@ -257,10 +257,10 @@ Snapshot để hiển thị và kiểm toán, không phụ thuộc giá/sản ph
 | `ProductNameSnapshot` | `VARCHAR(200)` | Không | Tên lúc bán |
 | `UnitSnapshot` | `VARCHAR(32)` | Không | Đơn vị lúc bán |
 | `Quantity` | `DECIMAL(19,4)` | Không | Âm đối với Reverse |
-| `UnitPrice` | `DECIMAL(19,4)` | Không | Giá snapshot |
+| `UnitPrice` | `DECIMAL(19,4)` | Không | Giá snapshot dương; dấu hiển thị do UI quyết định |
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá dòng |
-| `TaxRate` | `DECIMAL(9,4)` | Không | Thuế snapshot |
-| `TaxAmount` | `DECIMAL(19,4)` | Không | Thuế dòng |
+| `TaxRate` | `DECIMAL(9,4)` | Không | Snapshot; giữ 0 trong v1 |
+| `TaxAmount` | `DECIMAL(19,4)` | Không | Giữ 0 trong v1 |
 | `LineTotal` | `DECIMAL(19,4)` | Không | Thành tiền |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
@@ -393,7 +393,7 @@ Transaction server phải:
 
 1. Lock invoice gốc bằng `SELECT ... FOR UPDATE`.
 2. Kiểm tra invoice thuộc tenant hiện tại và đang `Synced`.
-3. Kiểm tra user là TenantAdmin hoặc có PIN TenantAdmin hợp lệ.
+3. Kiểm tra actor trong JWT là TenantAdmin của tenant sở hữu invoice; Staff bị từ chối.
 4. Kiểm tra chưa có reverse hợp lệ.
 5. Tạo invoice mới với `InvoiceType = Reverse`, `OriginalInvoiceId` trỏ invoice gốc.
 6. Tạo detail mới, giữ snapshot nhưng đảo dấu `Quantity`, `LineTotal`, `TaxAmount`.
@@ -406,6 +406,8 @@ Transaction server phải:
 Không sửa detail cũ. Gọi luồng hủy, sau đó tạo invoice mới `InvoiceType = Correction` với dữ liệu đúng. Quan hệ giữa correction và chuỗi reverse nên lưu bằng khóa nghiệp vụ rõ ràng hoặc metadata có schema, không dựa vào text tự do.
 
 ### 7.3. Kiểm tra cân bằng
+
+Trong v1, tax fields luôn bằng 0; công thức dưới đây giữ chỗ cho phần mở rộng thuế sau.
 
 ```text
 Subtotal = SUM(Quantity * UnitPrice)

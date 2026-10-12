@@ -84,6 +84,7 @@ paths:
     post:
       operationId: createProduct
       tags: [Products]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE]
       requestBody:
         required: true
         content:
@@ -98,10 +99,12 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
   /products/{id}:
     patch:
       operationId: updateProduct
       tags: [Products]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/ProductId' }
       requestBody:
@@ -115,10 +118,13 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
   /invoices/sync:
     post:
       operationId: syncInvoice
       tags: [Invoices]
+      description: Staff and TenantAdmin may create and sync Sale invoices within their tenant.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
         - { $ref: '#/components/parameters/DeviceId' }
@@ -185,16 +191,23 @@ paths:
     get:
       operationId: listCustomers
       tags: [Customers]
+      description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only.
+      x-error-codes: [ERR_ACCESS_DENIED]
       parameters:
         - { $ref: '#/components/parameters/Search' }
         - { $ref: '#/components/parameters/Cursor' }
         - { $ref: '#/components/parameters/PageSize' }
+        - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200': { description: Customer collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerListResponse' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       operationId: createCustomer
       tags: [Customers]
+      description: TenantAdmin only. Creates a customer in the authenticated tenant.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_DUPLICATE_CUSTOMER_CODE]
       requestBody:
         required: true
         content:
@@ -204,10 +217,13 @@ paths:
         '201': { description: Customer created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /customers/{id}:
     patch:
       operationId: updateCustomer
       tags: [Customers]
+      description: TenantAdmin only. Updates customer profile fields; tenant and active state cannot be changed here.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CUSTOMER_NOT_FOUND, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/CustomerId' }
       requestBody:
@@ -217,6 +233,39 @@ paths:
             schema: { $ref: '#/components/schemas/UpdateCustomerRequest' }
       responses:
         '200': { description: Customer updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      operationId: deleteCustomer
+      tags: [Customers]
+      description: TenantAdmin only. Hard-deletes only a customer with no invoice/history references; otherwise deactivate the customer.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CustomerId' }
+        - { name: expectedVersion, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '200': { description: Customer deleted, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessDeletionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /customers/{id}/deactivate:
+    post:
+      operationId: deactivateCustomer
+      tags: [Customers]
+      description: TenantAdmin only. Deactivates the customer while preserving invoice references and audit history.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CUSTOMER_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CustomerId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeactivateCustomerRequest' }
+      responses:
+        '200': { description: Customer deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -242,6 +291,7 @@ paths:
     post:
       operationId: bulkUpdateProductPrices
       tags: [Products]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
       requestBody:
         required: true
         content:
@@ -252,6 +302,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
   /invoices/{id}:
     get:
       operationId: getInvoice
@@ -266,6 +317,8 @@ paths:
     post:
       operationId: reverseInvoice
       tags: [Invoices]
+      description: TenantAdmin only. Creates an immutable reversal; Staff cannot reverse invoices, with or without an Admin PIN.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_INVOICE_NOT_FOUND, ERR_INVOICE_ALREADY_REVERSED, ERR_INVOICE_IMMUTABLE]
       parameters:
         - { $ref: '#/components/parameters/InvoiceId' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
@@ -286,6 +339,8 @@ paths:
     post:
       operationId: correctInvoice
       tags: [Invoices]
+      description: TenantAdmin only. Reverses the original invoice and creates a new correction invoice without mutating the original.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVOICE_NOT_FOUND, ERR_INVOICE_ALREADY_REVERSED, ERR_INVOICE_TOTAL_INVALID]
       parameters:
         - { $ref: '#/components/parameters/InvoiceId' }
         - { $ref: '#/components/parameters/IdempotencyKey' }
@@ -301,6 +356,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
   /settings/effective:
     get:
       operationId: getEffectiveSettings
@@ -570,7 +626,7 @@ components:
     CustomerId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CategoryId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
   responses:
-    BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    BadRequest: { description: Invalid request. Codes include ERR_INVALID_REQUEST, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_EMAIL, ERR_INVALID_TIME_ZONE, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL and ERR_INVALID_PAGING., content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Unauthorized: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Forbidden: { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Conflict: { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
@@ -615,101 +671,186 @@ components:
         args: { type: object, additionalProperties: true }
     LoginRequest:
       type: object
+      additionalProperties: false
       required: [username, password]
       properties:
         username: { type: string, maxLength: 120 }
         password: { type: string, format: password }
     RefreshRequest:
       type: object
+      additionalProperties: false
       required: [refreshToken]
       properties:
         refreshToken: { type: string, format: password }
     CreateProductRequest:
       type: object
+      additionalProperties: false
       required: [sku, name, unit, basePrice, taxRate]
       properties:
-        sku: { type: string, maxLength: 64 }
-        name: { type: string, maxLength: 200 }
-        unit: { type: string, maxLength: 32 }
-        basePrice: { type: number, format: decimal, minimum: 0 }
-        taxRate: { type: number, format: decimal, minimum: 0 }
+        sku: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
     UpdateProductRequest:
       type: object
+      additionalProperties: false
       required: [expectedVersion]
       properties:
-        name: { type: string, maxLength: 200 }
-        unit: { type: string, maxLength: 32 }
-        basePrice: { type: number, format: decimal, minimum: 0 }
-        taxRate: { type: number, format: decimal, minimum: 0 }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
-        expectedVersion: { type: integer, format: int64 }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCategoryRequest:
       type: object
+      additionalProperties: false
       required: [code, name]
       properties:
-        code: { type: string, maxLength: 64 }
-        name: { type: string, maxLength: 160 }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
     UpdateCategoryRequest:
       type: object
+      additionalProperties: false
       required: [expectedVersion]
       properties:
-        name: { type: string, maxLength: 160 }
+        name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
-        expectedVersion: { type: integer, format: int64 }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCustomerRequest:
       type: object
+      additionalProperties: false
       required: [code, fullName]
       properties:
-        code: { type: string, maxLength: 64 }
-        fullName: { type: string, maxLength: 160 }
-        phone: { type: string, nullable: true }
-        email: { type: string, format: email, nullable: true }
-        address: { type: string, nullable: true }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        fullName: { type: string, minLength: 1, maxLength: 160 }
+        phone: { type: string, maxLength: 32, nullable: true }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        address: { type: string, maxLength: 500, nullable: true }
     UpdateCustomerRequest:
       type: object
+      additionalProperties: false
       required: [expectedVersion]
       properties:
-        fullName: { type: string, maxLength: 160 }
-        phone: { type: string, nullable: true }
-        email: { type: string, format: email, nullable: true }
-        address: { type: string, nullable: true }
-        expectedVersion: { type: integer, format: int64 }
+        fullName: { type: string, minLength: 1, maxLength: 160 }
+        phone: { type: string, maxLength: 32, nullable: true }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        address: { type: string, maxLength: 500, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
+    DeactivateCustomerRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     BulkPriceRequest:
       type: object
-      required: [productIds, mode, value]
+      additionalProperties: false
+      required: [productIds, operation, mode, value]
       properties:
         productIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
-        mode: { type: string, enum: [Percentage, FixedAmount] }
-        value: { type: number, format: decimal }
+        operation: { type: string, enum: [Increase, Decrease], x-error-code: ERR_INVALID_ENUM }
+        mode: { type: string, enum: [Percentage, FixedAmount], x-error-code: ERR_INVALID_ENUM }
+        value: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE }
         expectedVersions: { type: object, additionalProperties: { type: integer, format: int64 } }
     ReverseInvoiceRequest:
       type: object
-      required: [adminUserId, adminPin, reasonCode]
+      additionalProperties: false
+      required: [reasonCode]
       properties:
-        adminUserId: { type: string, format: uuid }
-        adminPin: { type: string, format: password }
-        reasonCode: { type: string, maxLength: 80 }
+        reasonCode: { type: string, minLength: 1, maxLength: 80 }
     CorrectionInvoiceRequest:
       type: object
+      additionalProperties: false
       required: [reasonCode, details]
       properties:
         reasonCode: { type: string, maxLength: 80 }
-        details: { type: array, minItems: 1, items: { type: object } }
+        details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
     UpdateSettingRequest:
       type: object
+      additionalProperties: false
       required: [value, expectedVersion]
       properties:
-        value: { type: object, additionalProperties: true }
+        value: { $ref: '#/components/schemas/TenantSettingValue' }
         expectedVersion: { type: integer, format: int64 }
+    TenantSettingValue:
+      oneOf:
+        - { type: boolean }
+        - { $ref: '#/components/schemas/StoreProfileSetting' }
+        - { $ref: '#/components/schemas/ReceiptTemplateSetting' }
+        - { $ref: '#/components/schemas/ProductDisplaySetting' }
+    StoreProfileSetting:
+      type: object
+      additionalProperties: false
+      required: [storeName]
+      properties:
+        storeName: { type: string, minLength: 1 }
+        address: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        taxCode: { type: string, nullable: true }
+    ReceiptTemplateSetting:
+      type: object
+      additionalProperties: false
+      required: [templateId]
+      properties:
+        templateId: { type: string, minLength: 1 }
+        showStoreAddress: { type: boolean }
+        showTaxBreakdown: { type: boolean }
+        footerText: { type: string, nullable: true }
+    ProductDisplaySetting:
+      type: object
+      additionalProperties: false
+      required: [layout]
+      properties:
+        layout: { type: string, enum: [Grid, List] }
+        sortBy: { type: string, enum: [Name, Sku] }
+        showSku: { type: boolean }
+        showBarcode: { type: boolean }
+        showCategory: { type: boolean }
     SyncInvoiceRequest:
       type: object
+      additionalProperties: false
       required: [clientOperationId, payloadVersion, invoice]
       properties:
         clientOperationId: { type: string, format: uuid }
         payloadVersion: { type: integer, minimum: 1 }
-        invoice: { $ref: '#/components/schemas/Invoice' }
+        invoice: { $ref: '#/components/schemas/SaleInvoiceRequest' }
+    SaleInvoiceRequest:
+      type: object
+      additionalProperties: false
+      required: [id, invoiceType, currencyCode, totalAmount, details]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNumber: { type: string, maxLength: 64 }
+        invoiceType: { type: string, enum: [Sale] }
+        customerId: { type: string, format: uuid, nullable: true }
+        clientCreatedAtUtc: { type: string, format: date-time }
+        currencyCode: { type: string, minLength: 3, maxLength: 3 }
+        subtotal: { type: number, format: decimal }
+        discountAmount: { type: number, format: decimal, minimum: 0 }
+        taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
+        roundingAmount: { type: number, format: decimal }
+        totalAmount: { type: number, format: decimal }
+        details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
+    SaleInvoiceDetailRequest:
+      type: object
+      additionalProperties: false
+      required: [lineNumber, productId, skuSnapshot, productNameSnapshot, unitSnapshot, quantity, unitPrice, discountAmount, taxRate, taxAmount, lineTotal]
+      properties:
+        lineNumber: { type: integer, minimum: 1 }
+        productId: { type: string, format: uuid }
+        skuSnapshot: { type: string, maxLength: 64 }
+        productNameSnapshot: { type: string, maxLength: 200 }
+        unitSnapshot: { type: string, maxLength: 32 }
+        quantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_INVALID_QUANTITY }
+        unitPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        discountAmount: { type: number, format: decimal, minimum: 0 }
+        taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
+        taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
+        lineTotal: { type: number, format: decimal }
     Invoice:
       type: object
       required: [id, invoiceType, currencyCode, totalAmount, details]
@@ -736,11 +877,17 @@ components:
         parentId: { type: string, format: uuid, nullable: true }
     Customer:
       type: object
+      required: [id, code, fullName, isActive, version]
       properties:
         id: { type: string, format: uuid }
-        code: { type: string }
-        fullName: { type: string }
-        phone: { type: string, nullable: true }
+        code: { type: string, maxLength: 64 }
+        fullName: { type: string, maxLength: 160 }
+        phone: { type: string, maxLength: 32, nullable: true }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        address: { type: string, maxLength: 500, nullable: true }
+        isActive: { type: boolean }
+        version: { type: integer, format: int64 }
+        updatedAtUtc: { type: string, format: date-time, nullable: true }
     PlatformTenant:
       type: object
       required: [id, code, name, status, timeZone, currencyCode, isDeleted, version, createdAtUtc]
@@ -757,6 +904,7 @@ components:
         updatedAtUtc: { type: string, format: date-time, nullable: true }
     CreatePlatformTenantRequest:
       type: object
+      additionalProperties: false
       required: [code, name, timeZone, currencyCode, tenantAdmin]
       properties:
         code: { type: string, minLength: 1, maxLength: 32 }
@@ -765,6 +913,7 @@ components:
         currencyCode: { type: string, pattern: '^[A-Za-z]{3}$' }
         tenantAdmin:
           type: object
+          additionalProperties: false
           required: [username, initialPassword, displayName]
           properties:
             username: { type: string, minLength: 1, maxLength: 120 }
@@ -774,6 +923,7 @@ components:
             phone: { type: string, maxLength: 32, nullable: true }
     UpdatePlatformTenantRequest:
       type: object
+      additionalProperties: false
       required: [code, name, timeZone, currencyCode, expectedVersion]
       properties:
         code: { type: string, minLength: 1, maxLength: 32 }
@@ -809,6 +959,7 @@ components:
         updatedAtUtc: { type: string, format: date-time, nullable: true }
     CreateTenantAdminRequest:
       type: object
+      additionalProperties: false
       required: [username, initialPassword, displayName]
       properties:
         username: { type: string, minLength: 1, maxLength: 120 }
@@ -818,6 +969,7 @@ components:
         phone: { type: string, maxLength: 32, nullable: true }
     UpdateTenantAdminRequest:
       type: object
+      additionalProperties: false
       required: [username, displayName, expectedVersion]
       properties:
         username: { type: string, minLength: 1, maxLength: 120 }
@@ -836,6 +988,7 @@ components:
         updatedAtUtc: { type: string, format: date-time, nullable: true }
     UpdateGlobalFeatureFlagRequest:
       type: object
+      additionalProperties: false
       required: [value, expectedVersion]
       properties:
         value: { type: boolean }

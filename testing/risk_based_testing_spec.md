@@ -94,6 +94,7 @@ Chứng minh user, device, query, command, event và cache của tenant A không
 | T-010 | SuperAdmin | SuperAdmin xem dữ liệu platform | Chỉ endpoint explicit, có audit, không mở bypass cho role khác |
 | T-011 | Fuzz | Thay đổi resource ID, tenant header, query filter ngẫu nhiên | Không có response chứa dữ liệu chéo tenant |
 | T-012 | Regression | Chạy toàn bộ endpoint contract với token A/B | Không endpoint nào trả entity ngoài scope |
+xem thêm tại [role_based_test_cases.md](testing/role_based_test_cases.md)
 
 ### 3.4. Test tự động bắt buộc
 

@@ -19,9 +19,10 @@ Kiểm thử tập trung vào các rủi ro lớn nhất: cách ly tenant, invoi
 ### Invoice calculator
 
 - `Subtotal` bằng tổng `Quantity * UnitPrice`.
-- Discount, tax, rounding đúng thứ tự.
+- Discount và rounding đúng thứ tự; giá sản phẩm/unit price phải > 0.
+- Tax calculation chưa thuộc v1; request phải giữ `TaxRate`/`TaxAmount` bằng 0.
 - Decimal không dùng floating point.
-- Reverse invoice đảo dấu quantity, tax, line total và total.
+- Reverse invoice đảo dấu quantity, line total và total; tax vẫn bằng 0 trong v1.
 - Header lệch detail trả `ERR_INVOICE_TOTAL_INVALID`.
 - Quantity bằng zero, âm ở Sale, quá precision bị từ chối.
 
@@ -37,7 +38,8 @@ Kiểm thử tập trung vào các rủi ro lớn nhất: cách ly tenant, invoi
 
 - Staff được tạo invoice.
 - Staff không sửa giá gốc.
-- Staff reverse chỉ khi PIN Admin hợp lệ.
+- Staff chỉ đọc/tìm customer; không tạo/sửa/xóa customer.
+- Staff không được reverse/correction invoice, kể cả khi gửi PIN Admin; TenantAdmin mới được thực hiện reverse.
 - TenantAdmin được bulk update đúng tenant.
 - Tenant A không truy cập entity tenant B.
 - SuperAdmin thao tác global nhưng không vô tình bypass audit.

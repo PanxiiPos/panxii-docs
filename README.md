@@ -34,12 +34,13 @@ Khi bắt đầu một feature mới, đọc theo thứ tự sau:
 12. backend/backend_coding_standard.md hoặc frontend/frontend_coding_standard.md
 13. sync/data_sync_flow_rabbitmq.md nếu có sync/realtime
 14. testing/testing_strategy.md
-15. testing/risk_based_testing_spec.md nếu chạm rủi ro P0/P1
-16. infrastructure/infrastructure_setup.md
-17. release/release_management.md
-18. development_workflow.md
-19. commit_convention.md
-20. task_risk.md
+15. testing/role_based_test_cases.md khi cần kiểm thử chức năng/RBAC theo role
+16. testing/risk_based_testing_spec.md nếu chạm rủi ro P0/P1
+17. infrastructure/infrastructure_setup.md
+18. release/release_management.md
+19. development_workflow.md
+20. commit_convention.md
+21. task_risk.md
 ```
 
 Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh backend/frontend bên dưới, nhưng luôn bắt đầu bằng business rule và architecture.
@@ -106,6 +107,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [testing_strategy.md](testing/testing_strategy.md) | Unit, integration, API contract, offline E2E, RabbitMQ chaos và k6 |
+| [role_based_test_cases.md](testing/role_based_test_cases.md) | Test case chức năng theo role, boundary, validation và tenant isolation |
 | [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, lệch giờ/sai thứ tự sync, SQLite/printer failure và API breaking change |
 
 ### 2.8. Infrastructure và release
@@ -237,7 +239,7 @@ Check theo [frontend_coding_standard.md](frontend/frontend_coding_standard.md) v
 
 ### Bước 7: Kiểm thử
 
-Đọc [testing_strategy.md](testing/testing_strategy.md) và [risk_based_testing_spec.md](testing/risk_based_testing_spec.md).
+Đọc [testing_strategy.md](testing/testing_strategy.md), [role_based_test_cases.md](testing/role_based_test_cases.md) khi feature có quyền/chức năng theo role, và [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) khi chạm rủi ro P0/P1.
 
 Tối thiểu phải test:
 
