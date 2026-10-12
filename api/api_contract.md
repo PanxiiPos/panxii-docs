@@ -158,13 +158,13 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
 
 ### `POST /products`
 
-**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`.
+**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
 
-Errors: `ERR_ACCESS_DENIED`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
+Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 
 ### `PATCH /products/{id}`
 
-**Role:** TenantAdmin. Có `expectedVersion`; nếu version không khớp trả `409 ERR_SYNC_CONFLICT`. Staff không được sửa giá gốc.
+**Role:** TenantAdmin. Có `expectedVersion`; nếu version không khớp trả `409 ERR_VERSION_CONFLICT`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
 
 ### `POST /products/{id}/deactivate`
 
@@ -181,13 +181,15 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 ```json
 {
   "productIds": ["uuid"],
+  "operation": "Increase",
   "mode": "Percentage",
   "value": 5.0,
   "expectedVersions": { "product-uuid": 4 }
 }
 ```
 
-Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
+`operation` nhận `Increase` hoặc `Decrease`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
+Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_VERSION_CONFLICT`.
 
 ### TenantAdmin quản lý tài khoản Staff
 
@@ -221,15 +223,43 @@ Hard-delete chỉ khi Staff chưa được dùng và không có dữ liệu nghi
 
 Errors: `ERR_STAFF_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`.
 
-### `GET /customers?search=&updatedSince=` và `POST /customers`
+### Customers
 
-Staff được tìm kiếm/tạo theo chính sách tenant; TenantAdmin có CRUD đầy đủ. Nếu feature `RequireCustomerPhone` bật, invoice có customer bắt buộc phone.
+TenantAdmin có CRUD customer trong tenant. Staff chỉ được tìm kiếm/đọc thông tin customer phục vụ lập invoice; Staff không được tạo, sửa hoặc xóa customer. Mọi thao tác lấy tenant từ JWT.
+
+#### `GET /customers?search=&updatedSince=&includeInactive=`
+
+**Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại.
+
+#### `POST /customers`
+
+**Role:** TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
+Errors: `ERR_ACCESS_DENIED`, `ERR_INVALID_REQUEST`, `ERR_DUPLICATE_CUSTOMER_CODE`.
+
+#### `PATCH /customers/{id}`
+
+**Role:** TenantAdmin. Chỉ cập nhật `fullName`, `phone`, `email`, `address`; bắt buộc `expectedVersion`. Không nhận `tenantId`, `isActive` hoặc version do client tự gán. Version cũ trả `409 ERR_VERSION_CONFLICT`.
+Errors: `ERR_ACCESS_DENIED`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
+
+#### `POST /customers/{id}/deactivate`
+
+**Role:** TenantAdmin. Request `{ "expectedVersion": 3 }`. Đặt customer thành inactive, giữ nguyên lịch sử và FK từ invoice; customer inactive không được chọn cho invoice mới. Lặp deactivate trên customer inactive không tạo side effect khác.
+Errors: `ERR_CUSTOMER_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
+
+#### `DELETE /customers/{id}?expectedVersion=`
+
+**Role:** TenantAdmin. Chỉ hard-delete customer chưa được tham chiếu bởi invoice hoặc dữ liệu lịch sử. Nếu customer đã được sử dụng, trả `409 ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION`; dùng deactivate để giữ nguyên tham chiếu/audit. Response `200` trả `DeletionResult` trong success envelope.
+Errors: `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION`, `ERR_VERSION_CONFLICT`.
+
+Nếu feature `RequireCustomerPhone` bật, invoice gắn customer bắt buộc có phone; kiểm tra ở server khi sync.
 
 ## 4. Invoice
 
 ### `POST /invoices/sync`
 
 **Role:** Staff, TenantAdmin. Đây là command idempotent và là endpoint chính cho offline outbox.
+
+Sale `quantity` và `unitPrice` phải lớn hơn 0. `taxRate`/`taxAmount` phải bằng 0 trong v1; không áp dụng nghiệp vụ tính thuế cho đến phần mở rộng sau. Hóa đơn Reverse và Correction do endpoint tương ứng tạo ở server, không được gửi như Sale payload từ client.
 
 Request:
 
@@ -285,7 +315,7 @@ Response 201 khi insert mới:
 
 Retry cùng `clientOperationId` trả kết quả cũ, không tạo invoice mới. Cùng operation id nhưng payload hash khác trả `409 ERR_SYNC_PAYLOAD_MISMATCH`.
 
-Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
+Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
 
 ### `GET /invoices/{id}`
 
@@ -295,15 +325,15 @@ Staff và TenantAdmin được in invoice đã đọc trên thiết bị client.
 
 ### `POST /invoices/{id}/reverse`
 
-**Role:** TenantAdmin hoặc Staff kèm PIN hợp lệ. Request:
+**Role:** Chỉ TenantAdmin. Staff không được reverse invoice, kể cả khi gửi thông tin/PIN của Admin. Actor được lấy từ JWT; không nhận `adminUserId` hoặc PIN từ request. Request:
 
 ```json
-{ "adminUserId": "uuid", "adminPin": "******", "reasonCode": "CUSTOMER_CANCELLED" }
+{ "reasonCode": "CUSTOMER_CANCELLED" }
 ```
 
 Server lock invoice gốc, kiểm tra chưa reverse, tạo invoice âm mới và outbox event trong cùng transaction. Không update/delete detail gốc.
 
-Errors: `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IMMUTABLE`, `ERR_ADMIN_PIN_INVALID`.
+Errors: `ERR_ACCESS_DENIED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IMMUTABLE`.
 
 ### `POST /invoices/{id}/correction`
 
@@ -512,7 +542,9 @@ Errors: `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_INVALID_REQUEST`, `ERR_VERSION_CONFLI
 
 ## 7. Error code chuẩn
 
-`ERR_ACCESS_DENIED`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_INVALID_CREDENTIALS`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_IMMUTABLE`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_ADMIN_PIN_INVALID`, `ERR_SYNC_DUPLICATE`, `ERR_SYNC_PAYLOAD_MISMATCH`, `ERR_SYNC_CONFLICT`, `ERR_STAFF_NOT_FOUND`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_SETTING_NOT_FOUND`, `ERR_FORCE_UPDATE_REQUIRED`.
+Validation codes: `ERR_INVALID_REQUEST`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_UUID`, `ERR_INVALID_EMAIL`, `ERR_INVALID_TIME_ZONE`, `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_INVALID_QUANTITY`.
+
+`ERR_ACCESS_DENIED`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_INVALID_CREDENTIALS`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_CUSTOMER_CODE`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_IMMUTABLE`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_SYNC_DUPLICATE`, `ERR_SYNC_PAYLOAD_MISMATCH`, `ERR_SYNC_CONFLICT`, `ERR_STAFF_NOT_FOUND`, `ERR_STAFF_DELETE_REQUIRES_DEACTIVATION`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`, `ERR_SETTING_NOT_FOUND`, `ERR_FORCE_UPDATE_REQUIRED`.
 
 Platform admin errors: `ERR_TENANT_NOT_FOUND`, `ERR_DUPLICATE_TENANT_CODE`, `ERR_TENANT_ADMIN_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_TENANT_ADMIN_DELETE_REQUIRES_DEACTIVATION`, `ERR_FEATURE_FLAG_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
 
@@ -533,7 +565,9 @@ Phần này là chuẩn bắt buộc cho Backend và Mobile. Các endpoint bên 
 - Enum truyền dạng string, không truyền số nguyên. Ví dụ `"Staff"`, `"Synced"`.
 - Field không có dữ liệu dùng `null`; không tùy ý đổi giữa `null`, `""` và bỏ field.
 - Property mới phải backward-compatible. Không đổi ý nghĩa hoặc kiểu của property đã phát hành.
-- Backend bỏ qua field lạ khi đọc request nhưng không được bỏ qua field bắt buộc hoặc sai kiểu.
+- Backend reject mọi JSON property không khai báo trong request schema, kể cả object lồng nhau; trả `400 ERR_UNKNOWN_FIELD` và `fieldErrors` chứa đường dẫn property. Không ignore field lạ và không mass-assign.
+- Field bắt buộc bị thiếu, `null` hoặc rỗng trả `400 ERR_REQUIRED_FIELD`. Sai type/format/constraint trả error code cụ thể (`ERR_INVALID_FIELD`, `ERR_INVALID_UUID`, `ERR_INVALID_EMAIL`, `ERR_INVALID_TIME_ZONE`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL` hoặc `ERR_INVALID_PAGING` theo trường hợp). JSON không parse được trả `ERR_INVALID_REQUEST`.
+- Giá sản phẩm/unit price và độ lớn bulk adjustment phải dương; lỗi dùng `ERR_PRICE_MUST_BE_POSITIVE` hoặc `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`. Chiều tăng/giảm được truyền riêng, không mã hóa bằng dấu âm.
 - Mobile không đọc message để quyết định logic; chỉ dùng `error.code`.
 
 ### 8.2. Request metadata chuẩn
@@ -803,12 +837,14 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 | GET | `/categories` | query filter/cursor | `Category[]` + paging | 200 |
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
-| GET | `/customers` | query `search,page,pageSize,updatedSince,cursor` | `Customer[]` + paging | 200 |
-| POST | `/customers` | `CreateCustomerRequest` | `Customer` | 201 |
-| PATCH | `/customers/{id}` | `UpdateCustomerRequest` + version | `Customer` | 200 |
+| GET | `/customers` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Customer[]` + paging; Staff chỉ thấy active | 200 |
+| POST | `/customers` | TenantAdmin; `CreateCustomerRequest` | `Customer` | 201 |
+| PATCH | `/customers/{id}` | TenantAdmin; `UpdateCustomerRequest` + `expectedVersion` | `Customer` | 200 |
+| POST | `/customers/{id}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `Customer` | 200 |
+| DELETE | `/customers/{id}` | TenantAdmin; query `expectedVersion` | `DeletionResult` | 200 |
 | GET | `/invoices/{id}` | path `id` | `Invoice` | 200 |
 | POST | `/invoices/sync` | `SyncInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201/200 |
-| POST | `/invoices/{id}/reverse` | `ReverseInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
+| POST | `/invoices/{id}/reverse` | TenantAdmin; `ReverseInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
 | POST | `/invoices/{id}/correction` | `CorrectionInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
 | GET | `/sync/pull` | `cursor,limit` | `SyncChange[]` + paging | 200 |
 | GET | `/settings/effective` | Không body | `EffectiveSettings` | 200 |

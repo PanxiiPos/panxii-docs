@@ -15,6 +15,8 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
     *   Được sử dụng các chức năng của `Staff` và có toàn quyền CRUD trên dữ liệu thuộc `TenantId` của mình, theo các giới hạn bên dưới.
     *   Xem, tạo, sửa, vô hiệu hóa và xóa tài khoản Staff. Nếu tài khoản đã được tham chiếu trong lịch sử nghiệp vụ/audit, thao tác xóa phải là xóa mềm.
     *   Xem, thêm, sửa và vô hiệu hóa sản phẩm; chỉ được xóa sản phẩm chưa có dữ liệu lịch sử.
+    *   Giá sản phẩm và `UnitPrice` phải lớn hơn 0. Tăng/giảm giá hàng loạt dùng độ lớn dương cùng hướng thao tác riêng (`Increase`/`Decrease`); UI quyết định cách hiển thị dấu.
+    *   Nghiệp vụ tính thuế chưa thuộc v1; giữ `TaxRate` và `TaxAmount` bằng 0 cho đến khi triển khai phần mở rộng thuế.
     *   Xem, tạo, sửa và xóa khách hàng. Chỉ xóa vật lý khách hàng chưa được tham chiếu bởi hóa đơn; nếu đã có lịch sử, phải vô hiệu hóa hoặc xóa mềm để giữ nguyên tham chiếu.
     *   Cấu hình thông tin hiển thị cửa hàng, mẫu hóa đơn và cách hiển thị sản phẩm.
     *   Đổi giá hàng loạt (Bulk Update).
