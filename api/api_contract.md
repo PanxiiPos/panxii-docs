@@ -148,7 +148,7 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
   }],
   "meta": {
     "paging": {
-      "nextCursor": "cursor",
+      "page": 1,
       "hasMore": true,
       "pageSize": 50
     }
@@ -258,6 +258,7 @@ Nếu feature `RequireCustomerPhone` bật, invoice gắn customer bắt buộc 
 ### `POST /invoices/sync`
 
 **Role:** Staff, TenantAdmin. Đây là command idempotent và là endpoint chính cho offline outbox.
+Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hiện hỗ trợ giá trị `1`.
 
 Sale `quantity` và `unitPrice` phải lớn hơn 0. `taxRate`/`taxAmount` phải bằng 0 trong v1; không áp dụng nghiệp vụ tính thuế cho đến phần mở rộng sau. Hóa đơn Reverse và Correction do endpoint tương ứng tạo ở server, không được gửi như Sale payload từ client.
 
@@ -266,6 +267,7 @@ Request:
 ```json
 {
   "clientOperationId": "uuid",
+  "payloadVersion": 1,
   "invoice": {
     "id": "uuid",
     "invoiceNumber": "LOCAL-0001",
@@ -950,6 +952,7 @@ Response mới và response retry đều dùng cùng schema:
 ```
 
 Retry trả `status: "AlreadyApplied"`, `created: false`, nhưng vẫn trả cùng `resource` để mobile cập nhật SQLite.
+Phát hành hiện tại chưa trả `serverCursor`; cursor chỉ được thêm cùng implementation của `/sync/pull`.
 
 ### 11.4. Pull sync
 

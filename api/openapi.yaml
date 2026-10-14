@@ -69,10 +69,14 @@ paths:
     get:
       operationId: listProducts
       tags: [Products]
+      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { $ref: '#/components/parameters/Cursor' }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { $ref: '#/components/parameters/PageSize' }
+        - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200':
           description: Product collection
@@ -81,6 +85,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessProductListResponse'
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       operationId: createProduct
       tags: [Products]
@@ -124,7 +129,7 @@ paths:
       operationId: syncInvoice
       tags: [Invoices]
       description: Staff and TenantAdmin may create and sync Sale invoices within their tenant.
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH, ERR_IDEMPOTENCY_KEY_MISMATCH, ERR_UNSUPPORTED_PAYLOAD_VERSION]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
         - { $ref: '#/components/parameters/DeviceId' }
@@ -192,10 +197,10 @@ paths:
       operationId: listCustomers
       tags: [Customers]
       description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only.
-      x-error-codes: [ERR_ACCESS_DENIED]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { $ref: '#/components/parameters/Cursor' }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
@@ -853,21 +858,52 @@ components:
         lineTotal: { type: number, format: decimal }
     Invoice:
       type: object
-      required: [id, invoiceType, currencyCode, totalAmount, details]
+      required: [id, invoiceNumber, invoiceType, status, currencyCode, totalAmount, details]
       properties:
         id: { type: string, format: uuid }
+        invoiceNumber: { type: string }
         invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
+        status: { type: string }
+        customerId: { type: string, format: uuid, nullable: true }
+        createdByUserId: { type: string, format: uuid }
+        deviceId: { type: string }
+        clientCreatedAtUtc: { type: string, format: date-time }
+        syncedAtUtc: { type: string, format: date-time, nullable: true }
+        subtotal: { type: number, format: decimal }
+        discountAmount: { type: number, format: decimal }
+        taxAmount: { type: number, format: decimal }
+        roundingAmount: { type: number, format: decimal }
         currencyCode: { type: string, minLength: 3, maxLength: 3 }
         totalAmount: { type: number, format: decimal }
-        details: { type: array, items: { type: object } }
+        originalInvoiceId: { type: string, format: uuid, nullable: true }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              lineNumber: { type: integer, nullable: true }
+              productId: { type: string, format: uuid }
+              skuSnapshot: { type: string, nullable: true }
+              productNameSnapshot: { type: string }
+              unitSnapshot: { type: string }
+              quantity: { type: number, format: decimal }
+              unitPrice: { type: number, format: decimal }
+              discountAmount: { type: number, format: decimal }
+              taxRate: { type: number, format: decimal }
+              taxAmount: { type: number, format: decimal }
+              lineTotal: { type: number, format: decimal }
     Product:
       type: object
       properties:
         id: { type: string, format: uuid }
         sku: { type: string }
+        barcode: { type: string, nullable: true }
         name: { type: string }
+        unit: { type: string }
         basePrice: { type: number, format: decimal }
+        taxRate: { type: number, format: decimal }
         version: { type: integer, format: int64 }
+        updatedAtUtc: { type: string, format: date-time }
     Category:
       type: object
       properties:
@@ -877,17 +913,14 @@ components:
         parentId: { type: string, format: uuid, nullable: true }
     Customer:
       type: object
-      required: [id, code, fullName, isActive, version]
+      required: [id, code, fullName, isActive, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
         code: { type: string, maxLength: 64 }
         fullName: { type: string, maxLength: 160 }
         phone: { type: string, maxLength: 32, nullable: true }
-        email: { type: string, format: email, maxLength: 254, nullable: true }
-        address: { type: string, maxLength: 500, nullable: true }
         isActive: { type: boolean }
-        version: { type: integer, format: int64 }
-        updatedAtUtc: { type: string, format: date-time, nullable: true }
+        updatedAtUtc: { type: string, format: date-time }
     PlatformTenant:
       type: object
       required: [id, code, name, status, timeZone, currencyCode, isDeleted, version, createdAtUtc]
@@ -1013,6 +1046,7 @@ components:
         status: { type: string, enum: [Applied, AlreadyApplied, Rejected] }
         created: { type: boolean }
         resource: { type: object, nullable: true }
+        serverCursor: { type: string, nullable: true }
     SuccessLoginResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/LoginResponse' }, meta: { $ref: '#/components/schemas/Meta' } }

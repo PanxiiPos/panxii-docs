@@ -57,6 +57,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_IDEMPOTENCY_KEY_MISMATCH` | 400 | No | `errors.idempotencyMismatch` | Header/body lệch |
 | `ERR_IDEMPOTENCY_KEY_REUSED` | 409 | No | `errors.idempotencyKeyReused` | Key dùng payload khác |
 | `ERR_SYNC_PAYLOAD_MISMATCH` | 409 | No | `errors.syncPayloadMismatch` | Payload retry khác |
+| `ERR_UNSUPPORTED_PAYLOAD_VERSION` | 400 | No | `errors.unsupportedPayloadVersion` | Payload version chưa được hỗ trợ |
 | `ERR_SYNC_CONFLICT` | 409 | No | `errors.syncConflict` | Xung đột version |
 | `ERR_CURSOR_EXPIRED` | 409 | No | `errors.cursorExpired` | Cursor hết hạn |
 | `ERR_TENANT_NOT_FOUND` | 404 | No | `errors.tenantNotFound` | Không thấy tenant |
