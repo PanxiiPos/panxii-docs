@@ -301,7 +301,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Auth API: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`; login body chỉ cần username/password, không cần nhập tenant hay device metadata.
 - JWT tenant user có tenant/role/device/session claims; JWT SuperAdmin không có `tenant_id` và session lưu riêng trong `platform_admin_sessions`. Role policies bảo vệ Products, logout/revoke được kiểm tra server-side trên mỗi request, login/refresh rate limit 10 request/phút/IP.
 - Backend hiện triển khai API SuperAdmin CRUD/lifecycle tenant, tạo tenant cùng TenantAdmin đầu tiên trong một transaction, quản lý các TenantAdmin tiếp theo và đọc/cập nhật global feature flags. Tenant soft-delete giữ nguyên dữ liệu nghiệp vụ và revoke sessions.
-- API contract định nghĩa TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm và cấu hình cửa hàng; Staff xem sản phẩm, tạo invoice và in tại thiết bị client. Các API này chưa được xác nhận triển khai trong backend.
+- Backend đã triển khai các API Staff: `GET /api/v1/products`, `GET /api/v1/customers`, `POST /api/v1/invoices/sync`, `GET /api/v1/invoices/{id}` và `GET /api/v1/settings/effective`. Staff chỉ đọc product/customer active; invoice sync có idempotency và transactional outbox. `serverCursor` và `GET /api/v1/sync/pull` còn pending vì schema chưa có durable sequence chung cho các loại dữ liệu; mobile chưa thể dùng cursor pull incremental.
+- TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm/customer, cấu hình cửa hàng và các thao tác invoice reverse/correction chưa được xác nhận triển khai.
 - Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
 - MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
@@ -324,6 +325,7 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- `InitialPosSchema`.
 	- `AddDatabaseForeignKeys`.
 - Các migrations đã apply: `InitialPosSchema`, `AddDatabaseForeignKeys`, `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex`, `SeparatePlatformAdmin`, `AddPlatformAdministration` và `AddTenantVersion`.
+- Nhánh backend `feature/staff-apis` có các migration `AddInvoiceSkuSnapshot` và `AddInvoiceLineAndTaxAmounts`; chưa apply vào local database.
 - Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events` và optimistic concurrency version của tenant đã có trong local schema.
 - Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
