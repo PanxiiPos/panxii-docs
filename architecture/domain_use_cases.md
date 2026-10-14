@@ -4,14 +4,15 @@
 
 | Actor | Phạm vi |
 |---|---|
-| SuperAdmin | Tenant lifecycle, global flags, platform support |
+| SuperAdmin | Quản trị toàn nền tảng: tenant lifecycle, global flags, platform support; không thuộc tenant |
 | TenantAdmin | Dữ liệu tenant, bulk price, reverse/correction, tenant flags |
-| Staff | Tạo invoice, tìm product/customer, reverse khi có PIN Admin |
+| Staff | Tạo invoice, tìm product/customer, in invoice; không tạo/sửa/xóa customer hoặc reverse/correction invoice |
 | Device Worker | Sync outbox, pull changes, xử lý revoke |
 
 ## 2. Core aggregates
 
-- `Tenant`: status, timezone, currency, lifecycle.
+- `Tenant`: cửa hàng/doanh nghiệp trong SaaS; status, timezone, currency, lifecycle. Đây là ranh giới dữ liệu, không phải người thuê nhà.
+- `PlatformAdmin`: SuperAdmin toàn cục, không có tenant membership.
 - `User`: role, status, tenant membership.
 - `UserDevice`: session, app version, revoke state.
 - `Product`: price, active state, version.
@@ -43,9 +44,11 @@ Invoice content is immutable after `Synced`. Only business status may change thr
 | UC-TENANT-01 | Create/suspend tenant | SuperAdmin | Yes |
 | UC-PROD-01 | Create/update product | TenantAdmin | Yes |
 | UC-PROD-02 | Bulk update price | TenantAdmin | Yes |
+| UC-CUST-01 | Create/update/deactivate/delete customer | TenantAdmin | Yes |
+| UC-CUST-02 | Search/read customer for invoice | Staff, TenantAdmin | Read |
 | UC-INV-01 | Create invoice offline | Staff/Admin | Local transaction |
 | UC-INV-02 | Sync invoice | Staff/Admin | MySQL + outbox |
-| UC-INV-03 | Reverse invoice | Admin/PIN Staff | MySQL + outbox |
+| UC-INV-03 | Reverse invoice | TenantAdmin | MySQL + outbox |
 | UC-INV-04 | Correct invoice | TenantAdmin | Reverse + new invoice |
 | UC-SYNC-01 | Pull changes | Device | Local transaction |
 | UC-SET-01 | Resolve effective flags | Authenticated | Read |

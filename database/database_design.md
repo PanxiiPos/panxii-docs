@@ -29,6 +29,7 @@ Database phải hỗ trợ SaaS multi-tenant, bán hàng offline-first, đồng 
 |---|---|---:|---|
 | Nền tảng | `tenants` | Không | Chỉ trạng thái bằng quyền SuperAdmin |
 | Danh tính | `users`, `user_devices` | Có | Có, theo chính sách audit |
+| Quản trị nền tảng | `platform_admins`, `platform_admin_sessions` | Không | Có, theo chính sách audit |
 | Danh mục | `categories`, `products`, `customers` | Có | Có trước khi phát sinh giao dịch |
 | Giao dịch | `invoices`, `invoice_details` | Có | Không sửa/xóa nội dung sau sync |
 | Cấu hình | `app_settings` | Có thể null | Có, theo phạm vi cấu hình |
@@ -55,6 +56,7 @@ erDiagram
     CUSTOMERS ||--o{ INVOICES : buys
     USERS ||--o{ USER_DEVICES : signs_in
     USERS ||--o{ INVOICES : creates
+    PLATFORM_ADMINS ||--o{ PLATFORM_ADMIN_SESSIONS : signs_in
     INVOICES ||--|{ INVOICE_DETAILS : contains
     INVOICES ||--o| INVOICES : reverses
     INVOICES ||--o{ SYNC_OPERATIONS : syncs
@@ -103,34 +105,42 @@ Bảng gốc của SaaS, không có `TenantId`.
 | `Id` | `CHAR(36)` | Không | PK |
 | `Code` | `VARCHAR(32)` | Không | Mã tenant duy nhất |
 | `Name` | `VARCHAR(160)` | Không | Tên cửa hàng |
-| `Status` | `VARCHAR(20)` | Không | `Active`, `Suspended`, `Closed` |
+| `Status` | `VARCHAR(20)` | Không | Enum `Active`, `Suspended`, `Closed` |
 | `TimeZone` | `VARCHAR(64)` | Không | Ví dụ `Asia/Ho_Chi_Minh` |
 | `CurrencyCode` | `CHAR(3)` | Không | Mặc định `VND` |
 | `IsDeleted` | `TINYINT(1)` | Không | Soft delete cấp nền tảng |
-| `CreatedAt`, `UpdatedAt` | `DATETIME(6)` | Có | Audit |
+| `CreatedAt` | `DATETIME(6)` | Không | Thời gian tạo |
+| `UpdatedAt` | `DATETIME(6)` | Có | Thời gian cập nhật |
+| `Version` | `BIGINT` | Không | Optimistic concurrency, mặc định 1 |
 | `ExtraDataJson` | `JSON` | Có | Metadata nền tảng |
 
-Unique `Code`. Không xóa vật lý tenant đã có dữ liệu.
+Unique `Code`. Chỉ SuperAdmin được quản lý tenant. Onboarding tạo tenant và TenantAdmin đầu tiên trong cùng transaction. DELETE đặt `IsDeleted = true`, `Status = Closed`, revoke device/session; không xóa vật lý tenant hoặc dữ liệu nghiệp vụ.
 
 ### 4.2. `users`
 
-Tài khoản thuộc tenant. `SuperAdmin` có thể dùng `TenantId = NULL` để quản trị nền tảng.
+`users` chỉ chứa chủ cửa hàng/doanh nghiệp (`TenantAdmin`) và nhân viên (`Staff`); mọi user đều thuộc một tenant. `SuperAdmin` là account toàn cục, được lưu riêng trong `platform_admins` và không có `TenantId`.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
-| `TenantId` | `CHAR(36)` | Có | FK `tenants`; null cho SuperAdmin hệ thống |
+| `TenantId` | `CHAR(36)` | Không | FK `tenants`; bắt buộc với TenantAdmin/Staff |
 | `Username` | `VARCHAR(120)` | Không | Unique trong tenant |
 | `DisplayName` | `VARCHAR(160)` | Không | Tên hiển thị |
 | `Email` | `VARCHAR(254)` | Có | Email |
 | `PasswordHash` | `VARCHAR(255)` | Không | Argon2id/bcrypt |
-| `Role` | `VARCHAR(20)` | Không | `SuperAdmin`, `TenantAdmin`, `Staff` |
+| `Role` | `VARCHAR(20)` | Không | `TenantAdmin`, `Staff` |
 | `Status` | `VARCHAR(20)` | Không | `Active`, `Locked`, `Disabled` |
-| `AdminPinHash` | `VARCHAR(255)` | Có | PIN TenantAdmin, nếu có |
+| `AdminPinHash` | `VARCHAR(255)` | Có | PIN TenantAdmin legacy; không dùng để cấp quyền reverse invoice v1 |
 | `LastLoginAt` | `DATETIME(6)` | Có | Audit đăng nhập |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-`TenantAdmin` và `Staff` bắt buộc có `TenantId`; chỉ `SuperAdmin` mới được null `TenantId`. Quyền phải lấy từ claim đã ký và kiểm tra tenant server-side.
+Login nhận username/password; server tìm tenant user trên mọi tenant và tìm platform admin toàn cục. Nếu cặp username/password khớp nhiều account, login bị từ chối. Tenant users luôn được giới hạn theo tenant; platform admin không được gán vào tenant.
+
+### 4.2.1. `platform_admins` và `platform_admin_sessions`
+
+Hai bảng này lưu identity và session của SuperAdmin, tách khỏi dữ liệu cửa hàng. `platform_admins` có `Id`, `Username` (unique toàn cục), `DisplayName`, `Email`, `PasswordHash`, `Status`, `LastLoginAt` và audit fields. `platform_admin_sessions` lưu `UserId`, `DeviceId`, `Platform`, `AppVersion`, `SessionId`, `RefreshTokenHash`, hạn refresh, revoke state và thời gian audit; có FK trực tiếp tới `platform_admins`.
+
+JWT của SuperAdmin có `sub`, `role=SuperAdmin`, `device_id`, `session_id` nhưng không có `tenant_id`. API xác thực session qua `platform_admin_sessions`.
 
 ### 4.3. `user_devices`
 
@@ -142,15 +152,16 @@ Quản lý session, thiết bị và remote kill-switch.
 | `TenantId` | `CHAR(36)` | Không | FK tenant |
 | `UserId` | `CHAR(36)` | Không | FK user |
 | `DeviceId` | `VARCHAR(160)` | Không | ID ổn định do app tạo |
-| `DeviceName` | `VARCHAR(120)` | Có | Tên thiết bị |
-| `Platform` | `VARCHAR(20)` | Không | `Android`, `iOS`, `Web` |
+| `Platform` | `VARCHAR(32)` | Không | Nền tảng client |
 | `AppVersion` | `VARCHAR(32)` | Không | Version native |
-| `RefreshTokenHash` | `CHAR(64)` | Có | Chỉ lưu hash token |
+| `SessionId` | `CHAR(36)` | Không | Session claim trong JWT, unique |
+| `RefreshTokenHash` | `CHAR(64)` | Không | SHA-256; không lưu plaintext |
+| `RefreshTokenExpiresAt` | `DATETIME(6)` | Không | Hạn refresh token |
 | `IsRevoked` | `TINYINT(1)` | Không | Kill-switch |
-| `RevokedAt`, `LastSeenAt` | `DATETIME(6)` | Có | Trạng thái session |
+| `LastSeenAt` | `DATETIME(6)` | Không | Lần refresh gần nhất |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, DeviceId)`, index `(UserId, IsRevoked)`. Khi revoke, API trả `401`; mobile xóa SQLite và force logout.
+Composite FK `(TenantId, UserId)` tới `users`; unique `SessionId` và `RefreshTokenHash`; index `(TenantId, UserId, DeviceId)`. Khi revoke, API trả `401` ngay cả với access token đã cấp; mobile xóa SQLite và force logout.
 
 ### 4.4. `categories`
 
@@ -180,14 +191,14 @@ Giá hiện tại nằm ở đây; giá lúc bán phải snapshot vào `invoice_
 | `Barcode` | `VARCHAR(64)` | Có | Mã quét |
 | `Name` | `VARCHAR(200)` | Không | Tên sản phẩm |
 | `Unit` | `VARCHAR(32)` | Không | Đơn vị tính |
-| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, >= 0 |
+| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, > 0 |
 | `CostPrice` | `DECIMAL(19,4)` | Có | Giá vốn nếu bật kho |
-| `TaxRate` | `DECIMAL(9,4)` | Không | Thuế |
+| `TaxRate` | `DECIMAL(9,4)` | Không | Giữ 0 trong v1; nghiệp vụ thuế thuộc phần mở rộng sau |
 | `IsActive` | `TINYINT(1)` | Không | Đang bán |
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, Sku)`; barcode nên unique theo tenant nếu có giá trị. Bulk update chỉ cho TenantAdmin, dùng transaction và tăng `Version`.
+Unique `(TenantId, Sku)`; barcode nên unique theo tenant nếu có giá trị. Bulk update chỉ cho TenantAdmin, nhận magnitude dương cùng operation `Increase`/`Decrease`, giá sau cập nhật phải > 0; transaction và tăng `Version`.
 
 ### 4.6. `customers`
 
@@ -224,7 +235,7 @@ Sổ giao dịch. Sau `Synced`, không được thay đổi nội dung, tổng t
 | `SyncedAt` | `DATETIME(6)` | Có | Server nhận thành công |
 | `Subtotal` | `DECIMAL(19,4)` | Không | Tổng trước giảm/thuế |
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá |
-| `TaxAmount` | `DECIMAL(19,4)` | Không | Thuế |
+| `TaxAmount` | `DECIMAL(19,4)` | Không | Giữ 0 trong v1; thuế là phần mở rộng sau |
 | `RoundingAmount` | `DECIMAL(19,4)` | Không | Làm tròn |
 | `TotalAmount` | `DECIMAL(19,4)` | Không | Tổng thanh toán |
 | `CurrencyCode` | `CHAR(3)` | Không | Snapshot tiền tệ |
@@ -246,10 +257,10 @@ Snapshot để hiển thị và kiểm toán, không phụ thuộc giá/sản ph
 | `ProductNameSnapshot` | `VARCHAR(200)` | Không | Tên lúc bán |
 | `UnitSnapshot` | `VARCHAR(32)` | Không | Đơn vị lúc bán |
 | `Quantity` | `DECIMAL(19,4)` | Không | Âm đối với Reverse |
-| `UnitPrice` | `DECIMAL(19,4)` | Không | Giá snapshot |
+| `UnitPrice` | `DECIMAL(19,4)` | Không | Giá snapshot dương; dấu hiển thị do UI quyết định |
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá dòng |
-| `TaxRate` | `DECIMAL(9,4)` | Không | Thuế snapshot |
-| `TaxAmount` | `DECIMAL(19,4)` | Không | Thuế dòng |
+| `TaxRate` | `DECIMAL(9,4)` | Không | Snapshot; giữ 0 trong v1 |
+| `TaxAmount` | `DECIMAL(19,4)` | Không | Giữ 0 trong v1 |
 | `LineTotal` | `DECIMAL(19,4)` | Không | Thành tiền |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
@@ -274,48 +285,61 @@ Unique `(TenantId, SettingKey)`. Vì MySQL cho phép nhiều giá trị `NULL` t
 
 ### 4.10. `sync_operations`
 
-Nhật ký nhận outbox client và lớp bảo vệ idempotency.
+Nhật ký idempotency cho command nhận từ client/RabbitMQ.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `TenantId` | `CHAR(36)` | Không | FK tenant |
-| `ClientOperationId` | `CHAR(36)` | Không | UUID do client tạo |
-| `EntityType` | `VARCHAR(40)` | Không | Ví dụ `Invoice` |
-| `EntityId` | `CHAR(36)` | Không | ID entity |
-| `PayloadHash` | `CHAR(64)` | Không | SHA-256 payload chuẩn hóa |
-| `OperationType` | `VARCHAR(40)` | Không | Loại command để replay |
-| `Status` | `VARCHAR(20)` | Không | `Received`, `Applied`, `Rejected` |
-| `ErrorCode` | `VARCHAR(80)` | Có | Mã lỗi i18n |
-| `HttpStatus` | `SMALLINT` | Có | HTTP status của kết quả cuối |
-| `ResponseJson` | `JSON` | Có | Response chuẩn để retry replay |
-| `ResponseHash` | `CHAR(64)` | Có | Hash response đã lưu |
-| `ResourceId` | `CHAR(36)` | Có | Resource tạo/cập nhật |
-| `ExpiresAt` | `DATETIME(6)` | Có | Hạn lưu idempotency |
-| `ProcessedAt` | `DATETIME(6)` | Có | Thời điểm xử lý |
+| `OperationId` | `VARCHAR(64)` | Không | UUID ổn định do client tạo |
+| `EntityType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer` |
+| `EntityId` | `CHAR(36)` | Không | Entity ID; rejected command dùng UUID zero |
+| `Status` | `VARCHAR(20)` | Không | `Completed` hoặc `Rejected` |
+| `AttemptCount` | `INT` | Không | Số lần xử lý được ghi nhận |
+| `CompletedAt` | `DATETIME(6)` | Có | Thời điểm kết quả cuối |
+| `ErrorCode` | `VARCHAR(64)` | Có | Mã lỗi i18n khi rejected |
+| `ExtraDataJson` | `JSON` | Có | `payloadHash`; không chứa secret |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, ClientOperationId)`. Cùng operation id nhưng khác hash phải bị từ chối với `ERR_SYNC_PAYLOAD_MISMATCH`.
+Unique `(TenantId, OperationId)`. Cùng operation id nhưng khác hash phải bị từ chối với `ERR_SYNC_PAYLOAD_MISMATCH`.
 
 ### 4.11. `outbox_events`
 
-Transactional outbox để phát SignalR sau khi nghiệp vụ commit.
+Transactional outbox để phát realtime snapshot qua RabbitMQ sau khi nghiệp vụ commit.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `TenantId` | `CHAR(36)` | Không | Group SignalR |
-| `EventType` | `VARCHAR(80)` | Không | Ví dụ `InvoiceSynced` |
-| `AggregateId` | `CHAR(36)` | Không | Invoice/product liên quan |
-| `ServerSequence` | `BIGINT` | Không | Thứ tự tăng đơn điệu theo tenant |
-| `Payload` | `JSON` | Không | Payload tối thiểu |
+| `EventType` | `VARCHAR(120)` | Không | `DataCreated`, `CommandRejected` |
+| `AggregateType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer`, `Command` |
+| `AggregateId` | `CHAR(36)` | Không | Entity/operation liên quan |
+| `PayloadJson` | `JSON` | Không | Snapshot notification đã commit |
 | `Status` | `VARCHAR(20)` | Không | `Pending`, `Published`, `Failed` |
-| `RetryCount` | `INT` | Không | Số lần retry |
-| `AvailableAt` | `DATETIME(6)` | Không | Có thể lấy |
-| `PublishedAt` | `DATETIME(6)` | Có | Đã broadcast |
-| `CreatedAt` | `DATETIME(6)` | Không | Thời điểm tạo |
+| `AttemptCount` | `INT` | Không | Số lần publish |
+| `PublishedAt` | `DATETIME(6)` | Có | Broker đã confirm |
+| `LastError` | `LONGTEXT` | Có | Loại lỗi kỹ thuật cuối, không chứa payload/PII |
+| Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Worker đọc `Pending`, phát `OnDataUpdated` vào group `tenant:{TenantId}`, rồi cập nhật `Published`. Client vẫn phải gọi API pull để bảo đảm nhất quán.
+Worker publish `Pending` lên exchange `panxii.realtime`, chờ publisher confirm rồi cập nhật `Published`.
+
+### 4.12. `server_changes`
+
+Durable change feed cho `GET /sync/pull`. Tạo `ServerChange` cùng transaction với entity; `ServerSequence` là MySQL auto-increment toàn cục, và mỗi tenant đọc phần sequence của chính mình theo thứ tự tăng dần.
+
+| Cột | Kiểu | Null | Mô tả |
+|---|---|---:|---|
+| `Id` | `CHAR(36)` | Không | PK |
+| `ServerSequence` | `BIGINT AUTO_INCREMENT` | Không | Thứ tự commit dùng cho pull/realtime |
+| `TenantId` | `CHAR(36)` | Không | Tenant scope |
+| `EntityType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer` |
+| `EntityId` | `CHAR(36)` | Không | Entity ID |
+| `EntityVersion` | `BIGINT` | Không | Version của snapshot |
+| `OperationId` | `CHAR(36)` | Có | Client command dùng để reconcile sau reconnect |
+| `PayloadJson` | `JSON` | Không | Full entity response snapshot |
+| `OccurredAtUtc` | `DATETIME(6)` | Không | Thời gian server |
+
+`GET /sync/pull?afterSequence=N` chỉ đọc `(TenantId, ServerSequence > N)`. SignalR event chứa cùng sequence và snapshot để connected clients áp dụng ngay; pull phục hồi các event bị lỡ. Retention/cleanup chưa bật; không xóa row trước khi có full-resync/retention policy.
 
 ---
 
@@ -337,9 +361,11 @@ CREATE INDEX IX_Customers_Tenant_Phone
 CREATE INDEX IX_SyncOperations_Pending
     ON SyncOperations (TenantId, Status, CreatedAt);
 CREATE INDEX IX_OutboxEvents_Pending
-    ON OutboxEvents (Status, AvailableAt, CreatedAt);
-CREATE UNIQUE INDEX UX_OutboxEvents_Tenant_Sequence
-    ON OutboxEvents (TenantId, ServerSequence);
+    ON OutboxEvents (TenantId, Status, CreatedAt);
+CREATE UNIQUE INDEX UX_ServerChanges_Sequence
+    ON server_changes (ServerSequence);
+CREATE INDEX IX_ServerChanges_Tenant_Sequence
+    ON server_changes (TenantId, ServerSequence);
 ```
 
 Tên bảng thực tế phải theo một naming convention thống nhất của EF Core. Khóa ngoại dùng `RESTRICT` cho giao dịch và không cascade delete từ tenant, user hoặc product xuống invoice.
@@ -382,7 +408,7 @@ Transaction server phải:
 
 1. Lock invoice gốc bằng `SELECT ... FOR UPDATE`.
 2. Kiểm tra invoice thuộc tenant hiện tại và đang `Synced`.
-3. Kiểm tra user là TenantAdmin hoặc có PIN TenantAdmin hợp lệ.
+3. Kiểm tra actor trong JWT là TenantAdmin của tenant sở hữu invoice; Staff bị từ chối.
 4. Kiểm tra chưa có reverse hợp lệ.
 5. Tạo invoice mới với `InvoiceType = Reverse`, `OriginalInvoiceId` trỏ invoice gốc.
 6. Tạo detail mới, giữ snapshot nhưng đảo dấu `Quantity`, `LineTotal`, `TaxAmount`.
@@ -395,6 +421,8 @@ Transaction server phải:
 Không sửa detail cũ. Gọi luồng hủy, sau đó tạo invoice mới `InvoiceType = Correction` với dữ liệu đúng. Quan hệ giữa correction và chuỗi reverse nên lưu bằng khóa nghiệp vụ rõ ràng hoặc metadata có schema, không dựa vào text tự do.
 
 ### 7.3. Kiểm tra cân bằng
+
+Trong v1, tax fields luôn bằng 0; công thức dưới đây giữ chỗ cho phần mở rộng thuế sau.
 
 ```text
 Subtotal = SUM(Quantity * UnitPrice)

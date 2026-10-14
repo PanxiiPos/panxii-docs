@@ -19,9 +19,10 @@ Kiểm thử tập trung vào các rủi ro lớn nhất: cách ly tenant, invoi
 ### Invoice calculator
 
 - `Subtotal` bằng tổng `Quantity * UnitPrice`.
-- Discount, tax, rounding đúng thứ tự.
+- Discount và rounding đúng thứ tự; giá sản phẩm/unit price phải > 0.
+- Tax calculation chưa thuộc v1; request phải giữ `TaxRate`/`TaxAmount` bằng 0.
 - Decimal không dùng floating point.
-- Reverse invoice đảo dấu quantity, tax, line total và total.
+- Reverse invoice đảo dấu quantity, line total và total; tax vẫn bằng 0 trong v1.
 - Header lệch detail trả `ERR_INVOICE_TOTAL_INVALID`.
 - Quantity bằng zero, âm ở Sale, quá precision bị từ chối.
 
@@ -37,7 +38,8 @@ Kiểm thử tập trung vào các rủi ro lớn nhất: cách ly tenant, invoi
 
 - Staff được tạo invoice.
 - Staff không sửa giá gốc.
-- Staff reverse chỉ khi PIN Admin hợp lệ.
+- Staff chỉ đọc/tìm customer; không tạo/sửa/xóa customer.
+- Staff không được reverse/correction invoice, kể cả khi gửi PIN Admin; TenantAdmin mới được thực hiện reverse.
 - TenantAdmin được bulk update đúng tenant.
 - Tenant A không truy cập entity tenant B.
 - SuperAdmin thao tác global nhưng không vô tình bypass audit.
@@ -93,11 +95,11 @@ Với mỗi endpoint kiểm tra:
 
 ### Scenario B: timeout sau server commit
 
-1. Server commit invoice nhưng response bị drop.
-2. Client giữ Pending hoặc chuyển retryable.
-3. Client retry cùng `ClientOperationId`.
-4. API trả kết quả cũ.
-5. Database server chỉ có một invoice và một invoice detail set.
+1. API publisher confirm command và trả `202 Queued`, nhưng response bị drop.
+2. Client giữ operation id và retry cùng `Idempotency-Key`.
+3. Worker commit invoice/change/outbox đúng một lần.
+4. Client nhận `DataCreated`; nếu lỡ event, pull từ sequence cũ trả snapshot.
+5. Database server chỉ có một invoice, một change, và một logical outbox event.
 
 ### Scenario C: mất mạng giữa batch
 
@@ -118,11 +120,11 @@ Với mỗi endpoint kiểm tra:
 
 ### Scenario E: SignalR broadcast
 
-1. Có hai device cùng tenant và một device tenant khác.
-2. Device A sync invoice.
-3. Device B nhận `OnDataUpdated` và pull được invoice.
-4. Device tenant khác không nhận event.
-5. Nếu SignalR down, invoice vẫn tồn tại server; reconnect rồi pull cursor.
+1. Có hai device cùng tenant và một device tenant khác; cả hai tenant kết nối hub.
+2. Device A enqueue và worker commit invoice.
+3. Device A/B nhận `DataCreated` với full snapshot + `serverSequence`, chèn invoice lên đầu mà không gọi refresh.
+4. Device tenant khác không nhận event/group.
+5. Nếu SignalR down, invoice/change vẫn commit; reconnect rồi pull theo `afterSequence`.
 
 ### Scenario F: reverse offline
 
@@ -134,7 +136,8 @@ Chính sách nên chốt trước: reverse offline chỉ được tạo local kh
 - Publisher chết sau publish trước mark thì consumer deduplicate.
 - Consumer nack transient vào retry queue.
 - Message schema lỗi vào DLQ, không retry vô hạn.
-- RabbitMQ unavailable không làm mất invoice đã commit.
+- RabbitMQ unavailable trước confirm trả 503; client retry cùng operation id.
+- RabbitMQ unavailable sau DB commit không làm mất invoice; outbox chờ publish.
 - Replay DLQ không tạo duplicate.
 - Tenant routing key không phát event chéo tenant.
 

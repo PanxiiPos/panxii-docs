@@ -7,16 +7,27 @@
 Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập:
 
 *   **`SuperAdmin` (Quản trị nền tảng SaaS):**
-    *   Tạo/Khóa các Cửa hàng (Tenants).
-    *   Cấu hình `Global Feature Flags` (Bật/tắt module Kho, Chấm công cho toàn hệ thống).
+    *   Xem, tạo, sửa, vô hiệu hóa và xóa tài khoản `TenantAdmin`; tài khoản phải được gán đúng `TenantId`.
+    *   Xem, tạo, sửa, vô hiệu hóa và xóa các cửa hàng (Tenants).
+    *   Xóa tài khoản hoặc tenant có dữ liệu nghiệp vụ được hiểu là xóa mềm; không xóa vật lý lịch sử/audit và phải thu hồi các phiên đăng nhập liên quan.
+    *   Cấu hình `Global Feature Flags` (bật/tắt module Kho, Chấm công cho toàn hệ thống).
 *   **`TenantAdmin` (Chủ cửa hàng):**
-    *   Full quyền CRUD đối với dữ liệu thuộc `TenantId` của mình.
+    *   Được sử dụng các chức năng của `Staff` và có toàn quyền CRUD trên dữ liệu thuộc `TenantId` của mình, theo các giới hạn bên dưới.
+    *   Xem, tạo, sửa, vô hiệu hóa và xóa tài khoản Staff. Nếu tài khoản đã được tham chiếu trong lịch sử nghiệp vụ/audit, thao tác xóa phải là xóa mềm.
+    *   Xem, thêm, sửa và vô hiệu hóa sản phẩm; chỉ được xóa sản phẩm chưa có dữ liệu lịch sử.
+    *   Giá sản phẩm và `UnitPrice` phải lớn hơn 0. Tăng/giảm giá hàng loạt dùng độ lớn dương cùng hướng thao tác riêng (`Increase`/`Decrease`); UI quyết định cách hiển thị dấu.
+    *   Nghiệp vụ tính thuế chưa thuộc v1; giữ `TaxRate` và `TaxAmount` bằng 0 cho đến khi triển khai phần mở rộng thuế.
+    *   Xem, tạo, sửa và xóa khách hàng. Chỉ xóa vật lý khách hàng chưa được tham chiếu bởi hóa đơn; nếu đã có lịch sử, phải vô hiệu hóa hoặc xóa mềm để giữ nguyên tham chiếu.
+    *   Cấu hình thông tin hiển thị cửa hàng, mẫu hóa đơn và cách hiển thị sản phẩm.
     *   Đổi giá hàng loạt (Bulk Update).
-    *   Duyệt thực hiện Bút toán đảo ngược (Hủy/Sửa hóa đơn).
-    *   Cấu hình `Tenant Feature Flags` (Tự động làm tròn tiền, In Bluetooth).
+    *   Duyệt thực hiện bút toán đảo ngược (hủy/sửa hóa đơn đã đồng bộ).
+    *   Cấu hình `Tenant Feature Flags` (tự động làm tròn tiền, in Bluetooth).
 *   **`Staff` (Nhân viên/Thu ngân):**
-    *   Chỉ được: Lập hóa đơn mới, tìm kiếm khách hàng/sản phẩm.
-    *   KHÔNG được: Sửa giá gốc sản phẩm, Hủy hóa đơn đã Sync (muốn hủy phải có PIN của Admin).
+    *   Xem/tìm kiếm sản phẩm và xem giá; không được sửa giá gốc sản phẩm.
+    *   Xem/tìm kiếm khách hàng và lấy thông tin khách hàng phục vụ lập hóa đơn; không được tạo, sửa hoặc xóa khách hàng.
+    *   Lập hóa đơn mới.
+    *   Được in hóa đơn trên thiết bị client; Bluetooth phụ thuộc cấu hình cửa hàng/feature flag.
+    *   Không được quản lý tài khoản, cấu hình cửa hàng/feature flag hoặc thay đổi dữ liệu sản phẩm/khách hàng.
 
 ---
 

@@ -34,12 +34,13 @@ Khi bắt đầu một feature mới, đọc theo thứ tự sau:
 12. backend/backend_coding_standard.md hoặc frontend/frontend_coding_standard.md
 13. sync/data_sync_flow_rabbitmq.md nếu có sync/realtime
 14. testing/testing_strategy.md
-15. testing/risk_based_testing_spec.md nếu chạm rủi ro P0/P1
-16. infrastructure/infrastructure_setup.md
-17. release/release_management.md
-18. development_workflow.md
-19. commit_convention.md
-20. task_risk.md
+15. testing/role_based_test_cases.md khi cần kiểm thử chức năng/RBAC theo role
+16. testing/risk_based_testing_spec.md nếu chạm rủi ro P0/P1
+17. infrastructure/infrastructure_setup.md
+18. release/release_management.md
+19. development_workflow.md
+20. commit_convention.md
+21. task_risk.md
 ```
 
 Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh backend/frontend bên dưới, nhưng luôn bắt đầu bằng business rule và architecture.
@@ -106,6 +107,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [testing_strategy.md](testing/testing_strategy.md) | Unit, integration, API contract, offline E2E, RabbitMQ chaos và k6 |
+| [role_based_test_cases.md](testing/role_based_test_cases.md) | Test case chức năng theo role, boundary, validation và tenant isolation |
 | [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, lệch giờ/sai thứ tự sync, SQLite/printer failure và API breaking change |
 
 ### 2.8. Infrastructure và release
@@ -237,7 +239,7 @@ Check theo [frontend_coding_standard.md](frontend/frontend_coding_standard.md) v
 
 ### Bước 7: Kiểm thử
 
-Đọc [testing_strategy.md](testing/testing_strategy.md) và [risk_based_testing_spec.md](testing/risk_based_testing_spec.md).
+Đọc [testing_strategy.md](testing/testing_strategy.md), [role_based_test_cases.md](testing/role_based_test_cases.md) khi feature có quyền/chức năng theo role, và [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) khi chạm rủi ro P0/P1.
 
 Tối thiểu phải test:
 
@@ -295,7 +297,14 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - OpenAPI/Swagger v1 đã cấu hình:
 	- UI: `http://localhost:5099/swagger`
 	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
-- API health check: `GET http://localhost:5099/api/v1/health`.
+- API health check: `GET http://localhost:5099/api/v1/health`; deployment probes use `/health/live` and `/health/ready` (MySQL + RabbitMQ).
+- Auth API: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`; login body chỉ cần username/password, không cần nhập tenant hay device metadata.
+- JWT tenant user có tenant/role/device/session claims; JWT SuperAdmin không có `tenant_id` và session lưu riêng trong `platform_admin_sessions`. Role policies bảo vệ Products, logout/revoke được kiểm tra server-side trên mỗi request, login/refresh rate limit 10 request/phút/IP.
+- Backend hiện triển khai API SuperAdmin CRUD/lifecycle tenant, tạo tenant cùng TenantAdmin đầu tiên trong một transaction, quản lý các TenantAdmin tiếp theo và đọc/cập nhật global feature flags. Tenant soft-delete giữ nguyên dữ liệu nghiệp vụ và revoke sessions.
+- Backend có API Staff đọc/tìm product/customer, đọc invoice/effective settings và `GET /api/v1/sync/pull?afterSequence=`. `POST /api/v1/invoices/sync`, TenantAdmin `POST /api/v1/products` và `POST /api/v1/customers` trả `202 Queued` sau RabbitMQ publisher confirm.
+- Worker xử lý idempotent theo tenant/operation/payload hash; entity, operation, `server_changes` sequence và outbox commit cùng transaction. Sau commit, outbox phát full snapshot qua RabbitMQ; SignalR `/hubs/pos` chỉ join group theo tenant claim và gửi `DataCreated` tới client cùng tenant. Client insert snapshot lên đầu và deduplicate bằng `serverSequence`/`messageId`; `/sync/pull` khôi phục event bị lỡ. Mobile repository hiện chưa có Dart implementation để xác nhận UI listener/list insertion.
+- TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm/customer, cấu hình cửa hàng và các thao tác invoice reverse/correction chưa được xác nhận triển khai.
+- Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
 - MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
 - Products query API: `GET http://localhost:5099/api/v1/products?search=&page=1&pageSize=50`.
@@ -316,16 +325,20 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - EF Core migrations đã apply:
 	- `InitialPosSchema`.
 	- `AddDatabaseForeignKeys`.
-- Schema hiện có các bảng `tenants`, `users`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
+- Các migrations đã apply: `InitialPosSchema`, `AddDatabaseForeignKeys`, `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex`, `SeparatePlatformAdmin`, `AddPlatformAdministration` và `AddTenantVersion`.
+- Nhánh backend `feature/async-pos-realtime` bổ sung migrations `AddInvoiceSkuSnapshot`, `AddInvoiceLineAndTaxAmounts` và `AddRealtimeChangeFeed` (bao gồm operation ID); apply trước khi chạy API/Worker.
+- Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events`, optimistic concurrency version và durable `server_changes` sequence đã có trong model/migration.
+- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations`, `outbox_events` và `server_changes`.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
 - Development seed script: `backend/database/seed-development.sql`.
-- Dữ liệu development hiện có: 1 tenant, 2 users, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
+- Tài khoản development (chỉ dùng local; seed reset mật khẩu theo role): `superadmin` / `SuperAdmin123`, `demo.admin` / `TenantAdmin123`, `demo.staff` / `Staff123`.
+- Dữ liệu development: 1 tenant (`DEMO`), 2 tenant users, 1 platform admin, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
 
 Khởi động database local:
 
 ```powershell
 cd backend
-docker compose -f docker-compose.local.yml up -d --wait
+docker compose -f docker-compose.local.yml up -d --wait panxii-db-local rabbitmq
 dotnet ef database update `
 	--project Panxii.Infrastructure/Panxii.Infrastructure.csproj `
 	--startup-project Panxii.WebApi/Panxii.WebApi.csproj
@@ -334,9 +347,13 @@ dotnet ef database update `
 $sql = Get-Content -Raw database/seed-development.sql
 $sql | docker exec -i panxii_mysql_dev mysql `
 	--host=127.0.0.1 --user=panxii_app --password=panxii_local_only --database=PanxiiDev
+
+# Start API and command/outbox Worker after migrations and seed
+docker compose -f docker-compose.local.yml up -d --build panxii-api panxii-worker
 ```
 
-Khởi động API Development:
+Swagger: `http://localhost:5099/swagger`. RabbitMQ management local: `http://localhost:15672`.
+Nếu chạy API trực tiếp trên host thay vì Compose, dùng:
 
 ```powershell
 dotnet run --project backend/Panxii.WebApi/Panxii.WebApi.csproj `

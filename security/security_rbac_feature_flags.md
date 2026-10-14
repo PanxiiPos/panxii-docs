@@ -12,7 +12,7 @@ MySQL và RabbitMQ không mở public. Client không được truy cập trực 
 
 ## 2. JWT và session
 
-JWT tối thiểu có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`, `iat`, `exp`. Không đặt thông tin nhạy cảm hoặc quyền thay đổi thường xuyên vào token quá dài.
+JWT tenant user có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jti`, `iat`, `exp`. JWT SuperAdmin là global identity nên không có `tenant_id`; session được kiểm tra trong `platform_admin_sessions`. Không đặt thông tin nhạy cảm hoặc quyền thay đổi thường xuyên vào token quá dài.
 
 - Access token ngắn hạn.
 - Refresh token opaque, rotate mỗi lần refresh.
@@ -28,15 +28,18 @@ JWT tối thiểu có `sub`, `tenant_id`, `role`, `device_id`, `session_id`, `jt
 | Global feature flags | Có | Không | Không |
 | Tenant feature flags | Không | Có | Không |
 | CRUD products/categories | Theo platform | Có | Đọc/tìm kiếm |
+| Customer data | Không trực tiếp | CRUD trong tenant | Đọc/tìm kiếm trong tenant |
 | Bulk update giá | Không trực tiếp | Có | Không |
 | Tạo invoice | Không bắt buộc | Có | Có |
 | Đọc invoice tenant | Platform support | Có | Có theo tenant |
-| Reverse invoice | Không mặc định | Có | Chỉ PIN Admin |
+| Reverse invoice | Không mặc định | Có | Không |
 | Sửa/xóa invoice synced | Không | Không | Không |
+| In invoice trên thiết bị client | Không mặc định | Có | Có theo tenant |
 | Quản lý users tenant | Platform policy | Có | Không |
+| Quản lý tài khoản Staff | Không | Có trong tenant | Không |
 | Revoke device | Có platform | Có trong tenant | Không |
 
-Authorization phải kiểm tra cả role và `TenantId`; role không đủ để cấp quyền cross-tenant.
+Authorization tenant phải kiểm tra cả role và `TenantId`; role không đủ để cấp quyền cross-tenant. SuperAdmin là platform scope riêng, không giả lập bằng một tenant cửa hàng.
 
 ## 4. Quy tắc tenant isolation
 
@@ -47,6 +50,7 @@ Authorization phải kiểm tra cả role và `TenantId`; role không đủ đ�
 - Kiểm tra ownership trước mọi update/delete/reverse.
 - Audit lưu user, device, correlation id và lý do thay đổi.
 - SuperAdmin path phải explicit, log và test riêng.
+- Background outbox publisher có thể đọc `Pending` events cross-tenant; payload giữ TenantId và API relay chỉ gửi tới group lấy từ JWT.
 
 ## 5. Password, PIN và secrets
 
@@ -85,7 +89,6 @@ Các flag ban đầu:
 | `EnableAttendance` | bool | false | Chặn module chấm công |
 | `EnableBluetoothPrint` | bool | false | Cho phép cấu hình máy in |
 | `AutoRoundMoney` | bool | false | Server tính rounding theo rule |
-| `RequireAdminPinForReverse` | bool | true | Bắt PIN khi Staff reverse |
 
 UI chỉ ẩn/disable trải nghiệm; mọi rule quan trọng phải kiểm tra lại tại API.
 
@@ -129,7 +132,7 @@ Không lưu raw password, PIN hoặc token trong Before/After JSON.
 - Tenant A không thể đọc/sửa tenant B bằng body, query hoặc URL.
 - JWT hết hạn/revoked bị từ chối.
 - Staff không sửa BasePrice/bulk update.
-- Staff không reverse nếu PIN sai hoặc thiếu.
+- Staff không được reverse/correction invoice, kể cả khi gửi PIN Admin; TenantAdmin là role duy nhất được thực hiện các use case này.
 - Feature flag server enforcement hoạt động khi client giả mạo UI.
 - Payload sync thay đổi sau khi ký/hash bị từ chối.
 - SQL injection, oversized body, brute force login và replay refresh token được kiểm tra.
