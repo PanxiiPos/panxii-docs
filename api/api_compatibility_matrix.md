@@ -19,9 +19,16 @@
 - Mobile unknown enum phải map `Unknown`.
 - Server giữ field cũ trong deprecation window.
 
+### Paging migration trong API v1
+
+- Mobile mới chỉ dùng cursor keyset; request trang đầu phải gửi `cursor=` rỗng, các trang sau dùng nguyên `nextCursor`.
+- Giữ `page` offset ở chế độ deprecated cho client v1 cũ. Nếu query có cả `page` và `cursor`, trả `400 ERR_INVALID_PAGING`.
+- Cursor response dùng `nextCursor`, `hasMore`, `pageSize`; legacy page response tiếp tục trả `page`, `hasMore`, `pageSize`.
+- Không gỡ `page` khỏi API v1 cho đến khi hết deprecation window, đã kiểm tra telemetry/version adoption và có compatibility approval. Nếu không thể giữ expand/contract, chuyển đổi phải phát hành qua API v2.
+
 ### RBAC contract change trong v1
 
-Business rule chuẩn hóa Staff thành read-only đối với customer và không được reverse/correction invoice; TenantAdmin là role duy nhất được ghi customer hoặc thực hiện reverse/correction. Contract cũ từng cho Staff tạo customer và reverse bằng PIN. Trước release, cập nhật baseline v1 và kiểm tra mobile không còn phụ thuộc các thao tác này. Nếu đã có client/release dùng quyền cũ, xử lý như breaking change theo versioning/deprecation policy thay vì âm thầm đổi behavior.
+Business rule v1 cho phép Staff tìm/đọc/tạo customer nhưng không sửa/xóa; TenantAdmin quản lý customer theo RBAC. Chỉ TenantAdmin được reverse/correction invoice. Contract cũ cho Staff reverse bằng PIN; nếu client/release đã dùng quyền này, thu hồi quyền là behavioral breaking change và phải đi theo versioning/deprecation policy, không đổi âm thầm. Quyền Staff tạo customer được giữ nguyên.
 
 ## 3. CI checks
 

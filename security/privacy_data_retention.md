@@ -21,6 +21,8 @@
 
 ## 3. Retention cần chốt
 
+Các thời hạn dưới đây là retention dữ liệu phía server và phải được phê duyệt theo yêu cầu kế toán, pháp luật và consent; chúng không đồng nghĩa với thời gian lưu cache trên thiết bị. Mobile áp dụng riêng: cache invoice đã đồng bộ tối đa 30 ngày và cache customer tối đa 3 tháng. Hai thời hạn local này không áp dụng cho dữ liệu server, audit, bản nháp hoặc dữ liệu/outbox chưa đồng bộ.
+
 | Data | Retention |
 |---|---|
 | Invoice/payment | Theo yêu cầu kế toán/pháp luật |
