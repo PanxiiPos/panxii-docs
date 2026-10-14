@@ -297,11 +297,12 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - OpenAPI/Swagger v1 đã cấu hình:
 	- UI: `http://localhost:5099/swagger`
 	- JSON: `http://localhost:5099/swagger/v1/swagger.json`
-- API health check: `GET http://localhost:5099/api/v1/health`.
+- API health check: `GET http://localhost:5099/api/v1/health`; deployment probes use `/health/live` and `/health/ready` (MySQL + RabbitMQ).
 - Auth API: `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`; login body chỉ cần username/password, không cần nhập tenant hay device metadata.
 - JWT tenant user có tenant/role/device/session claims; JWT SuperAdmin không có `tenant_id` và session lưu riêng trong `platform_admin_sessions`. Role policies bảo vệ Products, logout/revoke được kiểm tra server-side trên mỗi request, login/refresh rate limit 10 request/phút/IP.
 - Backend hiện triển khai API SuperAdmin CRUD/lifecycle tenant, tạo tenant cùng TenantAdmin đầu tiên trong một transaction, quản lý các TenantAdmin tiếp theo và đọc/cập nhật global feature flags. Tenant soft-delete giữ nguyên dữ liệu nghiệp vụ và revoke sessions.
-- Backend đã triển khai các API Staff: `GET /api/v1/products`, `GET /api/v1/customers`, `POST /api/v1/invoices/sync`, `GET /api/v1/invoices/{id}` và `GET /api/v1/settings/effective`. Staff chỉ đọc product/customer active; invoice sync có idempotency và transactional outbox. `serverCursor` và `GET /api/v1/sync/pull` còn pending vì schema chưa có durable sequence chung cho các loại dữ liệu; mobile chưa thể dùng cursor pull incremental.
+- Backend có API Staff đọc/tìm product/customer, đọc invoice/effective settings và `GET /api/v1/sync/pull?afterSequence=`. `POST /api/v1/invoices/sync`, TenantAdmin `POST /api/v1/products` và `POST /api/v1/customers` trả `202 Queued` sau RabbitMQ publisher confirm.
+- Worker xử lý idempotent theo tenant/operation/payload hash; entity, operation, `server_changes` sequence và outbox commit cùng transaction. Sau commit, outbox phát full snapshot qua RabbitMQ; SignalR `/hubs/pos` chỉ join group theo tenant claim và gửi `DataCreated` tới client cùng tenant. Client insert snapshot lên đầu và deduplicate bằng `serverSequence`/`messageId`; `/sync/pull` khôi phục event bị lỡ. Mobile repository hiện chưa có Dart implementation để xác nhận UI listener/list insertion.
 - TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm/customer, cấu hình cửa hàng và các thao tác invoice reverse/correction chưa được xác nhận triển khai.
 - Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
@@ -325,9 +326,9 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 	- `InitialPosSchema`.
 	- `AddDatabaseForeignKeys`.
 - Các migrations đã apply: `InitialPosSchema`, `AddDatabaseForeignKeys`, `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex`, `SeparatePlatformAdmin`, `AddPlatformAdministration` và `AddTenantVersion`.
-- Nhánh backend `feature/staff-apis` có các migration `AddInvoiceSkuSnapshot` và `AddInvoiceLineAndTaxAmounts`; chưa apply vào local database.
-- Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events` và optimistic concurrency version của tenant đã có trong local schema.
-- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations` và `outbox_events`.
+- Nhánh backend `feature/async-pos-realtime` bổ sung migrations `AddInvoiceSkuSnapshot`, `AddInvoiceLineAndTaxAmounts` và `AddRealtimeChangeFeed` (bao gồm operation ID); apply trước khi chạy API/Worker.
+- Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events`, optimistic concurrency version và durable `server_changes` sequence đã có trong model/migration.
+- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations`, `outbox_events` và `server_changes`.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
 - Development seed script: `backend/database/seed-development.sql`.
 - Tài khoản development (chỉ dùng local; seed reset mật khẩu theo role): `superadmin` / `SuperAdmin123`, `demo.admin` / `TenantAdmin123`, `demo.staff` / `Staff123`.
@@ -337,7 +338,7 @@ Khởi động database local:
 
 ```powershell
 cd backend
-docker compose -f docker-compose.local.yml up -d --wait
+docker compose -f docker-compose.local.yml up -d --wait panxii-db-local rabbitmq
 dotnet ef database update `
 	--project Panxii.Infrastructure/Panxii.Infrastructure.csproj `
 	--startup-project Panxii.WebApi/Panxii.WebApi.csproj
@@ -346,9 +347,13 @@ dotnet ef database update `
 $sql = Get-Content -Raw database/seed-development.sql
 $sql | docker exec -i panxii_mysql_dev mysql `
 	--host=127.0.0.1 --user=panxii_app --password=panxii_local_only --database=PanxiiDev
+
+# Start API and command/outbox Worker after migrations and seed
+docker compose -f docker-compose.local.yml up -d --build panxii-api panxii-worker
 ```
 
-Khởi động API Development:
+Swagger: `http://localhost:5099/swagger`. RabbitMQ management local: `http://localhost:15672`.
+Nếu chạy API trực tiếp trên host thay vì Compose, dùng:
 
 ```powershell
 dotnet run --project backend/Panxii.WebApi/Panxii.WebApi.csproj `

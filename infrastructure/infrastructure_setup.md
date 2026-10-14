@@ -21,7 +21,7 @@ Chỉ Nginx mở public. MySQL, RabbitMQ và internal API nằm trong private Do
 Các service đề nghị:
 
 - `api`: ASP.NET Core 8 Web API.
-- `worker`: publisher/consumer outbox RabbitMQ.
+- `worker`: durable command consumer and transactional outbox publisher.
 - `mysql`: MySQL 8 volume persistent.
 - `rabbitmq`: RabbitMQ management chỉ bind localhost hoặc private admin network.
 - `nginx`: reverse proxy và TLS.
@@ -63,7 +63,7 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${MYSQL_CONNECTION_STRING}
-      RabbitMq__Host: rabbitmq
+      RABBITMQ_CONNECTION: ${RABBITMQ_CONNECTION}
     depends_on:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
     environment:
       ConnectionStrings__Default: ${MYSQL_CONNECTION_STRING}
-      RabbitMq__Host: rabbitmq
+      RABBITMQ_CONNECTION: ${RABBITMQ_CONNECTION}
     networks: [backend]
 
   mysql:
@@ -196,12 +196,28 @@ Password không truyền trên command line trong production; dùng secret file 
 
 ## 8. RabbitMQ production
 
-- Durable quorum queue cho event quan trọng.
-- Publisher confirms và manual ack.
-- Retry queue + DLQ.
+- Durable quorum queue `panxii.commands.create` cho create/sync commands.
+- Durable retry queue `panxii.commands.retry` và DLQ `panxii.commands.dlq`.
+- Durable topic exchange `panxii.realtime` cho post-commit entity snapshots.
+- Publisher confirms và manual acknowledgements; consumer idempotent theo tenant, operation id và payload hash.
+- API instance tạo exclusive queue tạm để relay realtime vào các SignalR connection local; hub chỉ group theo JWT tenant claim.
+- Broker credentials nằm trong secret store; chỉ bind management port vào VPN/admin network, không public.
 - Management UI chỉ qua VPN/SSH tunnel.
 - User publisher và consumer riêng.
-- Alert queue depth, unacked messages, disk free và consumer lag.
+- Alert queue depth, unacked messages, retry/DLQ count, outbox pending age, disk free và consumer lag.
+
+### Local compose
+
+`docker-compose.local.yml` binds API, RabbitMQ AMQP, and RabbitMQ management
+ports only to `127.0.0.1`. Start MySQL/RabbitMQ, apply EF migrations and seed,
+then start `panxii-api` and `panxii-worker`. To run the API directly on the host
+instead, it reads `RABBITMQ_CONNECTION` from the ignored backend `.env`. Local
+credentials are development-only and must not be reused in production.
+
+The WebSocket endpoint is `/hubs/pos`. Nginx must preserve HTTP/1.1 Upgrade and
+Connection headers for `/hubs/`; clients authenticate using their JWT. The hub
+derives tenant group membership from the validated token, never from
+client-supplied tenant/group values.
 
 ## 9. CI/CD GitHub Actions
 

@@ -89,7 +89,7 @@ Chứng minh user, device, query, command, event và cache của tenant A không
 | T-005 | Database | Insert entity A với `TenantId = B` | Guard/interceptor reject hoặc ghi đúng A; không được ghi B |
 | T-006 | Query filter | Bỏ tenant claim hoặc tenant context null | Không trả dữ liệu tenant |
 | T-007 | Sync | Device A gửi invoice có product B | Reject với error code phù hợp |
-| T-008 | SignalR | Invoice A được sync | Device B không nhận event; device A cùng tenant nhận |
+| T-008 | SignalR | Invoice A được tạo qua queue | Tenant A clients receive the full committed snapshot and sequence; tenant B receives nothing; event is emitted only after DB commit |
 | T-009 | Cache | Hai tenant request cùng resource key | Response không bị dùng chéo tenant |
 | T-010 | SuperAdmin | SuperAdmin xem dữ liệu platform | Chỉ endpoint explicit, có audit, không mở bypass cho role khác |
 | T-011 | Fuzz | Thay đổi resource ID, tenant header, query filter ngẫu nhiên | Không có response chứa dữ liệu chéo tenant |
@@ -135,15 +135,17 @@ xem thêm tại [role_based_test_cases.md](testing/role_based_test_cases.md)
 | T-101 | Unit | Client clock nhanh 2 giờ gửi invoice | Server `SyncedAt` làm timestamp ghi sổ |
 | T-102 | Unit | Client clock chậm 24 giờ gửi invoice | Không làm lùi thứ tự server |
 | T-103 | Integration | Hai invoice có client time ngược nhau | Thứ tự server dựa sequence/server time, không dựa client time |
-| T-104 | Integration | Pull cursor nhận event 10 rồi 11 | Local apply 10 -> 11, cursor tăng đúng |
+| T-104 | Integration | Pull `afterSequence` nhận change 10 rồi 11 | Local apply 10 -> 11; chỉ advance `nextSequence` after transaction commit |
 | T-105 | Integration | Event 11 đến trước event 10 | Không ghi đè version 11 bằng version 10; xử lý late event an toàn |
 | T-106 | Integration | Cùng event được giao hai lần | Consumer deduplicate, state cuối không đổi |
 | T-107 | E2E | API commit xong nhưng response timeout | Retry cùng idempotency key trả kết quả cũ |
 | T-108 | Chaos | RabbitMQ delay 1-5 phút | Invoice server không mất; device cuối cùng converge |
 | T-109 | Unit | DST/timezone thay đổi | UTC instant không đổi; UI chỉ đổi cách hiển thị |
-| T-110 | Integration | Cursor hết hạn | Trả `ERR_CURSOR_EXPIRED`, full resync không tạo duplicate |
-| T-111 | Concurrency | Hai worker xử lý cùng outbox | Lease/lock bảo đảm không làm sai thứ tự; consumer idempotent |
+| T-110 | Integration | Pull với `afterSequence < 0`, limit 0 hoặc limit >200 | Trả `400 ERR_INVALID_PAGING`; sequence valid không hết hạn while retained change rows exist |
+| T-111 | Concurrency | Hai worker publish cùng outbox event | Có thể giao trùng; client deduplicate theo messageId/sequence, không giảm version hoặc mất change |
 | T-112 | Property | Sinh chuỗi event trùng/trễ/ngẫu nhiên | State cuối bằng state từ chuỗi event hợp lệ theo version |
+| T-113 | Integration | Client nhận `DataCreated` cho Product/Customer/Invoice | Snapshot được upsert/deduplicated theo `messageId`/`serverSequence` và chèn lên đầu; không cần gọi refresh endpoint |
+| T-114 | Integration | API chấp nhận command nhưng worker commit xong trước khi process chết | Redelivery không tạo duplicate; outbox vẫn phát một logical event, duplicates được client deduplicate |
 
 ### 4.4. Tiêu chí ordering/convergence
 
@@ -152,7 +154,7 @@ Với cùng một tập command hợp lệ, sau khi tất cả message đã đư
 ```text
 Server ledger = expected ledger
 Local replica của mọi device active = Server ledger
-LastServerCursor >= cursor của mọi change đã apply
+LastServerSequence >= sequence của mọi change đã apply
 Version local không giảm
 SyncedAtUtc không lấy từ client timestamp
 ```

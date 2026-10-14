@@ -33,7 +33,9 @@ Dependency chỉ hướng vào trong. Chi tiết coding nằm tại [Backend Cod
 
 ### Invoice sync
 
-`SQLite local outbox -> POST /api/v1/invoices/sync -> MySQL transaction -> outbox -> RabbitMQ -> SignalR event -> other devices pull API`.
+`SQLite local outbox -> POST /api/v1/invoices/sync (202 after RabbitMQ confirm) -> command worker -> MySQL transaction (invoice + sync operation + server change + outbox) -> RabbitMQ realtime topic -> per-instance API relay -> SignalR tenant group`.
+
+Connected clients apply the full `DataCreated` snapshot immediately. Clients that reconnect or miss an event recover using `GET /api/v1/sync/pull?afterSequence=...`.
 
 ### Query offline
 
@@ -47,8 +49,8 @@ JWT, tenant context, device revoke và feature flag được kiểm tra ở serv
 
 - MySQL transaction là nguồn xác nhận invoice server.
 - Idempotency bảo vệ retry.
-- Outbox bảo vệ việc phát event sau commit.
-- SignalR chỉ là notification; pull API mới trả dữ liệu đầy đủ.
+- Outbox bảo vệ việc phát snapshot sau commit.
+- SignalR snapshot tối ưu UX online; pull sequence là đường khôi phục durable.
 - SQLite ưu tiên availability cho UI offline.
 
 ## 6. Quyết định vận hành
