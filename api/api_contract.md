@@ -239,7 +239,7 @@ TenantAdmin có CRUD customer trong tenant. Staff chỉ được tìm kiếm/đ�
 
 #### `POST /customers`
 
-**Role:** TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
+**Role:** Staff, TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
 Header `Idempotency-Key` là bắt buộc. API trả `202` với operation id sau publisher confirm; worker tạo customer và phát snapshot realtime sau khi commit.
 Errors: `ERR_ACCESS_DENIED`, `ERR_INVALID_REQUEST`, `ERR_DUPLICATE_CUSTOMER_CODE`.
 
@@ -321,9 +321,15 @@ Worker xác thực invoice và ghi invoice, `sync_operations`, `server_changes`,
 
 Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
 
+### `GET /invoices?from=&to=&invoiceType=&page=&pageSize=`
+
+**Role:** Staff, TenantAdmin. Staff chỉ thấy invoice do chính mình tạo (`createdByUserId` = user trong JWT); TenantAdmin thấy toàn bộ invoice trong tenant. Tenant và user lấy từ JWT, không nhận từ query.
+`from` (bao gồm) và `to` (không bao gồm) lọc theo `clientCreatedAtUtc`; `invoiceType` nhận `Sale`, `Reverse` hoặc `Correction`; `pageSize` tối đa 200, mặc định 50. Sắp xếp `clientCreatedAtUtc` giảm dần. Response là danh sách summary (không có `details`) kèm `meta.paging` gồm `page`, `pageSize`, `totalCount`, `hasMore`; dùng `GET /invoices/{id}` để lấy chi tiết.
+Errors: `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`.
+
 ### `GET /invoices/{id}`
 
-**Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse.
+**Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse. Staff chỉ đọc invoice do chính mình tạo; invoice của người khác trả `404 ERR_INVOICE_NOT_FOUND`.
 
 Staff và TenantAdmin được in invoice đã đọc trên thiết bị client. App dựng bản in từ invoice snapshot và `ReceiptTemplate` trong `/settings/effective`, rồi gửi tới máy in local/Bluetooth; in không thay đổi invoice và không có server-side print endpoint. Nếu in lỗi, mobile dùng `ERR_PRINT_FAILED`; invoice không rollback.
 
@@ -845,10 +851,11 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
 | GET | `/customers` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Customer[]` + paging; Staff chỉ thấy active | 200 |
-| POST | `/customers` | TenantAdmin; `CreateCustomerRequest` | `Customer` | 201 |
+| POST | `/customers` | `CreateCustomerRequest` | `Customer` | 201 |
 | PATCH | `/customers/{id}` | TenantAdmin; `UpdateCustomerRequest` + `expectedVersion` | `Customer` | 200 |
 | POST | `/customers/{id}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `Customer` | 200 |
 | DELETE | `/customers/{id}` | TenantAdmin; query `expectedVersion` | `DeletionResult` | 200 |
+| GET | `/invoices` | query `from,to,invoiceType,page,pageSize`; Staff chỉ thấy invoice của mình | `InvoiceSummary[]` + paging | 200 |
 | GET | `/invoices/{id}` | path `id` | `Invoice` | 200 |
 | POST | `/invoices/sync` | `SyncInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201/200 |
 | POST | `/invoices/{id}/reverse` | TenantAdmin; `ReverseInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
