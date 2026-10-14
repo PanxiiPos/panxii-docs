@@ -430,7 +430,7 @@ LineTotal = Quantity * UnitPrice - DiscountAmount + TaxAmount
 TotalAmount = Subtotal - DiscountAmount + TaxAmount + RoundingAmount
 ```
 
-Do làm tròn tiền, so sánh theo tolerance nhỏ được định nghĩa cho currency, không so sánh số thực nhị phân.
+API v1 dùng `decimal` và so sánh chính xác sau khi giới hạn input ở tối đa 4 chữ số thập phân; không dùng floating-point, tolerance ngầm hoặc tự làm tròn. Sale truyền `RoundingAmount` tường minh; Correction hiện dùng `RoundingAmount = 0`. Quy tắc `MidpointRounding`/rounding theo currency phải được đặc tả trước khi bật tính năng tự động làm tròn.
 
 ---
 

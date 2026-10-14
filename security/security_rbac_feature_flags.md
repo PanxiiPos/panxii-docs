@@ -88,7 +88,7 @@ Các flag ban đầu:
 | `EnableInventory` | bool | false | Ẩn module và chặn endpoint kho |
 | `EnableAttendance` | bool | false | Chặn module chấm công |
 | `EnableBluetoothPrint` | bool | false | Cho phép cấu hình máy in |
-| `AutoRoundMoney` | bool | false | Server tính rounding theo rule |
+| `AutoRoundMoney` | bool | false | Chưa áp dụng vào invoice v1; cần đặc tả rounding theo currency trước khi server tính rounding |
 
 UI chỉ ẩn/disable trải nghiệm; mọi rule quan trọng phải kiểm tra lại tại API.
 
