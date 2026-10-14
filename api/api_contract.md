@@ -128,10 +128,11 @@ Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login
 
 TenantAdmin có quyền quản lý sản phẩm trong tenant; Staff chỉ được tìm/xem sản phẩm active. Mọi thao tác lấy tenant từ JWT, không nhận tenant scope do client quyết định.
 
-### `GET /products?search=&page=&pageSize=&updatedSince=&includeInactive=`
+### `GET /products?search=&cursor=&pageSize=&updatedSince=&includeInactive=`
 
 **Role:** Staff, TenantAdmin.  
-Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental.
+Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental. `search` tìm theo tên, SKU hoặc barcode. Kết quả sắp xếp `name ASC, id ASC`.
+Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ; không dùng trong client mới.
 
 ```json
 {
@@ -148,7 +149,7 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
   }],
   "meta": {
     "paging": {
-      "page": 1,
+      "nextCursor": "opaque-cursor-or-null",
       "hasMore": true,
       "pageSize": 50
     }
@@ -194,16 +195,16 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### Categories
 
-`GET /categories` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
+`GET /categories?search=&cursor=&pageSize=&includeInactive=` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. Search theo tên/mã; sort `sortOrder ASC, name ASC, id ASC`; paging dùng cursor keyset opaque. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
 Errors: `ERR_ACCESS_DENIED`, `ERR_CATEGORY_NOT_FOUND`, `ERR_DUPLICATE_CATEGORY_CODE`, `ERR_CATEGORY_PARENT_CYCLE`, `ERR_VERSION_CONFLICT`.
 
 ### TenantAdmin quản lý tài khoản Staff
 
 Các endpoint sau chỉ dành cho TenantAdmin và chỉ tác động đến tài khoản role `Staff` thuộc tenant trong JWT. Không nhận `tenantId` hoặc `role` từ request để xác định quyền.
 
-#### `GET /tenant/staff?search=&page=&pageSize=`
+#### `GET /tenant/staff?search=&cursor=&pageSize=`
 
-Liệt kê Staff của tenant, bao gồm tài khoản inactive; response có paging và không chứa credential.
+Liệt kê Staff của tenant, bao gồm tài khoản inactive; search theo username/display name, sort `displayName ASC, id ASC`, dùng cursor keyset và không chứa credential.
 
 #### `POST /tenant/staff`
 
@@ -231,11 +232,11 @@ Errors: `ERR_STAFF_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`,
 
 ### Customers
 
-TenantAdmin có CRUD customer trong tenant. Staff chỉ được tìm kiếm/đọc thông tin customer phục vụ lập invoice; Staff không được tạo, sửa hoặc xóa customer. Mọi thao tác lấy tenant từ JWT.
+TenantAdmin có CRUD customer trong tenant theo các giới hạn nghiệp vụ. Staff được tìm kiếm/đọc và tạo customer phục vụ lập invoice; Staff không được sửa hoặc xóa customer. Mọi thao tác lấy tenant từ JWT.
 
-#### `GET /customers?search=&updatedSince=&includeInactive=`
+#### `GET /customers?search=&cursor=&pageSize=&updatedSince=&includeInactive=`
 
-**Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại.
+**Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại. `search` tìm theo tên, mã customer hoặc số điện thoại; sort `fullName ASC, id ASC`. Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ.
 
 #### `POST /customers`
 
@@ -321,10 +322,10 @@ Worker xác thực invoice và ghi invoice, `sync_operations`, `server_changes`,
 
 Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
 
-### `GET /invoices?from=&to=&invoiceType=&page=&pageSize=`
+### `GET /invoices?search=&from=&to=&invoiceType=&cursor=&pageSize=`
 
 **Role:** Staff, TenantAdmin. Staff chỉ thấy invoice do chính mình tạo (`createdByUserId` = user trong JWT); TenantAdmin thấy toàn bộ invoice trong tenant. Tenant và user lấy từ JWT, không nhận từ query.
-`from` (bao gồm) và `to` (không bao gồm) lọc theo `clientCreatedAtUtc`; `invoiceType` nhận `Sale`, `Reverse` hoặc `Correction`; `pageSize` tối đa 200, mặc định 50. Sắp xếp `clientCreatedAtUtc` giảm dần. Response là danh sách summary (không có `details`) kèm `meta.paging` gồm `page`, `pageSize`, `totalCount`, `hasMore`; dùng `GET /invoices/{id}` để lấy chi tiết.
+`search` tìm invoice number theo substring hoặc invoice ID/barcode theo exact match. `from` (bao gồm) và `to` (không bao gồm) lọc theo `clientCreatedAtUtc`; `invoiceType` nhận `Sale`, `Reverse` hoặc `Correction`. Kết quả sắp xếp `clientCreatedAtUtc DESC, id DESC`. Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ. `pageSize` tối đa 200, mặc định 50. Response cursor gồm `nextCursor`, `pageSize`, `hasMore`; cursor hết hạn sau 15 phút. Dùng `GET /invoices/{id}` để lấy chi tiết.
 Errors: `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`.
 
 ### `GET /invoices/{id}`
@@ -407,9 +408,9 @@ Request dùng `{ "value": <value theo schema>, "expectedVersion": 12 }`. Thay đ
 
 Chỉ SuperAdmin được quản lý tenant. Tạo tenant và tài khoản TenantAdmin đầu tiên là một use case/transaction: nếu tạo account thất bại, tenant cũng không được lưu. Password chỉ được hash, không trả về hoặc ghi log. Các API quản lý TenantAdmin ở `/platform/tenants/{tenantId}/admins` dùng để quản lý thêm account sau onboarding.
 
-#### `GET /platform/tenants?search=&page=&pageSize=&includeDeleted=`
+#### `GET /platform/tenants?search=&cursor=&pageSize=&includeDeleted=`
 
-Liệt kê tenant, mặc định không gồm tenant đã soft-delete. `includeDeleted=true` chỉ dành cho SuperAdmin. Response có paging chuẩn.
+Liệt kê tenant, mặc định không gồm tenant đã soft-delete. `includeDeleted=true` chỉ dành cho SuperAdmin. Search theo code/tên, sort `name ASC, id ASC`; response dùng cursor keyset.
 
 #### `POST /platform/tenants`
 
@@ -461,9 +462,9 @@ Errors: `ERR_TENANT_NOT_FOUND`, `ERR_DUPLICATE_TENANT_CODE`, `ERR_INVALID_REQUES
 
 Các endpoint dưới đây chỉ dành cho **SuperAdmin**. `{tenantId}` xác định tenant đích; server phải kiểm tra tenant tồn tại và tenant scope trên mọi thao tác. Không cho client thay đổi role: tài khoản do nhóm API này quản lý luôn có role `TenantAdmin`.
 
-#### `GET /platform/tenants/{tenantId}/admins?search=&page=&pageSize=`
+#### `GET /platform/tenants/{tenantId}/admins?search=&cursor=&pageSize=`
 
-Liệt kê tài khoản TenantAdmin của tenant, gồm cả tài khoản đã vô hiệu hóa. Response dùng collection envelope và paging chuẩn; không trả password, password hash, PIN hoặc token.
+Liệt kê tài khoản TenantAdmin của tenant, gồm cả tài khoản đã vô hiệu hóa. Search theo username/display name/email, sort `displayName ASC, id ASC`; response dùng collection envelope và cursor keyset; không trả password, password hash, PIN hoặc token.
 
 #### `POST /platform/tenants/{tenantId}/admins`
 
@@ -628,6 +629,10 @@ Mọi response thành công đều dùng một trong hai dạng sau.
 ```
 
 #### Collection/paging
+
+Mobile mới dùng cursor keyset opaque cho mọi list có paging, ngoại trừ `GET /sync/pull` dùng `afterSequence`/`nextSequence` để phục hồi thay đổi tuần tự. API v1 tạm hỗ trợ `page` offset deprecated để giữ tương thích client cũ. Nếu có query key `cursor`, kể cả giá trị rỗng, request chọn cursor mode; nếu không có `cursor`, request chọn legacy page mode (`page` mặc định là 1). Không gửi đồng thời `page` và `cursor`; kết hợp cả hai trả `400 ERR_INVALID_PAGING`. Cursor list được ràng buộc với tenant/user scope, từ khóa đã chuẩn hóa, filter và sort; client không tự tạo, giải mã, sửa hoặc dùng lại cursor cho query khác. Server dùng thứ tự xác định và khóa phụ ID duy nhất. Cursor hết hạn sau 15 phút; cursor không hợp lệ/hết hạn trả `400 ERR_INVALID_PAGING`; client bỏ cursor và tải lại bằng `cursor=`.
+
+Với các query search, trim và chuẩn hóa Unicode NFC, không phân biệt hoa thường; query rỗng sau chuẩn hóa nghĩa là không filter, text fields dùng substring match và identifiers/barcodes dùng exact match khi endpoint quy định. Local và server phải dùng cùng fields/semantics. `pageSize` mặc định 50, tối đa 200. Cursor response có `nextCursor`, `hasMore`, `pageSize`; legacy page response giữ `page`, `hasMore`, `pageSize`. Không yêu cầu `totalCount`.
 
 ```json
 {
@@ -830,47 +835,49 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 
 ## 10. Bảng endpoint đầy đủ và format bắt buộc
 
+Query trong bảng là contract ưu tiên cho client mới. API v1 vẫn nhận `page` deprecated theo mục compatibility để hỗ trợ client cũ; không gửi `page` cùng `cursor`.
+
 | Method | Endpoint | Request body/query | Response `data` | Status thành công |
 |---|---|---|---|---:|
 | POST | `/auth/login` | `LoginRequest` | `LoginResponse` | 200 |
 | POST | `/auth/refresh` | `RefreshTokenRequest` | `TokenResponse` | 200 |
 | POST | `/auth/logout` | Không body | `LogoutResult` | 200 |
-| GET | `/products` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Product[]` + paging | 200 |
+| GET | `/products` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Product[]` + cursor paging | 200 |
 | POST | `/products` | `CreateProductRequest` | `Product` | 201 |
 | PATCH | `/products/{id}` | `UpdateProductRequest` + `expectedVersion` | `Product` | 200 |
 | POST | `/products/{id}/deactivate` | `expectedVersion` | `Product` | 200 |
 | DELETE | `/products/{id}` | query `expectedVersion` | `DeletionResult` | 200 |
 | POST | `/products/bulk-price` | `BulkPriceRequest` | `BulkPriceResult` | 200 |
-| GET | `/tenant/staff` | query `search,page,pageSize` | `StaffAccount[]` + paging | 200 |
+| GET | `/tenant/staff` | query `search,cursor,pageSize` | `StaffAccount[]` + cursor paging | 200 |
 | POST | `/tenant/staff` | `CreateStaffRequest` | `StaffAccount` | 201 |
 | GET | `/tenant/staff/{userId}` | path `userId` | `StaffAccount` | 200 |
 | PATCH | `/tenant/staff/{userId}` | `UpdateStaffRequest` + `expectedVersion` | `StaffAccount` | 200 |
 | POST | `/tenant/staff/{userId}/deactivate` | Không body | `StaffAccount` | 200 |
 | DELETE | `/tenant/staff/{userId}` | path `userId` | `DeletionResult` | 200 |
-| GET | `/categories` | query filter/cursor | `Category[]` + paging | 200 |
+| GET | `/categories` | query `search,cursor,pageSize,includeInactive` | `Category[]` + cursor paging | 200 |
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
-| GET | `/customers` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Customer[]` + paging; Staff chỉ thấy active | 200 |
+| GET | `/customers` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Customer[]` + cursor paging; Staff chỉ thấy active | 200 |
 | POST | `/customers` | `CreateCustomerRequest` | `Customer` | 201 |
 | PATCH | `/customers/{id}` | TenantAdmin; `UpdateCustomerRequest` + `expectedVersion` | `Customer` | 200 |
 | POST | `/customers/{id}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `Customer` | 200 |
 | DELETE | `/customers/{id}` | TenantAdmin; query `expectedVersion` | `DeletionResult` | 200 |
-| GET | `/invoices` | query `from,to,invoiceType,page,pageSize`; Staff chỉ thấy invoice của mình | `InvoiceSummary[]` + paging | 200 |
+| GET | `/invoices` | query `search,from,to,invoiceType,cursor,pageSize`; Staff chỉ thấy invoice của mình | `InvoiceSummary[]` + cursor paging | 200 |
 | GET | `/invoices/{id}` | path `id` | `Invoice` | 200 |
 | POST | `/invoices/sync` | `SyncInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201/200 |
 | POST | `/invoices/{id}/reverse` | TenantAdmin; `ReverseInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
 | POST | `/invoices/{id}/correction` | `CorrectionInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
-| GET | `/sync/pull` | `cursor,limit` | `SyncChange[]` + paging | 200 |
+| GET | `/sync/pull` | `afterSequence,limit` | `SyncChange[]` + sequence paging | 200 |
 | GET | `/settings/effective` | Không body | `EffectiveSettings` | 200 |
 | PUT | `/settings/{key}` | `UpdateSettingRequest` + version; TenantAdmin tenant scope | `Setting` | 200 |
-| GET | `/platform/tenants` | query `search,page,pageSize,includeDeleted` | `PlatformTenant[]` + paging | 200 |
+| GET | `/platform/tenants` | query `search,cursor,pageSize,includeDeleted` | `PlatformTenant[]` + cursor paging | 200 |
 | POST | `/platform/tenants` | `CreatePlatformTenantRequest` including initial `TenantAdmin` | `CreatePlatformTenantResponse` | 201 |
 | GET | `/platform/tenants/{tenantId}` | path `tenantId`; optional `includeDeleted` | `PlatformTenant` | 200 |
 | PATCH | `/platform/tenants/{tenantId}` | `UpdatePlatformTenantRequest` + `expectedVersion` | `PlatformTenant` | 200 |
 | POST | `/platform/tenants/{tenantId}/suspend` | Không body | `PlatformTenant` | 200 |
 | POST | `/platform/tenants/{tenantId}/reactivate` | Không body | `PlatformTenant` | 200 |
 | DELETE | `/platform/tenants/{tenantId}` | path `tenantId` | `DeletePlatformTenantResponse` (soft-delete) | 200 |
-| GET | `/platform/tenants/{tenantId}/admins` | query `search,page,pageSize` | `TenantAdminAccount[]` + paging | 200 |
+| GET | `/platform/tenants/{tenantId}/admins` | query `search,cursor,pageSize` | `TenantAdminAccount[]` + cursor paging | 200 |
 | POST | `/platform/tenants/{tenantId}/admins` | `CreateTenantAdminRequest` | `TenantAdminAccount` | 201 |
 | GET | `/platform/tenants/{tenantId}/admins/{userId}` | path `tenantId,userId` | `TenantAdminAccount` | 200 |
 | PATCH | `/platform/tenants/{tenantId}/admins/{userId}` | `UpdateTenantAdminRequest` + `expectedVersion` | `TenantAdminAccount` | 200 |

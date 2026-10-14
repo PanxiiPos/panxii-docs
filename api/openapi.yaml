@@ -70,11 +70,12 @@ paths:
     get:
       operationId: listTenantStaff
       tags: [Tenant Administration]
-      description: TenantAdmin only. Lists Staff accounts in the authenticated tenant, including inactive accounts.
+      description: TenantAdmin only. Lists Staff accounts in the authenticated tenant, including inactive accounts. Search by username or display name; order by displayName ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200': { description: Staff account collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffListResponse' } } } }
@@ -160,11 +161,12 @@ paths:
     get:
       operationId: listProducts
       tags: [Products]
-      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only.
+      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only. Search name, SKU, or barcode; order by name ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
@@ -298,10 +300,12 @@ paths:
     get:
       operationId: listCategories
       tags: [Products]
+      description: Lists active categories in the tenant. Search by name or code; order by sortOrder ascending, name ascending, then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
@@ -325,11 +329,12 @@ paths:
     get:
       operationId: listCustomers
       tags: [Customers]
-      description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only.
+      description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only. Search name, customer code, or phone; order by fullName ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
@@ -446,13 +451,15 @@ paths:
     get:
       operationId: listInvoices
       tags: [Invoices]
-      description: Staff receives only invoices they created; TenantAdmin receives all invoices in the tenant. Ordered by clientCreatedAtUtc descending. Returns summaries without details.
+      description: Staff receives only invoices they created; TenantAdmin receives all invoices in the tenant. Search invoice number by substring or invoice ID/barcode by exact match; order by clientCreatedAtUtc descending then id descending. Uses opaque keyset cursor and returns summaries without details.
       x-error-codes: [ERR_INVALID_PAGING, ERR_INVALID_ENUM]
       parameters:
+        - { $ref: '#/components/parameters/Search' }
         - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: invoiceType, in: query, required: false, schema: { type: string, enum: [Sale, Reverse, Correction] } }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200': { description: Invoice summary collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessInvoiceListResponse' } } } }
@@ -539,10 +546,11 @@ paths:
     get:
       operationId: listPlatformTenants
       tags: [Platform Administration]
-      description: SuperAdmin only. Lists tenants; deleted tenants are excluded unless includeDeleted is true.
+      description: SuperAdmin only. Lists tenants; deleted tenants are excluded unless includeDeleted is true. Search code or name; order by name ascending then id ascending; uses opaque keyset cursor.
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: includeDeleted, in: query, required: false, schema: { type: boolean, default: false } }
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_PAGING]
@@ -641,10 +649,11 @@ paths:
     get:
       operationId: listTenantAdmins
       tags: [Platform Administration]
-      description: SuperAdmin only. Lists TenantAdmin accounts in the specified tenant.
+      description: SuperAdmin only. Lists TenantAdmin accounts in the specified tenant. Search username, display name, or email; order by displayName ascending then id ascending; uses opaque keyset cursor.
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       x-error-codes: [ERR_ACCESS_DENIED, ERR_TENANT_NOT_FOUND, ERR_INVALID_PAGING]
       responses:
@@ -770,9 +779,10 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
-    Search: { name: search, in: query, required: false, schema: { type: string, maxLength: 120 } }
-    Cursor: { name: cursor, in: query, required: false, schema: { type: string, nullable: true } }
-    PageSize: { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    Search: { name: search, in: query, required: false, description: Trim outer whitespace, normalize Unicode NFC, and compare case-insensitively. Text fields use substring matching; endpoint descriptions define identifier matching. Empty query means no filter., schema: { type: string, maxLength: 120 } }
+    Cursor: { name: cursor, in: query, required: false, allowEmptyValue: true, description: Cursor mode is selected when this query key is present; send an empty value for the first page. Omit only for legacy page mode. Opaque keyset cursor is bound to tenant/user scope, filters, and sort, and expires after 15 minutes., schema: { type: string } }
+    Page: { name: page, in: query, required: false, deprecated: true, description: Legacy API v1 offset pagination for existing clients; do not send together with cursor., schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, required: false, description: Maximum number of items in one cursor page., schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
     DeviceId: { name: X-Device-Id, in: header, required: true, schema: { type: string } }
     CorrelationId: { name: X-Correlation-Id, in: header, required: false, schema: { type: string, format: uuid } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
@@ -802,6 +812,7 @@ components:
       required: [hasMore]
       properties:
         nextCursor: { type: string, nullable: true }
+        page: { type: integer, minimum: 1, deprecated: true }
         nextSequence: { type: integer, format: int64, minimum: 0 }
         hasMore: { type: boolean }
         pageSize: { type: integer, minimum: 1, maximum: 200 }

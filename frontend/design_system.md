@@ -17,6 +17,23 @@ Design system dùng `flex_color_scheme` để tạo `ColorScheme`; `hugeicons` c
 
 Mọi widget dùng token từ `Theme.of(context)`, không dùng hex/radius/spacing magic number rải rác.
 
+### 2.1. Semantic token trạng thái mạng và đồng bộ
+
+Khai báo các token trong `AppThemeExtension` và cung cấp giá trị cho cả light/dark theme:
+
+| Token | Trạng thái |
+|---|---|
+| `networkOnline` | Thiết bị có kết nối mạng |
+| `networkOffline` | Thiết bị mất kết nối mạng |
+| `syncPending` | Dữ liệu đã lưu local, chờ gửi |
+| `syncUploading` | Đang gửi dữ liệu lên server |
+| `syncQueued` | Server/broker đã nhận lệnh, đang chờ xử lý |
+| `syncDownloading` | Đang nhận/pull dữ liệu từ server |
+| `syncComplete` | Server đã xác nhận đồng bộ hoàn tất |
+| `syncError` | Đồng bộ thất bại hoặc bị từ chối |
+
+Mỗi token trạng thái phải có màu riêng, đủ tương phản trên nền sử dụng và nhất quán giữa các feature; kiểm thử cả light/dark. Không tự gán màu trong widget. Luôn đi kèm nhãn hoặc icon có semantic label; màu không phải tín hiệu duy nhất. `syncQueued` không được hiển thị như `syncComplete`.
+
 ## 3. Component states
 
 Mỗi component cần xác định `default`, `hover/focus`, `pressed`, `disabled`, `loading`, `error`, `empty` khi phù hợp. Layout phải giữ kích thước ổn định khi state đổi.

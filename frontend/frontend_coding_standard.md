@@ -339,11 +339,17 @@ Widget -> BLoC -> UseCase -> Repository
 Repository là owner của việc chọn local/remote:
 
 - Query UI đọc SQLite trước.
+- Search BLoC phát kết quả local ngay, đồng thời gọi API khi online; debounce 300 ms và dùng query generation/cancellation để response cũ không ghi đè kết quả của từ khóa/bộ lọc mới.
+- Chuẩn hóa query giống business/API contract. Trang server đầu tiên thay tập kết quả synced đang cache; local mutation/outbox pending vẫn được giữ riêng. Merge theo ID, áp version server mới hơn hoặc bằng chỉ khi không có local mutation pending; deduplicate trước khi emit state.
+- Khi query/filter/sort/tenant đổi, reset server cursor và local continuation cursor. Chỉ một request load-more cho một cursor được chạy tại một thời điểm; append page chỉ khi query generation còn hiện hành và cursor khớp.
+- Dùng cursor keyset cho local và remote list lớn. Server `nextCursor` quyết định tiếp trang online; cursor local không thay thế cursor server hoặc `ServerSequence` của sync pull. Offline giữ local results, không giả lập đã tải hết server pages.
+- Với API v1, request đầu cursor-based phải gửi query key `cursor` với giá trị rỗng (`cursor=`); các request tiếp theo gửi nguyên `nextCursor`. `page` chỉ dành cho client cũ và không được dùng trong feature mobile mới.
 - Background worker gửi `Pending` outbox lên `/api/v1/invoices/sync`.
 - Response parse theo canonical API envelope.
 - Retry dùng cùng `Idempotency-Key`/`clientOperationId`.
 - SignalR chỉ gửi event/cursor; dữ liệu đầy đủ lấy từ pull API.
-- Upsert local và cursor update trong cùng SQLite transaction.
+- UI trạng thái mạng/sync dùng token `networkOnline`, `networkOffline`, `syncPending`, `syncUploading`, `syncQueued`, `syncDownloading`, `syncComplete`, `syncError` từ [Design System](design_system.md); feature không tự khai báo token/màu. Luôn có nhãn/icon và không hiển thị `Queued` như đồng bộ hoàn tất.
+- Sync pull upsert local và cập nhật `LastServerSequence` trong cùng SQLite transaction. Cursor của list chỉ được commit sau khi page đó xử lý thành công; không dùng list cursor làm sync checkpoint.
 
 Widget không được biết app đang online hay offline bằng cách tự gọi network. BLoC nhận state từ repository.
 
@@ -443,6 +449,14 @@ Tên component phải thể hiện semantic:
 - Deep link và back navigation phải có behavior rõ ràng.
 - Khi rời form có dữ liệu chưa sync, phải cảnh báo hoặc giữ state local.
 
+### 10.1. Khách hàng trên hóa đơn
+
+- Invoice composer mặc định ở trạng thái khách vãng lai. Khi `customerId == null`, không hiển thị tên, số điện thoại hay thông tin customer nào trên hóa đơn hoặc bản in.
+- Cung cấp action rõ ràng `Chọn khách hàng` để mở danh sách khách đã lưu, có tìm kiếm và trạng thái loading/empty/offline; chọn một customer thì mới gắn customer đó vào invoice.
+- Tạo customer bằng luồng/form riêng với action xác nhận `Lưu khách hàng`. Chỉ sau khi lưu local thành công mới chọn customer vừa tạo cho invoice; tạo offline phải được lưu vào outbox theo rule sync.
+- Không đặt form customer nhập tạm trong invoice composer. Không đưa text nhập dở hoặc customer chưa được lưu vào invoice draft/payload/print. Hủy form tạo customer hoặc bỏ chọn phải giữ invoice ở trạng thái khách vãng lai.
+- Lưu nháp/chốt invoice không được tự tạo customer. Mọi label, validation và empty state phải dùng i18n; nội dung dài không làm tràn UI.
+
 ---
 
 ## 11. Design và accessibility
@@ -465,7 +479,8 @@ Tên component phải thể hiện semantic:
 - Dispose controller, subscription và SignalR connection đúng lifecycle.
 - List lớn dùng lazy loading/cursor pagination.
 - Ảnh/cache phải có kích thước và eviction policy.
-- Debounce tìm kiếm; không gửi request mỗi keystroke.
+- Debounce tìm kiếm 300 ms; không gửi request mỗi keystroke và bỏ response stale.
+- Nạp trước tối đa một trang mỗi lần, không tải trùng cursor; giữ vị trí cuộn khi realtime cập nhật.
 - Không parse payload lớn trên UI isolate nếu có thể chuyển sang isolate/background.
 - Không dùng `setState` để điều phối cross-feature state.
 
@@ -487,6 +502,9 @@ Tên component phải thể hiện semantic:
 - Local data hiển thị khi offline.
 - Network error giữ local data và đưa outbox Pending.
 - Retry cùng operation id không duplicate.
+- Search local hiển thị trước; server page thay synced result, pending local record được giữ và deduplicate theo ID/version.
+- Đổi query/filter reset cursor; response query cũ và load-more trùng cursor bị bỏ qua.
+- Offline hoặc remote search failure giữ local results và báo trạng thái dữ liệu có thể cũ.
 - `ERR_DEVICE_REVOKED` xóa session/database và redirect login.
 
 ### Widget test
@@ -495,6 +513,8 @@ Tên component phải thể hiện semantic:
 - Icon là `hugeicons` và có semantic label.
 - Dropdown/Dialog/DateRangePicker/Badge/Toast dùng wrapper `forui`.
 - Error field hiển thị đúng bản dịch.
+- Invoice khách vãng lai mặc định không có thông tin customer trên hóa đơn và bản in.
+- Customer chỉ được gắn invoice sau khi chọn từ danh bạ hoặc lưu thành công qua luồng tạo customer; hủy form không để lại dữ liệu customer trong invoice.
 - Text tiếng Việt/Anh không overflow.
 
 ### Integration/E2E
