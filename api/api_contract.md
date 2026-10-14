@@ -158,7 +158,7 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
 
 ### `POST /products`
 
-**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `categoryId` tùy chọn. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
 Header `Idempotency-Key` là bắt buộc. API publish command bền vững tới RabbitMQ rồi trả `202` với `{ "operationId": "uuid", "status": "Queued" }`. Worker mới tạo product; client nhận event `DataCreated` sau khi MySQL commit.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
@@ -189,8 +189,13 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 }
 ```
 
-`operation` nhận `Increase` hoặc `Decrease`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
+`operation` nhận `Increase` hoặc `Decrease`; `mode` nhận `Percentage` hoặc `FixedAmount`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_VERSION_CONFLICT`.
+
+### Categories
+
+`GET /categories` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
+Errors: `ERR_ACCESS_DENIED`, `ERR_CATEGORY_NOT_FOUND`, `ERR_DUPLICATE_CATEGORY_CODE`, `ERR_CATEGORY_PARENT_CYCLE`, `ERR_VERSION_CONFLICT`.
 
 ### TenantAdmin quản lý tài khoản Staff
 
@@ -330,12 +335,13 @@ Staff và TenantAdmin được in invoice đã đọc trên thiết bị client.
 ```
 
 Server lock invoice gốc, kiểm tra chưa reverse, tạo invoice âm mới và outbox event trong cùng transaction. Không update/delete detail gốc.
+`Idempotency-Key` là UUID bắt buộc và `X-Device-Id` phải được gửi; retry cùng key/payload trả lại kết quả đã áp dụng, payload khác trả `409 ERR_SYNC_PAYLOAD_MISMATCH`. Response thành công là `201`.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IMMUTABLE`.
 
 ### `POST /invoices/{id}/correction`
 
-**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới và lý do. Không mutate invoice cũ.
+**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới và lý do. Không mutate invoice cũ. `Idempotency-Key` UUID và `X-Device-Id` là bắt buộc. Server tính lại subtotal/discount/total từ details, yêu cầu tax bằng 0; reverse, correction, audit, sync change và outbox commit atomically. Retry cùng key/payload trả lại kết quả correction đã tạo.
 
 ## 5. Sync pull và feature flags
 
