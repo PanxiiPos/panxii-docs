@@ -15,6 +15,7 @@
 - Thay đổi role được phép thực hiện command là behavioral breaking change; không xem việc trả `403` thay cho hành vi trước đây là additive.
 - Chuyển unknown request fields từ ignore sang reject là behavioral breaking change với client gửi extra fields; kiểm tra request thực tế trước rollout.
 - Breaking change phải dùng `/api/v2` hoặc expand/contract.
+- Changing create/sync responses from `201`/`200` to `202 Queued` is behavioral breaking: release the mobile SignalR/operation-state consumer before enabling the queued endpoints for production traffic.
 - Mobile unknown enum phải map `Unknown`.
 - Server giữ field cũ trong deprecation window.
 

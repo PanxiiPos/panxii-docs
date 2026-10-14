@@ -285,48 +285,61 @@ Unique `(TenantId, SettingKey)`. Vì MySQL cho phép nhiều giá trị `NULL` t
 
 ### 4.10. `sync_operations`
 
-Nhật ký nhận outbox client và lớp bảo vệ idempotency.
+Nhật ký idempotency cho command nhận từ client/RabbitMQ.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `TenantId` | `CHAR(36)` | Không | FK tenant |
-| `ClientOperationId` | `CHAR(36)` | Không | UUID do client tạo |
-| `EntityType` | `VARCHAR(40)` | Không | Ví dụ `Invoice` |
-| `EntityId` | `CHAR(36)` | Không | ID entity |
-| `PayloadHash` | `CHAR(64)` | Không | SHA-256 payload chuẩn hóa |
-| `OperationType` | `VARCHAR(40)` | Không | Loại command để replay |
-| `Status` | `VARCHAR(20)` | Không | `Received`, `Applied`, `Rejected` |
-| `ErrorCode` | `VARCHAR(80)` | Có | Mã lỗi i18n |
-| `HttpStatus` | `SMALLINT` | Có | HTTP status của kết quả cuối |
-| `ResponseJson` | `JSON` | Có | Response chuẩn để retry replay |
-| `ResponseHash` | `CHAR(64)` | Có | Hash response đã lưu |
-| `ResourceId` | `CHAR(36)` | Có | Resource tạo/cập nhật |
-| `ExpiresAt` | `DATETIME(6)` | Có | Hạn lưu idempotency |
-| `ProcessedAt` | `DATETIME(6)` | Có | Thời điểm xử lý |
+| `OperationId` | `VARCHAR(64)` | Không | UUID ổn định do client tạo |
+| `EntityType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer` |
+| `EntityId` | `CHAR(36)` | Không | Entity ID; rejected command dùng UUID zero |
+| `Status` | `VARCHAR(20)` | Không | `Completed` hoặc `Rejected` |
+| `AttemptCount` | `INT` | Không | Số lần xử lý được ghi nhận |
+| `CompletedAt` | `DATETIME(6)` | Có | Thời điểm kết quả cuối |
+| `ErrorCode` | `VARCHAR(64)` | Có | Mã lỗi i18n khi rejected |
+| `ExtraDataJson` | `JSON` | Có | `payloadHash`; không chứa secret |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, ClientOperationId)`. Cùng operation id nhưng khác hash phải bị từ chối với `ERR_SYNC_PAYLOAD_MISMATCH`.
+Unique `(TenantId, OperationId)`. Cùng operation id nhưng khác hash phải bị từ chối với `ERR_SYNC_PAYLOAD_MISMATCH`.
 
 ### 4.11. `outbox_events`
 
-Transactional outbox để phát SignalR sau khi nghiệp vụ commit.
+Transactional outbox để phát realtime snapshot qua RabbitMQ sau khi nghiệp vụ commit.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `TenantId` | `CHAR(36)` | Không | Group SignalR |
-| `EventType` | `VARCHAR(80)` | Không | Ví dụ `InvoiceSynced` |
-| `AggregateId` | `CHAR(36)` | Không | Invoice/product liên quan |
-| `ServerSequence` | `BIGINT` | Không | Thứ tự tăng đơn điệu theo tenant |
-| `Payload` | `JSON` | Không | Payload tối thiểu |
+| `EventType` | `VARCHAR(120)` | Không | `DataCreated`, `CommandRejected` |
+| `AggregateType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer`, `Command` |
+| `AggregateId` | `CHAR(36)` | Không | Entity/operation liên quan |
+| `PayloadJson` | `JSON` | Không | Snapshot notification đã commit |
 | `Status` | `VARCHAR(20)` | Không | `Pending`, `Published`, `Failed` |
-| `RetryCount` | `INT` | Không | Số lần retry |
-| `AvailableAt` | `DATETIME(6)` | Không | Có thể lấy |
-| `PublishedAt` | `DATETIME(6)` | Có | Đã broadcast |
-| `CreatedAt` | `DATETIME(6)` | Không | Thời điểm tạo |
+| `AttemptCount` | `INT` | Không | Số lần publish |
+| `PublishedAt` | `DATETIME(6)` | Có | Broker đã confirm |
+| `LastError` | `LONGTEXT` | Có | Loại lỗi kỹ thuật cuối, không chứa payload/PII |
+| Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Worker đọc `Pending`, phát `OnDataUpdated` vào group `tenant:{TenantId}`, rồi cập nhật `Published`. Client vẫn phải gọi API pull để bảo đảm nhất quán.
+Worker publish `Pending` lên exchange `panxii.realtime`, chờ publisher confirm rồi cập nhật `Published`.
+
+### 4.12. `server_changes`
+
+Durable change feed cho `GET /sync/pull`. Tạo `ServerChange` cùng transaction với entity; `ServerSequence` là MySQL auto-increment toàn cục, và mỗi tenant đọc phần sequence của chính mình theo thứ tự tăng dần.
+
+| Cột | Kiểu | Null | Mô tả |
+|---|---|---:|---|
+| `Id` | `CHAR(36)` | Không | PK |
+| `ServerSequence` | `BIGINT AUTO_INCREMENT` | Không | Thứ tự commit dùng cho pull/realtime |
+| `TenantId` | `CHAR(36)` | Không | Tenant scope |
+| `EntityType` | `VARCHAR(64)` | Không | `Invoice`, `Product`, `Customer` |
+| `EntityId` | `CHAR(36)` | Không | Entity ID |
+| `EntityVersion` | `BIGINT` | Không | Version của snapshot |
+| `OperationId` | `CHAR(36)` | Có | Client command dùng để reconcile sau reconnect |
+| `PayloadJson` | `JSON` | Không | Full entity response snapshot |
+| `OccurredAtUtc` | `DATETIME(6)` | Không | Thời gian server |
+
+`GET /sync/pull?afterSequence=N` chỉ đọc `(TenantId, ServerSequence > N)`. SignalR event chứa cùng sequence và snapshot để connected clients áp dụng ngay; pull phục hồi các event bị lỡ. Retention/cleanup chưa bật; không xóa row trước khi có full-resync/retention policy.
 
 ---
 
@@ -348,9 +361,11 @@ CREATE INDEX IX_Customers_Tenant_Phone
 CREATE INDEX IX_SyncOperations_Pending
     ON SyncOperations (TenantId, Status, CreatedAt);
 CREATE INDEX IX_OutboxEvents_Pending
-    ON OutboxEvents (Status, AvailableAt, CreatedAt);
-CREATE UNIQUE INDEX UX_OutboxEvents_Tenant_Sequence
-    ON OutboxEvents (TenantId, ServerSequence);
+    ON OutboxEvents (TenantId, Status, CreatedAt);
+CREATE UNIQUE INDEX UX_ServerChanges_Sequence
+    ON server_changes (ServerSequence);
+CREATE INDEX IX_ServerChanges_Tenant_Sequence
+    ON server_changes (TenantId, ServerSequence);
 ```
 
 Tên bảng thực tế phải theo một naming convention thống nhất của EF Core. Khóa ngoại dùng `RESTRICT` cho giao dịch và không cascade delete từ tenant, user hoặc product xuống invoice.

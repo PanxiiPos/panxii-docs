@@ -22,6 +22,7 @@ Thư mục này lưu các quyết định kiến trúc có ảnh hưởng lâu d
 | ADR-007 | Xử lý outbox pending khi device bị revoke | Proposed |
 | ADR-008 | Effective feature flag precedence | Accepted/verify |
 | ADR-009 | Role được phép tạo customer và reverse invoice | Accepted |
+| ADR-010 | Queued POS commands và realtime entity snapshots | Accepted |
 
 ## Mẫu ADR
 

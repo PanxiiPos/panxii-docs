@@ -19,7 +19,7 @@
 | `X-App-Version` | Không | Version app; có thể suy ra từ User-Agent |
 | `X-Correlation-Id` | Khuyến nghị | Truy vết request |
 | `Accept-Language` | Không | `vi` hoặc `en`; mặc định `vi` |
-| `Idempotency-Key` | Có với command retry | Nên bằng `ClientOperationId` |
+| `Idempotency-Key` | Bắt buộc với command tạo/sync | UUID ổn định qua mọi lần retry |
 
 Backend localization middleware chọn culture từ `Accept-Language` và trả `Content-Language`. Backend không dịch thông báo nghiệp vụ; mobile vẫn dịch `error.code` theo locale người dùng.
 
@@ -159,6 +159,7 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
 ### `POST /products`
 
 **Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+Header `Idempotency-Key` là bắt buộc. API publish command bền vững tới RabbitMQ rồi trả `202` với `{ "operationId": "uuid", "status": "Queued" }`. Worker mới tạo product; client nhận event `DataCreated` sau khi MySQL commit.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 
@@ -234,6 +235,7 @@ TenantAdmin có CRUD customer trong tenant. Staff chỉ được tìm kiếm/đ�
 #### `POST /customers`
 
 **Role:** TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
+Header `Idempotency-Key` là bắt buộc. API trả `202` với operation id sau publisher confirm; worker tạo customer và phát snapshot realtime sau khi commit.
 Errors: `ERR_ACCESS_DENIED`, `ERR_INVALID_REQUEST`, `ERR_DUPLICATE_CUSTOMER_CODE`.
 
 #### `PATCH /customers/{id}`
@@ -297,25 +299,19 @@ Request:
 }
 ```
 
-Response 201 khi insert mới:
+Response `202` sau khi RabbitMQ xác nhận đã nhận lệnh:
 
 ```json
 {
   "data": {
     "operationId": "uuid",
-    "status": "Applied",
-    "created": true,
-    "resource": {
-      "invoiceId": "uuid",
-      "invoiceNumber": "INV-000001",
-      "status": "Synced",
-      "syncedAtUtc": "2026-10-08T09:01:00Z"
-    }
-  }
+    "status": "Queued"
+  },
+  "meta": { "correlationId": "uuid", "serverTimeUtc": "2026-10-08T09:00:00Z" }
 }
 ```
 
-Retry cùng `clientOperationId` trả kết quả cũ, không tạo invoice mới. Cùng operation id nhưng payload hash khác trả `409 ERR_SYNC_PAYLOAD_MISMATCH`.
+Worker xác thực invoice và ghi invoice, `sync_operations`, `server_changes`, outbox trong cùng transaction. Sau commit, client nhận `DataCreated` qua SignalR với invoice snapshot và `serverSequence`; lệnh lỗi phát `CommandRejected` tới user tạo lệnh. Retry cùng operation id và payload không tạo invoice mới; payload khác được reject.
 
 Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
 
@@ -343,9 +339,11 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVER
 
 ## 5. Sync pull và feature flags
 
-### `GET /sync/pull?cursor=&limit=`
+### `GET /sync/pull?afterSequence=&limit=`
 
-**Role:** Staff, TenantAdmin. Trả changes của đúng tenant sau cursor, gồm products, categories, customers, invoices và `nextCursor`. Cursor opaque, không cho client tự đoán.
+**Role:** Staff, TenantAdmin. Trả changes của tenant hiện tại có `serverSequence > afterSequence`, theo thứ tự tăng dần. `afterSequence` mặc định `0`; `limit` mặc định `50`, tối đa `200`. Sequence được ghi cùng transaction tạo entity và không dựa vào đồng hồ client.
+
+Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `hasMore`, `limit`. Nếu không có change mới, `nextSequence` giữ nguyên `afterSequence`.
 
 ### `GET /settings/effective`
 
@@ -939,42 +937,47 @@ Request `SyncInvoiceRequest` phải có:
 
 `clientOperationId` trong body phải trùng `Idempotency-Key`. Nếu khác, trả `400 ERR_IDEMPOTENCY_KEY_MISMATCH`.
 
-Response mới và response retry đều dùng cùng schema:
+Response HTTP của sync là `202` khi command được xác nhận bởi broker:
 
 ```json
 {
-  "operationId": "uuid",
-  "status": "Applied",
-  "created": true,
-  "resource": {},
-  "serverCursor": "opaque-cursor"
+  "data": { "operationId": "uuid", "status": "Queued" },
+  "meta": { "correlationId": "uuid", "serverTimeUtc": "2026-10-08T09:00:00Z" }
 }
 ```
 
-Retry trả `status: "AlreadyApplied"`, `created: false`, nhưng vẫn trả cùng `resource` để mobile cập nhật SQLite.
-Phát hành hiện tại chưa trả `serverCursor`; cursor chỉ được thêm cùng implementation của `/sync/pull`.
+Retry cùng operation id và cùng payload được worker deduplicate. Client theo dõi kết quả bằng SignalR `DataCreated`/`CommandRejected`; `GET /sync/pull` khôi phục event thành công bị lỡ.
 
 ### 11.4. Pull sync
 
-Response:
+Response envelope:
 
 ```json
 {
-  "changes": [
+  "data": [
     {
+      "serverSequence": 123,
       "changeType": "Upsert",
       "entityType": "Invoice",
       "entityId": "uuid",
-      "version": 1,
+      "entityVersion": 1,
+      "operationId": "uuid",
+      "occurredAtUtc": "2026-10-08T09:01:00Z",
       "entity": {}
     }
   ],
-  "nextCursor": "opaque-cursor",
-  "hasMore": false
+  "meta": {
+    "correlationId": "uuid",
+    "paging": { "nextSequence": 123, "hasMore": false, "limit": 50 }
+  }
 }
 ```
 
-Client chỉ lưu `nextCursor` sau khi toàn bộ `changes` đã upsert vào SQLite thành công. Nếu lỗi giữa batch, gọi lại cursor cũ là an toàn.
+Client chỉ lưu `nextSequence` sau khi toàn bộ `data` đã upsert vào SQLite thành công. Nếu lỗi giữa batch, gọi lại `afterSequence` cũ là an toàn.
+
+### SignalR realtime
+
+Hub: `/hubs/pos`, xác thực bằng JWT. Server tự thêm connection vào group `tenant:{TenantId}`; không nhận group/tenant từ client. Event `DataCreated` chứa `messageId`, `serverSequence`, `entityType`, `entityId`, `entityVersion`, `occurredAtUtc`, và full `entity` snapshot. Client deduplicate sequence/message id rồi chèn snapshot lên đầu danh sách phù hợp mà không gọi refresh API. Event `CommandRejected` chỉ gửi tới user khởi tạo và có `operationId`, `errorCode`.
 
 ---
 

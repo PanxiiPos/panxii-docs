@@ -2,9 +2,9 @@
 
 ## 1. Mục tiêu
 
-Thiết kế này giữ SQLite/SQLCipher làm source of truth cho UI offline, dùng API để xác thực command, RabbitMQ để xử lý asynchronous work và SignalR để thông báo các thiết bị cùng tenant.
+Thiết kế này giữ SQLite/SQLCipher làm source of truth cho UI offline, dùng API để xác thực và xác nhận command vào RabbitMQ, Worker để ghi MySQL, và SignalR để phát snapshot tới các client cùng tenant.
 
-RabbitMQ không thay thế database transaction. Invoice và `sync_operations` phải commit thành công trước khi publish message.
+API chỉ trả `202 Queued` sau publisher confirm. Worker commit entity, `sync_operations`, `server_changes` và `outbox_events` trong cùng transaction; outbox chỉ được publish sau commit.
 
 ## 2. Thành phần
 
@@ -12,25 +12,26 @@ RabbitMQ không thay thế database transaction. Invoice và `sync_operations` p
 |---|---|
 | Flutter App | Ghi invoice local, tạo outbox, retry |
 | SQLite/SQLCipher | Dữ liệu UI local và local outbox |
-| ASP.NET API | JWT, tenant, validation, idempotency, transaction MySQL |
+| ASP.NET API | JWT, tenant, validation, idempotency header, publish command, SignalR relay |
 | MySQL | Source of truth server và transactional outbox |
-| RabbitMQ | Message broker, retry, dead-letter |
-| Sync Worker | Consume message, publish realtime/pull triggers |
-| SignalR Hub | Broadcast tới group `tenant:{TenantId}` |
-| Other Devices | Nhận event và gọi pull API |
+| RabbitMQ | Durable command queue, retry/DLQ, realtime topic exchange |
+| Sync Worker | Consume create commands, ghi entity/change/outbox, publish outbox |
+| SignalR Hub | JWT-derived group `tenant:{TenantId}` trên từng API instance |
+| Other Devices | Nhận snapshot và chèn lên đầu; pull theo sequence sau reconnect |
 
 ## 3. Trạng thái local
 
-`Pending -> Sending -> Synced` hoặc `Pending -> Sending -> Failed`.
+`Pending -> Sending -> Queued -> Synced` hoặc `Pending -> Sending -> Queued -> Failed`.
 
 - `Pending`: chưa gửi hoặc retry được.
 - `Sending`: có lease timeout; worker chết thì được lấy lại.
-- `Synced`: server xác nhận thành công.
-- `Failed`: lỗi nghiệp vụ không retry vô hạn; giữ `LastErrorCode`.
+- `Queued`: API trả `202` sau RabbitMQ publisher confirm; command chưa chắc đã commit DB.
+- `Synced`: nhận `DataCreated` có cùng `operationId`, hoặc pull thấy change tương ứng.
+- `Failed`: nhận `CommandRejected`; giữ `LastErrorCode` và không retry lỗi nghiệp vụ vô hạn.
 
 Mỗi outbox có `ClientOperationId` UUID, `EntityId`, `PayloadJson`, `PayloadHash`, `AttemptCount`, `NextAttemptAt`.
 
-## 4. Luồng tạo invoice offline
+## 4. Luồng tạo invoice offline và realtime create
 
 ```mermaid
 sequenceDiagram
@@ -38,81 +39,109 @@ sequenceDiagram
     participant DB as SQLite/SQLCipher
     participant W as Background Sync Worker
     participant API as ASP.NET API
+    participant Cmd as RabbitMQ command queue
+    participant Wkr as POS Worker
     participant MySQL as MySQL
-    participant RMQ as RabbitMQ
-    participant S as Sync Consumer
-    participant Hub as SignalR
-    participant Other as Thiết bị khác
+    participant Out as Transactional outbox
+    participant RMQ as RabbitMQ realtime exchange
+    participant Relay as API realtime relay
+    participant Hub as SignalR tenant group
+    participant Other as Client cùng tenant
 
     UI->>DB: Transaction invoice + details + outbox Pending
     DB-->>UI: Commit local, hiển thị invoice
     W->>DB: Lock batch Pending
     W->>API: POST /invoices/sync + ClientOperationId
-    API->>MySQL: Transaction: idempotency + invoice + outbox event
-    MySQL-->>API: Commit
-    API-->>W: 201 Synced hoặc kết quả idempotent
+    API->>Cmd: Publish persistent command + publisher confirm
+    Cmd-->>API: Confirm
+    API-->>W: 202 Queued + operationId
+    W->>DB: Mark local operation Queued
+    Cmd->>Wkr: Deliver command
+    Wkr->>MySQL: Transaction: invoice + operation + server change + outbox
+    MySQL-->>Wkr: Commit
+    Wkr->>Out: Read pending realtime outbox
+    Out->>RMQ: Publish DataCreated(snapshot, serverSequence) + confirm
+    RMQ->>Relay: Fan-out to each API instance queue
+    Relay->>Hub: DataCreated -> tenant group
+    Hub-->>Other: Full invoice snapshot + serverSequence
+    Other->>DB: Upsert and insert at top without refresh
+    Hub-->>W: DataCreated with same operationId
     W->>DB: Mark local invoice Synced
-    API->>RMQ: Publish InvoiceSynced
-    RMQ->>S: Consume message
-    S->>Hub: OnDataUpdated vào tenant group
-    Hub-->>Other: Event có cursor/aggregate id
-    Other->>API: GET /sync/pull?cursor=...
-    API-->>Other: Changes
-    Other->>DB: Upsert bản sao local trong transaction
+    Other->>API: GET /sync/pull?afterSequence=...
+    API-->>Other: Missed committed changes only
+    Other->>DB: Upsert changes, then advance sequence
 ```
 
 ## 5. Contract message RabbitMQ
 
-Exchange đề nghị: `pos.events` loại topic. Routing key: `tenant.{tenantId}.invoice.synced`.
+API publishes commands to durable queue `panxii.commands.create`. The worker
+uses the `commandType` to dispatch `SyncInvoice`, `CreateProduct`, or
+`CreateCustomer`.
+
+After commit, outbox events are published to durable topic exchange
+`panxii.realtime` with routing key `tenant.{tenantId}.changed`.
 
 ```json
 {
   "messageId": "uuid",
-  "eventType": "InvoiceSynced",
-  "schemaVersion": 1,
+  "eventName": "DataCreated",
   "tenantId": "uuid",
-  "aggregateId": "invoice-uuid",
-  "aggregateType": "Invoice",
-  "clientOperationId": "uuid",
+  "serverSequence": 123,
+  "changeType": "Created",
+  "entityType": "Invoice",
+  "entityId": "invoice-uuid",
+  "entityVersion": 1,
   "occurredAtUtc": "2026-10-08T09:01:00Z",
-  "correlationId": "uuid",
-  "payload": { "cursor": "opaque-cursor" }
+  "operationId": "uuid",
+  "entity": { "invoiceNumber": "INV-...", "details": [] }
 }
 ```
 
-Consumer phải xử lý idempotent theo `messageId`. Payload event chỉ là tín hiệu; thiết bị luôn pull API để lấy dữ liệu chuẩn.
+Each API instance creates an exclusive, auto-delete queue bound to
+`tenant.*.changed`, then relays messages to its local SignalR connections. Event
+`DataCreated` contains the committed entity snapshot, so connected clients can
+insert it without a follow-up request. Clients deduplicate by `messageId` and
+`serverSequence`; `/sync/pull` repairs missed events after reconnect.
+
+`CommandRejected` events target only the initiating user and contain the
+operation ID and stable error code, not the rejected payload.
 
 ## 6. Topology RabbitMQ
 
 | Thành phần | Đề nghị |
 |---|---|
-| Exchange | `pos.events`, durable topic |
-| Main queue | `pos.sync-events`, durable quorum |
-| Retry queue | `pos.sync-events.retry`, TTL theo backoff |
-| Dead-letter queue | `pos.sync-events.dlq` |
-| Publisher confirms | Bật |
-| Manual acknowledgement | Bật |
-| Prefetch | Giới hạn theo CPU/DB |
-| Message TTL | Theo chính sách, không xóa event chưa xử lý tùy tiện |
+| Command queue | `panxii.commands.create`, durable quorum |
+| Retry queue | `panxii.commands.retry`, durable, TTL 5 seconds to command queue |
+| Dead-letter queue | `panxii.commands.dlq`, durable |
+| Realtime exchange | `panxii.realtime`, durable topic |
+| API relay queue | Per-instance, exclusive/auto-delete, bound to `tenant.*.changed` |
+| Publisher confirms | Required for API commands and outbox events |
+| Manual acknowledgement | Worker ack after DB commit; API relay ack after hub send |
+| Prefetch | 1 per consumer channel |
 
-Không để API chờ consumer xử lý để trả response. API chỉ cần ghi transactional outbox; publisher worker đọc outbox và publish có confirm.
+API does not wait for command processing. It returns `202` only after RabbitMQ
+confirms the persistent command. If RabbitMQ is unavailable before confirmation,
+the API returns `503 ERR_SERVICE_UNAVAILABLE` and does not claim acceptance.
 
 ## 7. Transactional outbox publisher
 
-1. API commit invoice, `sync_operations`, `outbox_events` trong một transaction MySQL.
-2. Publisher lấy record `Pending` theo batch, lock lease ngắn.
-3. Publish RabbitMQ với `messageId` và publisher confirm.
-4. Confirm thành công thì mark `Published`.
-5. Timeout/negative confirm thì trả về `Pending` với `AvailableAt` tăng theo exponential backoff.
-6. Không xóa record ngay; lưu đủ thời gian để audit và replay.
+1. Worker commits entity, `sync_operations`, `server_changes`, and
+  `outbox_events` in one MySQL transaction.
+2. The outbox publisher reads `Pending` records in batches.
+3. It publishes each snapshot with a stable message ID and publisher confirm.
+4. Confirmed events are marked `Published`; broker failures remain `Pending`.
+5. Malformed events are marked `Failed` after 10 attempts for operator review.
+6. Outbox history is retained for audit and replay.
 
 Nếu publish thành công nhưng process chết trước khi mark `Published`, message có thể trùng. Consumer bắt buộc idempotent.
 
 ## 8. Retry và dead-letter
 
-- Retry lỗi network, RabbitMQ unavailable, transient MySQL: 1m, 5m, 15m, 1h.
+- Command consumer retries transient failures through the 5-second retry queue,
+  up to 5 deliveries; the next failure is routed to `panxii.commands.dlq`.
 - Không retry lỗi schema, tenant inactive, payload hash mismatch hoặc authorization.
-- Message vượt `MaxAttempts` vào DLQ.
+- Outbox publish failures remain pending and are retried; malformed outbox
+  payloads are marked Failed after 10 attempts.
 - DLQ phải có dashboard, alert và quy trình replay có phê duyệt.
 - Không retry mù invoice reverse vì có thể gây thao tác nghiệp vụ lặp; dùng idempotency trước mọi command.
 
@@ -128,7 +157,8 @@ Mỗi change trả `serverSequence`, `entityVersion` và `occurredAtUtc` từ se
 4. Commit local.
 5. Lưu `LastServerSequence` mới sau khi upsert thành công.
 
-Nếu cursor hết hạn, API trả `ERR_SYNC_CURSOR_EXPIRED`; client thực hiện full resync theo transaction/batch.
+`server_changes` is currently retained without cursor expiry or cleanup. A
+retention policy and full-resync endpoint must be defined before pruning rows.
 
 ### Ordering và late event
 
@@ -146,9 +176,10 @@ Nếu cursor hết hạn, API trả `ERR_SYNC_CURSOR_EXPIRED`; client thực hi�
 | Cùng operation id, payload khác | `ERR_SYNC_PAYLOAD_MISMATCH`, không retry tự động |
 | Product đã inactive | Failed + `ERR_PRODUCT_INACTIVE` |
 | Device revoked | 401, xóa local DB và force logout |
-| RabbitMQ down | Invoice vẫn sync được nếu DB commit; outbox chờ publish |
+| RabbitMQ unavailable before publisher confirm | API returns 503; client retries the same operation ID |
+| RabbitMQ unavailable after DB commit | Entity remains committed; outbox stays pending and connected clients catch up via pull |
 | Consumer crash | RabbitMQ redeliver; deduplicate message |
-| Pull cursor hết hạn | Full resync |
+| Client reconnects after realtime event loss | Pull from the last committed `serverSequence` |
 | Client clock sai | Bỏ qua để ghi sổ; dùng server timestamp/sequence |
 | Event đến sai thứ tự | Giữ event, pull lại theo `ServerSequence`, không ghi đè version mới |
 

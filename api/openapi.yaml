@@ -89,22 +89,26 @@ paths:
     post:
       operationId: createProduct
       tags: [Products]
+      summary: Queue product creation
       x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/CreateProductRequest' }
       responses:
-        '201':
-          description: Product created
+        '202':
+          description: Product creation queued; completion is broadcast after commit
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SuccessProductResponse' }
+              schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /products/{id}:
     patch:
       operationId: updateProduct
@@ -128,11 +132,11 @@ paths:
     post:
       operationId: syncInvoice
       tags: [Invoices]
+      summary: Queue invoice synchronization
       description: Staff and TenantAdmin may create and sync Sale invoices within their tenant.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH, ERR_IDEMPOTENCY_KEY_MISMATCH, ERR_UNSUPPORTED_PAYLOAD_VERSION]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
-        - { $ref: '#/components/parameters/DeviceId' }
         - { $ref: '#/components/parameters/CorrelationId' }
       requestBody:
         required: true
@@ -140,27 +144,24 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/SyncInvoiceRequest' }
       responses:
-        '201':
-          description: Invoice applied
+        '202':
+          description: Invoice sync queued; completion is broadcast after commit
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/SuccessOperationResponse' }
-        '200':
-          description: Idempotent retry already applied
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/SuccessOperationResponse' }
+              schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /sync/pull:
     get:
       operationId: pullChanges
       tags: [Sync]
+      summary: Pull changes after a server sequence
       parameters:
-        - { $ref: '#/components/parameters/Cursor' }
-        - { $ref: '#/components/parameters/PageSize' }
+        - { name: afterSequence, in: query, required: false, schema: { type: integer, format: int64, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
       responses:
         '200':
           description: Incremental changes
@@ -168,7 +169,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessSyncResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /categories:
     get:
       operationId: listCategories
@@ -211,18 +212,22 @@ paths:
     post:
       operationId: createCustomer
       tags: [Customers]
+      summary: Queue customer creation
       description: TenantAdmin only. Creates a customer in the authenticated tenant.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_DUPLICATE_CUSTOMER_CODE]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/CreateCustomerRequest' }
       responses:
-        '201': { description: Customer created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '202': { description: Customer creation queued; completion is broadcast after commit, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /customers/{id}:
     patch:
       operationId: updateCustomer
@@ -631,12 +636,13 @@ components:
     CustomerId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CategoryId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
   responses:
-    BadRequest: { description: Invalid request. Codes include ERR_INVALID_REQUEST, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_EMAIL, ERR_INVALID_TIME_ZONE, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL and ERR_INVALID_PAGING., content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    BadRequest: { description: 'Invalid request. Codes include ERR_INVALID_REQUEST, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_EMAIL, ERR_INVALID_TIME_ZONE, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL and ERR_INVALID_PAGING.', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Unauthorized: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Forbidden: { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Conflict: { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     BusinessError: { description: Business rule rejection, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+    ServiceUnavailable: { description: RabbitMQ or required dependency is unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   schemas:
     Meta:
       type: object
@@ -648,11 +654,13 @@ components:
         paging: { $ref: '#/components/schemas/Paging' }
     Paging:
       type: object
-      required: [hasMore, pageSize]
+      required: [hasMore]
       properties:
         nextCursor: { type: string, nullable: true }
+        nextSequence: { type: integer, format: int64, minimum: 0 }
         hasMore: { type: boolean }
         pageSize: { type: integer, minimum: 1, maximum: 200 }
+        limit: { type: integer, minimum: 1, maximum: 200 }
     ErrorResponse:
       type: object
       required: [data, error, meta]
@@ -1047,6 +1055,41 @@ components:
         created: { type: boolean }
         resource: { type: object, nullable: true }
         serverCursor: { type: string, nullable: true }
+    QueuedCommandResponse:
+      type: object
+      additionalProperties: false
+      required: [operationId, status]
+      properties:
+        operationId: { type: string, format: uuid }
+        status: { type: string, enum: [Queued] }
+    SyncChange:
+      type: object
+      required: [serverSequence, operationId, changeType, entityType, entityId, entityVersion, occurredAtUtc, entity]
+      properties:
+        serverSequence: { type: integer, format: int64, minimum: 1 }
+        operationId: { type: string, format: uuid }
+        changeType: { type: string, enum: [Upsert] }
+        entityType: { type: string, enum: [Product, Customer, Invoice] }
+        entityId: { type: string, format: uuid }
+        entityVersion: { type: integer, format: int64, minimum: 1 }
+        occurredAtUtc: { type: string, format: date-time }
+        entity: { type: object, additionalProperties: true }
+    RealtimeNotification:
+      type: object
+      required: [messageId, eventName, tenantId, occurredAtUtc]
+      properties:
+        messageId: { type: string, format: uuid }
+        eventName: { type: string, enum: [DataCreated, CommandRejected] }
+        tenantId: { type: string, format: uuid }
+        occurredAtUtc: { type: string, format: date-time }
+        serverSequence: { type: integer, format: int64, nullable: true }
+        changeType: { type: string, nullable: true }
+        entityType: { type: string, nullable: true }
+        entityId: { type: string, format: uuid, nullable: true }
+        entityVersion: { type: integer, format: int64, nullable: true }
+        entity: { type: object, nullable: true, additionalProperties: true }
+        operationId: { type: string, format: uuid, nullable: true }
+        errorCode: { type: string, nullable: true }
     SuccessLoginResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/LoginResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
@@ -1149,6 +1192,9 @@ components:
     SuccessOperationResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/OperationResult' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessQueuedCommandResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/QueuedCommandResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessSyncResponse:
       type: object
-      properties: { data: { type: array, items: { type: object } }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/SyncChange' } }, meta: { $ref: '#/components/schemas/Meta' } }

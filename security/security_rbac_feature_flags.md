@@ -50,6 +50,7 @@ Authorization tenant phải kiểm tra cả role và `TenantId`; role không đ�
 - Kiểm tra ownership trước mọi update/delete/reverse.
 - Audit lưu user, device, correlation id và lý do thay đổi.
 - SuperAdmin path phải explicit, log và test riêng.
+- Background outbox publisher có thể đọc `Pending` events cross-tenant; payload giữ TenantId và API relay chỉ gửi tới group lấy từ JWT.
 
 ## 5. Password, PIN và secrets
 
