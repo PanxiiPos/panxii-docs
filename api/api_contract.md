@@ -122,6 +122,47 @@ Request: `{ "refreshToken": "opaque-token" }`. Tenant user được kiểm tra t
 
 Thu hồi session hiện tại. Mọi request có access token thuộc session bị revoke sẽ bị từ chối ngay; không xóa dữ liệu server.
 
+### `GET /me`
+
+**Role:** TenantAdmin, Staff. Trả hồ sơ tài khoản đang xác thực trong tenant hiện tại; không nhận `userId` hoặc `tenantId` từ client.
+
+Response `200` trả `UserProfile`: `id`, `tenantId`, `username`, `displayName`, `email`, `phone`, `role`, `status`, `version`, `createdAtUtc`, `updatedAtUtc`. Không trả password/hash, PIN hoặc token.
+
+```json
+{
+  "data": {
+    "id": "user-uuid",
+    "tenantId": "tenant-uuid",
+    "username": "cashier01",
+    "displayName": "Cashier",
+    "email": null,
+    "phone": "0900000000",
+    "role": "Staff",
+    "status": "Active",
+    "version": 3,
+    "createdAtUtc": "2026-10-08T09:00:00Z",
+    "updatedAtUtc": "2026-10-09T09:00:00Z"
+  },
+  "meta": { "correlationId": "uuid", "serverTimeUtc": "2026-10-09T09:00:00Z" }
+}
+```
+
+### `PATCH /me`
+
+**Role:** TenantAdmin, Staff. Chỉ cập nhật hồ sơ của chính user từ JWT. Request bắt buộc có `username`, `displayName`, `email`, `phone`, `expectedVersion`; `email` và `phone` có thể là `null` để xóa giá trị. Username duy nhất trong tenant. Version cũ trả `409 ERR_VERSION_CONFLICT`; username trùng trả `409 ERR_DUPLICATE_USERNAME`.
+
+```json
+{
+  "username": "cashier01",
+  "displayName": "Cashier",
+  "email": null,
+  "phone": "0900000000",
+  "expectedVersion": 3
+}
+```
+
+Password/credential không thuộc API hồ sơ này; không gửi hoặc trả credential. API đổi mật khẩu cần contract riêng nếu được đưa vào phạm vi.
+
 Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login và refresh bị giới hạn 10 request/phút/IP. Password dùng BCrypt; secret ký JWT lấy từ `JWT_SECRET_KEY` và tối thiểu 32 byte.
 
 ## 3. Products, categories và customers
@@ -144,6 +185,7 @@ Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, 
     "unit": "cup",
     "basePrice": 25000.0000,
     "taxRate": 0,
+    "isActive": true,
     "version": 4,
     "updatedAtUtc": "2026-10-08T09:00:00Z"
   }],
@@ -159,14 +201,18 @@ Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, 
 
 ### `POST /products`
 
-**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `categoryId` tùy chọn. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `barcode` và `categoryId` tùy chọn. Barcode tối đa 64 ký tự và duy nhất trong tenant nếu có. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
 Header `Idempotency-Key` là bắt buộc. API publish command bền vững tới RabbitMQ rồi trả `202` với `{ "operationId": "uuid", "status": "Queued" }`. Worker mới tạo product; client nhận event `DataCreated` sau khi MySQL commit.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 
+### `GET /products/{id}`
+
+**Role:** Staff, TenantAdmin. Trả chi tiết product trong tenant hiện tại theo cùng `Product` schema như list. Staff chỉ đọc product active; product inactive hoặc khác tenant trả `404 ERR_PRODUCT_NOT_FOUND`. TenantAdmin đọc được product active/inactive để quản lý.
+
 ### `PATCH /products/{id}`
 
-**Role:** TenantAdmin. Có `expectedVersion`; nếu version không khớp trả `409 ERR_VERSION_CONFLICT`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
+**Role:** TenantAdmin. Cho cập nhật `name`, `barcode`, `unit`, `basePrice`, `taxRate`, `categoryId` và bắt buộc `expectedVersion`. `barcode: null` dùng để xóa barcode; barcode khác null phải duy nhất trong tenant. Nếu version không khớp trả `409 ERR_VERSION_CONFLICT`; barcode trùng trả `409 ERR_DUPLICATE_BARCODE`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
 
 ### `POST /products/{id}/deactivate`
 
@@ -238,6 +284,10 @@ TenantAdmin có CRUD customer trong tenant theo các giới hạn nghiệp vụ.
 
 **Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại. `search` tìm theo tên, mã customer hoặc số điện thoại; sort `fullName ASC, id ASC`. Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ.
 
+#### `GET /customers/{id}`
+
+**Role:** Staff, TenantAdmin. Trả chi tiết customer trong tenant hiện tại theo `Customer` schema. Staff chỉ đọc customer active; customer inactive hoặc khác tenant trả `404 ERR_CUSTOMER_NOT_FOUND`. TenantAdmin đọc được customer active/inactive để quản lý.
+
 #### `POST /customers`
 
 **Role:** Staff, TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
@@ -263,13 +313,35 @@ Nếu feature `RequireCustomerPhone` bật, invoice gắn customer bắt buộc 
 
 ## 4. Invoice
 
+### Invoice business status và local sync status
+
+Wire response giữ field `status`, có kiểu enum `InvoiceStatus`:
+
+| `InvoiceStatus` | Ý nghĩa |
+|---|---|
+| `Active` | Invoice đã được server ghi nhận và chưa thuộc cặp bút toán đảo |
+| `Reversed` | Invoice thuộc cặp bút toán đảo; áp dụng cho invoice gốc và invoice Reverse theo reverse-entry rule |
+
+`invoiceType` vẫn phân biệt `Sale`, `Reverse`, `Correction`; status không thể thay thế type. `SyncStatus` là enum local của mobile, không phải trạng thái server và không được đọc từ `Invoice.status`:
+
+| `SyncStatus` | Ý nghĩa |
+|---|---|
+| `Draft` | Hóa đơn chỉ được lưu local, chưa chốt để sync |
+| `Pending` | Đã chốt local, chờ gửi |
+| `Sending` | Client đang gửi |
+| `Queued` | API đã nhận command, server chưa xác nhận commit |
+| `Synced` | Server đã commit, xác nhận bằng event/pull |
+| `Failed` | Bị từ chối hoặc cần xử lý; lưu `LastErrorCode` |
+
+Trạng thái mạng `Online`/`Offline` và hoạt động pull `Downloading` là trạng thái app-wide riêng, không thuộc `InvoiceStatus` hay per-invoice `SyncStatus`. API không trả `SyncStatus`.
+
 ### `POST /invoices/sync`
 
 **Role:** Staff, TenantAdmin. Đây là command idempotent và là endpoint chính cho offline outbox.
 Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hiện hỗ trợ giá trị `1`.
 
 Sale `quantity` và `unitPrice` phải lớn hơn 0. `taxRate`/`taxAmount` phải bằng 0 trong v1; không áp dụng nghiệp vụ tính thuế cho đến phần mở rộng sau. Hóa đơn Reverse và Correction do endpoint tương ứng tạo ở server, không được gửi như Sale payload từ client.
-Money và quantity dùng `decimal` tối đa 4 chữ số thập phân. Server kiểm tra công thức bằng decimal chính xác, không tự làm tròn hoặc áp tolerance; client gửi `roundingAmount` tường minh nếu có. Correction v1 không nhận `roundingAmount` và dùng 0. Chưa áp dụng `MidpointRounding` hay quy tắc làm tròn theo currency cho đến khi quy tắc nghiệp vụ được định nghĩa.
+Money và quantity dùng `decimal` tối đa 4 chữ số thập phân. Server kiểm tra công thức bằng decimal chính xác, không tự làm tròn hoặc áp tolerance; client gửi `roundingAmount` tường minh nếu có. Chưa áp dụng `MidpointRounding` hay quy tắc làm tròn theo currency cho đến khi quy tắc nghiệp vụ được định nghĩa.
 
 Request:
 
@@ -349,7 +421,31 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVER
 
 ### `POST /invoices/{id}/correction`
 
-**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới và lý do. Không mutate invoice cũ. `Idempotency-Key` UUID và `X-Device-Id` là bắt buộc. Server tính lại subtotal/discount/total từ details, yêu cầu tax bằng 0; reverse, correction, audit, sync change và outbox commit atomically. Retry cùng key/payload trả lại kết quả correction đã tạo.
+**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới, lý do và `roundingAmount` tùy chọn (mặc định `0`). Không mutate invoice cũ. `Idempotency-Key` UUID và `X-Device-Id` là bắt buộc. Server tính lại subtotal/discount từ details, yêu cầu tax bằng 0, tính `totalAmount = subtotal - discountAmount + roundingAmount` và yêu cầu total lớn hơn 0; reverse, correction, audit, sync change và outbox commit atomically. Retry cùng key/payload trả lại kết quả correction đã tạo.
+
+Request:
+
+```json
+{
+  "reasonCode": "PRICE_CORRECTION",
+  "roundingAmount": 0,
+  "details": [{
+    "lineNumber": 1,
+    "productId": "uuid",
+    "skuSnapshot": "SKU-001",
+    "productNameSnapshot": "Coffee",
+    "unitSnapshot": "cup",
+    "quantity": 1,
+    "unitPrice": 100000,
+    "discountAmount": 0,
+    "taxRate": 0,
+    "taxAmount": 0,
+    "lineTotal": 100000
+  }]
+}
+```
+
+`details` phải có tối thiểu một dòng theo schema `SaleInvoiceDetailRequest`. `roundingAmount` là decimal có thể âm hoặc dương; client không gửi chuỗi tiền đã format.
 
 ## 5. Sync pull và feature flags
 

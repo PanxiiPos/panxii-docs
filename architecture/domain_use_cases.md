@@ -20,20 +20,17 @@
 - `Invoice`: immutable transaction content, status, reversal relationship.
 - `AppSetting`: global/tenant effective configuration.
 
-## 3. Invoice state machine
+## 3. Invoice business status và local sync state
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Draft
-    Draft --> Pending: Save local
-    Pending --> Synced: Server applies
-    Pending --> Rejected: Business rejection
-    Synced --> Reversed: Reverse transaction
-    Reversed --> [*]
-    Rejected --> [*]
+    [*] --> Active: Server commits invoice
+    Active --> Reversed: Reverse transaction commits
 ```
 
-Invoice content is immutable after `Synced`. Only business status may change through the reverse use case.
+Server `InvoiceStatus` enum: `Active`, `Reversed`. `Active` applies to a committed Sale or Correction; a reversal transaction changes the original and its Reverse entry to `Reversed`. Invoice content remains immutable after server commit; reverse/correction creates new entries.
+
+Client-only `SyncStatus` enum: `Draft`, `Pending`, `Sending`, `Queued`, `Synced`, `Failed`. `Online`/`Offline` and global pull activity are separate app state. The API does not return client `SyncStatus`.
 
 ## 4. Use case catalog
 

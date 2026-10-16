@@ -101,6 +101,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [backend_coding_standard.md](backend/backend_coding_standard.md) | Clean Architecture, ownership, reuse, dependency, Result, EF Core, anti-pattern |
 | [frontend_coding_standard.md](frontend/frontend_coding_standard.md) | Flutter/BLoC, offline UI, API parsing, i18n, `flex_color_scheme`, `hugeicons`, `forui` |
 | [design_system.md](frontend/design_system.md) | Color, typography, spacing, component states và accessibility |
+| [mobile_screen_flow_api_mapping.md](frontend/mobile_screen_flow_api_mapping.md) | Screen descriptions, navigation flow, API request/response mapping và contract gaps cho Flutter mobile |
 
 ### 2.7. Testing
 

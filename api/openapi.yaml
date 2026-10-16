@@ -9,6 +9,7 @@ security:
   - bearerAuth: []
 tags:
   - name: Auth
+  - name: User Profile
   - name: Products
   - name: Customers
   - name: Invoices
@@ -66,6 +67,31 @@ paths:
       responses:
         '200': { description: Session revoked, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessLogoutResponse' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /me:
+    get:
+      operationId: getMyProfile
+      tags: [User Profile]
+      description: TenantAdmin and Staff only. Returns the authenticated tenant user's profile; tenant and user identity come from the access token.
+      x-error-codes: [ERR_UNAUTHENTICATED]
+      responses:
+        '200': { description: Current user profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessUserProfileResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      operationId: updateMyProfile
+      tags: [User Profile]
+      description: TenantAdmin and Staff only. Updates the authenticated user's username and profile fields with optimistic concurrency. Does not update credentials.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_INVALID_EMAIL, ERR_DUPLICATE_USERNAME, ERR_VERSION_CONFLICT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMyProfileRequest' }
+      responses:
+        '200': { description: Updated current user profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessUserProfileResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /tenant/staff:
     get:
       operationId: listTenantStaff
@@ -203,10 +229,22 @@ paths:
         '422': { $ref: '#/components/responses/BusinessError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [Products]
+      description: Returns one product in the authenticated tenant. Staff may read active products only; inactive or cross-tenant products return not found. TenantAdmin may read active or inactive products.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      responses:
+        '200': { description: Product detail, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       operationId: updateProduct
       tags: [Products]
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_BARCODE, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/ProductId' }
       requestBody:
@@ -362,6 +400,18 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      description: Returns one customer in the authenticated tenant. Staff may read active customers only; inactive or cross-tenant customers return not found. TenantAdmin may read active or inactive customers.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CUSTOMER_NOT_FOUND]
+      parameters:
+        - { $ref: '#/components/parameters/CustomerId' }
+      responses:
+        '200': { description: Customer detail, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       operationId: updateCustomer
       tags: [Customers]
@@ -857,6 +907,7 @@ components:
       required: [sku, name, unit, basePrice, taxRate]
       properties:
         sku: { type: string, minLength: 1, maxLength: 64 }
+        barcode: { type: string, maxLength: 64, nullable: true }
         name: { type: string, minLength: 1, maxLength: 200 }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
@@ -868,6 +919,7 @@ components:
       required: [expectedVersion]
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
+        barcode: { type: string, maxLength: 64, nullable: true }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
@@ -944,6 +996,7 @@ components:
       required: [reasonCode, details]
       properties:
         reasonCode: { type: string, maxLength: 80 }
+        roundingAmount: { type: number, format: decimal, default: 0 }
         details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
     UpdateSettingRequest:
       type: object
@@ -952,6 +1005,31 @@ components:
       properties:
         value: { $ref: '#/components/schemas/TenantSettingValue' }
         expectedVersion: { type: integer, format: int64 }
+    UpdateMyProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [username, displayName, email, phone, expectedVersion]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 120 }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
+    UserProfile:
+      type: object
+      required: [id, tenantId, username, displayName, role, status, version, createdAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        username: { type: string, maxLength: 120 }
+        displayName: { type: string, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        role: { type: string, enum: [TenantAdmin, Staff] }
+        status: { type: string, enum: [Active, Inactive] }
+        version: { type: integer, format: int64 }
+        createdAtUtc: { type: string, format: date-time }
+        updatedAtUtc: { type: string, format: date-time, nullable: true }
     TenantSettingValue:
       oneOf:
         - { type: boolean }
@@ -1027,6 +1105,14 @@ components:
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         lineTotal: { type: number, format: decimal }
+    InvoiceStatus:
+      type: string
+      description: Business status of a server-persisted invoice. This is not the client's synchronization state.
+      enum: [Active, Reversed]
+    SyncStatus:
+      type: string
+      description: Client-local outbox state only; never returned or accepted by server API endpoints.
+      enum: [Draft, Pending, Sending, Queued, Synced, Failed]
     Invoice:
       type: object
       required: [id, invoiceNumber, invoiceType, status, currencyCode, totalAmount, details]
@@ -1034,7 +1120,7 @@ components:
         id: { type: string, format: uuid }
         invoiceNumber: { type: string }
         invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
-        status: { type: string }
+        status: { $ref: '#/components/schemas/InvoiceStatus' }
         customerId: { type: string, format: uuid, nullable: true }
         createdByUserId: { type: string, format: uuid }
         deviceId: { type: string }
@@ -1065,6 +1151,7 @@ components:
               lineTotal: { type: number, format: decimal }
     Product:
       type: object
+      required: [id, sku, name, unit, basePrice, taxRate, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
         sku: { type: string }
@@ -1073,6 +1160,7 @@ components:
         unit: { type: string }
         basePrice: { type: number, format: decimal }
         taxRate: { type: number, format: decimal }
+        isActive: { type: boolean }
         version: { type: integer, format: int64 }
         updatedAtUtc: { type: string, format: date-time }
     Category:
@@ -1303,6 +1391,9 @@ components:
     SuccessLoginResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/LoginResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessUserProfileResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/UserProfile' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessTokenResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/TokenResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
@@ -1371,7 +1462,7 @@ components:
               id: { type: string, format: uuid }
               invoiceNumber: { type: string }
               invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
-              status: { type: string }
+              status: { $ref: '#/components/schemas/InvoiceStatus' }
               customerId: { type: string, format: uuid, nullable: true }
               createdByUserId: { type: string, format: uuid }
               clientCreatedAtUtc: { type: string, format: date-time }
