@@ -18,6 +18,7 @@
 - Changing create/sync responses from `201`/`200` to `202 Queued` is behavioral breaking: release the mobile SignalR/operation-state consumer before enabling the queued endpoints for production traffic.
 - Mobile unknown enum phải map `Unknown`.
 - Server giữ field cũ trong deprecation window.
+- Invoice status contract target tách business `InvoiceStatus` (`Active`, `Reversed`) khỏi client-local `SyncStatus`. Thay đổi semantics của response field `status` từ giá trị hiện hành là breaking change; nếu v1 đã phát hành, cần expand/contract hoặc API v2 và migration có phối hợp, không rollout âm thầm.
 
 ### Paging migration trong API v1
 

@@ -39,6 +39,7 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
     2. API tạo một hóa đơn mới `INV-002` (Trị giá: -1,000,000đ, số lượng items ÂM).
     3. Cập nhật trạng thái của cả hai hóa đơn thành `Reversed` (Đã hủy/đối trừ).
     4. Cột `OriginalInvoiceId` của `INV-002` trỏ về `INV-001`.
+    5. `InvoiceStatus` chỉ biểu diễn trạng thái nghiệp vụ: `Active` hoặc `Reversed`. Khi đảo, hóa đơn gốc và bút toán Reverse cùng chuyển thành `Reversed`; bút toán Correction mới là `Active`.
 *   **Luồng Sửa Hóa Đơn:**
     1. Gọi "Luồng Hủy Hóa Đơn" cho hóa đơn cũ.
     2. Tạo một hóa đơn `INV-003` hoàn toàn mới với các thông tin đã được chỉnh sửa.
