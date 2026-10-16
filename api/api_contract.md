@@ -311,6 +311,12 @@ Errors: `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION`, `
 
 Nếu feature `RequireCustomerPhone` bật, invoice gắn customer bắt buộc có phone; kiểm tra ở server khi sync.
 
+### `GET /tenant/profile`
+
+**Role:** TenantAdmin. Trả thông tin tenant gắn với access token hiện tại: `id`, `code`, `name`, `status`, `timeZone`, `currencyCode`, `version`, `createdAtUtc`, `updatedAtUtc`. Không nhận `tenantId` từ path, query hoặc body; server lấy tenant từ JWT context. Endpoint này chỉ đọc tenant hiện tại, không cấp quyền quản trị tenant khác như `/platform/tenants/{tenantId}`.
+
+Errors: `ERR_UNAUTHENTICATED`, `ERR_TENANT_NOT_FOUND`.
+
 ## 4. Invoice
 
 ### Invoice business status và local sync status
