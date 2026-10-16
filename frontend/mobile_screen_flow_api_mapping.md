@@ -163,6 +163,7 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
+| Nạp metadata cửa hàng | `GET /tenant/profile`; TenantAdmin nhận `id, code, name, status, timeZone, currencyCode, version, createdAtUtc, updatedAtUtc` từ tenant trong JWT; không truyền tenant ID. |
 | Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags và `settingsVersion`. |
 | Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode? }, expectedVersion }`. |
 | Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText? }, expectedVersion }`; `templateId` phải là template app hỗ trợ. |
