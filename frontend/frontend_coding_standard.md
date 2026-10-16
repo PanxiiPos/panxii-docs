@@ -406,6 +406,22 @@ String localizeApiError(BuildContext context, AppError error) {
 - `vi.json` và `en.json` phải cùng key tree.
 - Text dài phải được test với tiếng Việt và tiếng Anh.
 
+### 8.4. Không hard-code trạng thái, lỗi, log và ngoại lệ
+
+Toàn bộ dự án (mobile, backend, script) **cấm hard-code** các giá trị dưới đây tại nơi sử dụng. Mỗi giá trị phải có **một nơi định nghĩa duy nhất** (enum/constant/catalog) và được tái sử dụng.
+
+| Loại | Quy tắc | Ví dụ mobile |
+|---|---|---|
+| Trạng thái (sync, invoice, payment...) | Dùng enum/constant có `wireValue`; SQL và API mapping sinh từ enum | `SyncStatus.pending.wireValue` |
+| Mã lỗi | Dùng constant trong catalog; khớp `api/error_codes.md` và key `errors.<code>` ở `vi.json`/`en.json` | `AppErrorCode.apiEnvelopeInvalid` |
+| Ngoại lệ | Chỉ ném exception của dự án mang `code` + `args`; không `throw FormatException('text')`, `StateError('text')`, `ArgumentError(...)`, `Exception('text')` | `throw const AppException(AppErrorCode.x)` |
+| Log | Dùng event name/message template constant + structured field đã redact; không nối chuỗi tự do | `LogEvent.syncUploadFailed` |
+| Header, JSON key, scheme, path, platform | Dùng constant dùng chung | `ApiHeaders.correlationId` |
+
+- Message hiển thị cho người dùng luôn đi qua i18n (`8.3`); không đặt text trong exception.
+- Thêm code mới phải cập nhật catalog, `vi.json`, `en.json` và test trong cùng thay đổi.
+- Test/CI phải có guard bắt `throw` exception framework với message tự do.
+
 ---
 
 ## 9. Widget và component reuse
@@ -545,6 +561,7 @@ Tên component phải thể hiện semantic:
 | `setState` cho server state | BLoC/repository |
 | `dynamic` cho API model | Typed DTO + parser |
 | Nuốt error và hiển thị toast chung chung | Error code + retry policy |
+| Hard-code status/error code/log/exception message | Enum/constant catalog + error code (mục 8.4) |
 
 ---
 
@@ -570,6 +587,7 @@ Tên component phải thể hiện semantic:
 
 - [ ] API parse canonical envelope.
 - [ ] Error dùng `error.code`, không dùng raw message.
+- [ ] Không hard-code status, error code, log event, exception message (mục 8.4).
 - [ ] Offline UI đọc SQLite trước.
 - [ ] Retry giữ nguyên idempotency key.
 - [ ] Kill-switch xóa token, key và database.
