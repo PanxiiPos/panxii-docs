@@ -188,7 +188,7 @@ paths:
     get:
       operationId: getCurrentTenantProfile
       tags: [Tenant Profile]
-      description: TenantAdmin only. Returns the tenant identified by the authenticated token; the client cannot select a tenant ID.
+      description: TenantAdmin and Staff. Returns the tenant identified by the authenticated token; the client cannot select a tenant ID.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_TENANT_NOT_FOUND]
       responses:
         '200': { description: Current tenant profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantProfileResponse' } } } }
