@@ -1498,7 +1498,33 @@ components:
         meta: { $ref: '#/components/schemas/Meta' }
     SuccessSettingsResponse:
       type: object
-      properties: { data: { type: object, additionalProperties: true }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { $ref: '#/components/schemas/EffectiveSettings' }, meta: { $ref: '#/components/schemas/Meta' } }
+    EffectiveSettings:
+      type: object
+      additionalProperties: true
+      properties:
+        storeProfile:
+          description: Effective store display values; storeName may be null before the tenant configures it.
+          type: object
+          additionalProperties: true
+          properties:
+            storeName: { type: string, nullable: true }
+            address: { type: string, nullable: true }
+            phone: { type: string, nullable: true }
+            taxCode: { type: string, nullable: true }
+        receiptTemplate: { $ref: '#/components/schemas/ReceiptTemplateSetting' }
+        productDisplay: { $ref: '#/components/schemas/ProductDisplaySetting' }
+        settingsVersion: { type: integer, format: int64, minimum: 0, description: Aggregate cache version; never use this as the expectedVersion for a setting write. }
+        settingVersions:
+          type: object
+          description: Tenant override versions by canonical setting key. Zero means no tenant override, including when the effective value comes from a global setting. New editors require this additive field.
+          additionalProperties: { type: integer, format: int64, minimum: 0 }
+          properties:
+            StoreProfile: { type: integer, format: int64, minimum: 0 }
+            ReceiptTemplate: { type: integer, format: int64, minimum: 0 }
+            ProductDisplay: { type: integer, format: int64, minimum: 0 }
+            AutoRoundMoney: { type: integer, format: int64, minimum: 0 }
+            EnableBluetoothPrint: { type: integer, format: int64, minimum: 0 }
     SuccessTenantAdminResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/TenantAdminAccount' }, meta: { $ref: '#/components/schemas/Meta' } }

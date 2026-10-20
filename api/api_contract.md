@@ -491,7 +491,14 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
       "showBarcode": false,
       "showCategory": true
     },
-    "settingsVersion": 12
+    "settingsVersion": 12,
+    "settingVersions": {
+      "StoreProfile": 2,
+      "ReceiptTemplate": 0,
+      "ProductDisplay": 3,
+      "AutoRoundMoney": 1,
+      "EnableBluetoothPrint": 0
+    }
   }
 }
 ```
@@ -504,7 +511,11 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
 - `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null }`; `templateId` chỉ nhận template được app hỗ trợ.
 - `ProductDisplay`: `{ "layout": "Grid", "sortBy": "Name", "showSku": true, "showBarcode": false, "showCategory": true }`; `layout` là `Grid`/`List`, `sortBy` là `Name`/`Sku`.
 
-Request dùng `{ "value": <value theo schema>, "expectedVersion": 12 }`. Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in, không thay đổi quyền, giá hoặc dữ liệu invoice. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+Request dùng `{ "value": <value theo schema>, "expectedVersion": 2 }`, lấy `expectedVersion` từ `settingVersions[key]` của tenant hiện tại; `0` khi chưa có tenant override, kể cả khi effective value đến từ global setting. `settingsVersion` là aggregate, không phải concurrency token dùng cho PUT. Sau PUT dùng version trả về cho lần ghi tiếp theo; conflict trả `409 ERR_VERSION_CONFLICT`, không tự retry ghi đè.
+
+`settingVersions` là metadata additive cho năm key `StoreProfile`, `ReceiptTemplate`, `ProductDisplay`, `AutoRoundMoney`, `EnableBluetoothPrint`; backend cũ có thể chưa trả nên mobile editor mới phải báo contract lỗi thay vì đoán version. Triển khai backend trước mobile editor.
+
+Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in/làm tròn theo rule hiện có, không thay đổi quyền hoặc sửa invoice đã đồng bộ. TenantAdmin chỉ được ghi feature flags `AutoRoundMoney`, `EnableBluetoothPrint`; SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
 
 ### SuperAdmin quản lý tenant và onboarding TenantAdmin
 
