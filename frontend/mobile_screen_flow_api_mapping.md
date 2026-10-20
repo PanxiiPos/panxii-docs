@@ -187,14 +187,27 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 | Nạp metadata cửa hàng | `GET /tenant/profile`; TenantAdmin/Staff nhận `id, code, name, status, timeZone, currencyCode, version, createdAtUtc, updatedAtUtc` từ tenant trong JWT; không truyền tenant ID. |
 | Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags, `settingsVersion` và `settingVersions` cho từng key có thể sửa. |
 | Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode? }, expectedVersion }`. |
-| Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText? }, expectedVersion }`; `templateId` phải là template app hỗ trợ. |
+| Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText?, layout? }, expectedVersion }`; `templateId` là `Standard`, layout version 1 được mô tả ở mục 4.7.1. |
 | Lưu tùy chọn hiển thị sản phẩm | `PUT /settings/ProductDisplay`; body `{ value: { layout, sortBy, showSku, showBarcode, showCategory }, expectedVersion }`. |
 
 **Đã triển khai:** Menu và editor chỉ hiện cho TenantAdmin; Cubit chặn thao tác ghi của Staff và backend vẫn enforce quyền. Có lưu riêng từng nhóm StoreProfile, ReceiptTemplate (chỉ Standard), ProductDisplay và hai switch `AutoRoundMoney`/`EnableBluetoothPrint`. Không cho sửa `RequireCustomerPhone` hoặc global flags. Metadata tenant là chỉ đọc; StoreProfile chỉ đổi thông tin hiển thị/in, không đổi tên/mã tenant.
 
 Mỗi PUT gửi `expectedVersion = settingVersions[key]`, dùng `0` khi tenant chưa có override; **không dùng aggregate `settingsVersion`** hoặc version của global setting. Response cập nhật value/version của đúng key, giữ nội dung chưa lưu ở nhóm khác. Backend thiếu metadata thì editor báo lỗi rõ, không đoán version. Deploy backend bổ sung metadata trước khi bật mobile editor.
 
-Đây là thao tác online trực tiếp, chưa có outbox cho hồ sơ/cấu hình. Lỗi giữ form, không tự retry ghi. Conflict giữ nội dung và có nút tải bản mới nhất; phải xác nhận bỏ thay đổi trước khi tải lại. Rời form bẩn cũng cần xác nhận, không cho rời trong khi lưu. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Preview bản in và kết nối máy in thực tế chưa được triển khai trong màn hình này.
+Đây là thao tác online trực tiếp, chưa có outbox cho hồ sơ/cấu hình. Lỗi giữ form, không tự retry ghi. Conflict giữ nội dung và có nút tải bản mới nhất; phải xác nhận bỏ thay đổi trước khi tải lại. Rời form bẩn cũng cần xác nhận, không cho rời trong khi lưu. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Kết nối máy in và xuất PDF chưa được triển khai.
+
+#### 4.7.1 Thiết kế và xem trước hóa đơn
+
+- TenantAdmin mở **Cấu hình cửa hàng > Thiết kế & xem trước hóa đơn**. Dùng chung SettingsCubit/repository và version của `ReceiptTemplate`; không thêm endpoint.
+- Bật/tắt tên/địa chỉ/điện thoại cửa hàng, mã số thuế, mã hóa đơn, ngày giờ, nhân viên, khách hàng, chiết khấu, chi tiết thuế và lời nhắn cuối. SKU và đơn vị tính là tùy chọn trong danh sách sản phẩm. Danh sách sản phẩm và tổng tiền không được ẩn/xóa.
+- Thêm/xóa khối chữ thuần (không HTML/script), căn trái/giữa/phải; thêm/xóa khối dịch vụ với tên và tùy chọn ẩn khi số tiền bằng 0 (mặc định bật). Kéo tay nắm hoặc dùng nút Lên/Xuống để đặt khối trước/sau khối khác. ID của khối không thay đổi khi sửa tên hoặc đổi vị trí. Tối đa 40 khối, gồm tối đa 10 dịch vụ; chữ tối đa 1000 ký tự, tên dịch vụ tối đa 120.
+- Khổ cuộn 58/80 mm tự tăng chiều dài; giấy A0–A10 theo ISO 216 dạng đứng; Custom nhập rộng/cao mm. Rộng 25–1500 mm, cao 25–2000 mm, lề mỗi cạnh 0–10 mm, vùng in tối thiểu 10 mm mỗi chiều. Giấy có chiều cao cố định tự chia trang, kể cả khối chữ dài; giữ đúng tỷ lệ vật lý của giấy khi thu phóng.
+- Preview cập nhật theo nội dung chưa lưu, dùng tên/thông tin cửa hàng đang chỉnh và hóa đơn mẫu (không lấy hóa đơn/PII thật). Nêu rõ đây là bản mẫu và tiền tệ của tenant; số tiền dịch vụ mẫu là 0. Không sinh invoice, không ghi phí hoặc giá trị preview vào database.
+- Controls tôn trọng cỡ chữ hệ thống/app; nội dung giấy in dùng kích thước chữ vật lý riêng và thu phóng để không làm thay đổi bố cục in khi đổi accessibility scaling. Giấy trắng/chữ đen là mô phỏng bản in kể cả app dark mode. Có semantic nội dung và nút thay thế kéo thả.
+- Lưu `ReceiptTemplate.layout` version 1 (paper, showSku/showUnit, ordered blocks). Template cũ không có layout vẫn nạp được; chuyển sang layout khi người dùng lưu thay đổi. Lưu lỗi giữ draft; reload/Back yêu cầu xác nhận bỏ thay đổi. Các thay đổi StoreProfile chưa lưu vẫn được giữ khi quay lại từ designer; preview có thể dùng chúng nhưng chỉ lưu ReceiptTemplate, không tự lưu StoreProfile.
+- Preview là tham chiếu bố cục/phân trang, chưa đảm bảo font và vùng in giống mọi máy in. Chưa có Bluetooth/ESC-POS, in thử, xuất PDF hoặc editor đặt tọa độ tự do.
+
+**Phí dịch vụ — phạm vi đã chốt nhưng chưa triển khai giao dịch:** Đợt này chỉ lưu danh mục/nhãn dịch vụ trong mẫu. Màn tạo hóa đơn sau này nhập tiền cho từng dịch vụ trên từng invoice, mặc định 0, không âm, cộng vào tổng. Ẩn phần in hoặc xóa định nghĩa tương lai không được xóa phí khỏi lịch sử; phải snapshot ID/nhãn/số tiền vào invoice và reverse đúng dấu. Cần mở rộng schema/API payload version, tổng tiền, persistence, outbox, pull/realtime và reverse/correction trước khi bật nhập phí thật. Không gửi phí vào invoice v1 hoặc giả thành rounding/discount/sản phẩm để né contract. Chi tiết thuế vẫn bằng 0 theo nghiệp vụ v1.
 
 ### 4.8 Hồ sơ cá nhân
 

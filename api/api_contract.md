@@ -508,7 +508,7 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
 **Role:** TenantAdmin với tenant setting. Giá trị phải validate theo schema của key. Các key cấu hình cửa hàng gồm:
 
 - `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null }`.
-- `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null }`; `templateId` chỉ nhận template được app hỗ trợ.
+- `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null, "layout": { ... } }`; `layout` tùy chọn, theo `ReceiptLayout` trong OpenAPI. Không có layout vẫn dùng Standard legacy.
 - `ProductDisplay`: `{ "layout": "Grid", "sortBy": "Name", "showSku": true, "showBarcode": false, "showCategory": true }`; `layout` là `Grid`/`List`, `sortBy` là `Name`/`Sku`.
 
 Request dùng `{ "value": <value theo schema>, "expectedVersion": 2 }`, lấy `expectedVersion` từ `settingVersions[key]` của tenant hiện tại; `0` khi chưa có tenant override, kể cả khi effective value đến từ global setting. `settingsVersion` là aggregate, không phải concurrency token dùng cho PUT. Sau PUT dùng version trả về cho lần ghi tiếp theo; conflict trả `409 ERR_VERSION_CONFLICT`, không tự retry ghi đè.
@@ -516,6 +516,16 @@ Request dùng `{ "value": <value theo schema>, "expectedVersion": 2 }`, lấy `e
 `settingVersions` là metadata additive cho năm key `StoreProfile`, `ReceiptTemplate`, `ProductDisplay`, `AutoRoundMoney`, `EnableBluetoothPrint`; backend cũ có thể chưa trả nên mobile editor mới phải báo contract lỗi thay vì đoán version. Triển khai backend trước mobile editor.
 
 Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in/làm tròn theo rule hiện có, không thay đổi quyền hoặc sửa invoice đã đồng bộ. TenantAdmin chỉ được ghi feature flags `AutoRoundMoney`, `EnableBluetoothPrint`; SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+
+#### Receipt layout version 1
+
+`layout` gồm `version: 1`, `paper`, `showSku`, `showUnit`, `blocks`. `paper` gồm preset `Roll58`/`Roll80`/`A0`–`A10`/`Custom`, `widthMm`, `heightMm` (null chỉ với giấy cuộn), `marginMm`. A-series dùng kích thước ISO 216 dạng đứng; preset và kích thước phải khớp. Giới hạn rộng 25–1500 mm, cao 25–2000 mm, lề 0–10 mm; vùng in sau hai lề tối thiểu 10 mm mỗi chiều.
+
+`blocks` có 2–40 phần tử, ID không rỗng/tối đa 80 ký tự và duy nhất, thứ tự array là thứ tự in. Built-in type chỉ xuất hiện tối đa một lần; `Items`, `Total` bắt buộc xuất hiện và enabled=true. Built-in nhận `{ id, type, enabled }`. `Text` nhận thêm `text` (1–1000 ký tự, không chỉ khoảng trắng) và `align` (`Left`, `Center`, `Right`). `Service` nhận `label` (1–120 ký tự, không chỉ khoảng trắng), `hideWhenZero`; tối đa 10 service. Đây là plain text, không HTML/script, không nội suy code.
+
+Service block chỉ định nghĩa danh mục, **không nhận `amount`, giá mặc định hoặc số tiền mẫu**. Quy tắc cho bước invoice sau: tiền dịch vụ nhập riêng từng hóa đơn, mặc định 0, không âm, cộng tổng; ẩn khi 0 mặc định bật. Chưa thay đổi schema/formula của invoice v1, chưa hỗ trợ sync khoản phí thật. Việc ẩn khối chỉ ảnh hưởng in, không thay đổi tổng tiền hoặc lịch sử invoice.
+
+Các field legacy được giữ để tương thích đọc; khi có layout, renderer mới dùng layout làm nguồn bố cục, `footerText` vẫn là nội dung khối Footer. PUT thay thế toàn bộ value của ReceiptTemplate: client phải giữ layout và mọi field đang dùng, không gửi patch một phần. Xem deployment gate trong compatibility matrix để tránh editor cũ ghi mất layout.
 
 ### SuperAdmin quản lý tenant và onboarding TenantAdmin
 
