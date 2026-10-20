@@ -175,6 +175,8 @@ Nếu cần màu nghiệp vụ như `sale`, `reverse`, `pending`, tạo semantic
 - Cùng một semantic level phải dùng cùng `TextTheme`: `titleLarge`, `titleMedium`, `bodyLarge`, `bodyMedium`, `labelLarge`.
 - Không dùng chữ in hoa toàn bộ để thay thế hierarchy.
 - Text dài phải có overflow/wrap rõ ràng và được test trên màn hình nhỏ.
+- Cỡ gốc dễ đọc, preset cỡ chữ toàn app và cách kết hợp system `TextScaler` tuân theo [Design System, mục 5](design_system.md#5-accessibility). Áp dụng scaling đúng một lần ở app root, gồm overlay và `forui`; không vô hiệu hóa accessibility scaling để tránh overflow.
+- Tùy chọn cỡ chữ là preference local của thiết bị, không phải cấu hình cửa hàng hoặc nghiệp vụ. Thay đổi có hiệu lực ngay và giữ nguyên BLoC/form/navigation state.
 
 ---
 
@@ -261,12 +263,20 @@ abstract final class AppFeedback {
 
 Wrapper không được nuốt error code; message phải được dịch trước khi hiển thị.
 
+Đoạn trên chỉ minh họa wrapper, không phải implementation. Quy chuẩn cấu hình tập trung, phân loại toast/dialog/banner, thời gian hiển thị, hàng đợi và lifecycle nằm tại [Design System, mục 4.1–4.3](design_system.md#41-cấu-hình-thông-báo-dùng-chung).
+
+- Theme giữ visual tokens; policy dùng chung (dự kiến `AppFeedbackConfig`) giữ behavior/preset. Không lặp màu, cỡ chữ, duration, placement hoặc dismiss policy trong feature.
+- Severity và presentation là hai khái niệm riêng: lỗi field hiển thị tại field, lỗi nền ở status/banner; không biến mọi lỗi thành modal.
+- Widget/BLoC listener tại presentation gọi wrapper; domain/data không giữ `BuildContext`, không mở dialog và wrapper không tự gọi repository.
+- Hiển thị theo event/transition một lần, không gọi trong `build`. Chống lặp theo intent/operation ID, kiểm tra mounted/route/session sau `await` và dọn feedback cũ khi logout/đổi tenant.
+
 ### 5.3. Dialog và destructive action
 
 - Dialog phải có title, nội dung, action chính và action hủy rõ ràng.
 - Reverse invoice, logout device, xóa local database cần destructive confirmation.
 - Không gọi use case khi dialog mới mở; chỉ gọi khi người dùng confirm.
 - Dialog trả typed result, không trả `dynamic` nếu có thể tránh.
+- Back/Hủy/null result không được thực hiện nghiệp vụ; action nguy hiểm chỉ chạy khi nhận kết quả xác nhận tường minh. Không cho submit trùng hoặc đóng mất trạng thái khi đang thực thi.
 
 ---
 
@@ -385,15 +395,11 @@ Frontend phải parse đúng [API Contract](../api/api_contract.md):
 ### 8.2. Error mapping
 
 ```dart
-String localizeApiError(BuildContext context, AppError error) {
-  final key = 'errors.${error.code}';
-  return key.tr(args: error.args.map(
-    (key, value) => MapEntry(key, value?.toString() ?? ''),
-  ));
-}
+final message = localizeError(error.code, args: error.args);
 ```
 
 - Không hiển thị raw server message.
+- Dùng helper `localizeError` và mapping catalog dùng chung. Alias i18n của [Error Code Catalog](../api/error_codes.md) được ưu tiên theo API contract, ví dụ `ERR_INVALID_CREDENTIALS -> errors.invalidCredentials`; `errors.<code>` chỉ dùng khi code có key trực tiếp (như namespace client), không tự đổi alias đã phát hành.
 - Không dùng HTTP status làm text key.
 - `retryable == true` mới được retry tự động, có backoff.
 - Field error phải map tới form field cụ thể.

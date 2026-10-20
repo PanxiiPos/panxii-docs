@@ -87,3 +87,16 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 ## 3. i18n minimum keys
 
 `vi.json` và `en.json` phải có đủ các key ở cột `i18n key`. CI nên kiểm tra hai file có cùng key tree.
+
+Mobile Login dùng mapping tập trung `AuthErrorCode.translationKeys` để giữ nguyên các alias của catalog, ví dụ `ERR_INVALID_CREDENTIALS -> errors.invalidCredentials`; không đổi wire code của API. Code client dùng namespace riêng `client.*` và key `errors.<client-code>`.
+
+## 4. Lỗi local của mobile (không phải API wire code)
+
+| Code | Xử lý | i18n key |
+|---|---|---|
+| `client.unknown` | Báo lỗi chung, cho thử lại; không hiển thị exception/raw server message | `errors.client.unknown` |
+| `client.network_unavailable` | Báo mất kết nối/timeout; giữ form, cho đăng nhập lại thủ công | `errors.client.network_unavailable` |
+| `client.auth.tenant_login_required` | Không lưu token hoặc vào tenant flow với tài khoản không được hỗ trợ | `errors.client.auth.tenant_login_required` |
+| `client.display.read_failed` | Báo lỗi đọc preference; cho đọc lại/đặt lại | `errors.client.display.read_failed` |
+| `client.display.write_failed` | Giữ cỡ chữ đã áp dụng trước đó; cho thử lưu lại | `errors.client.display.write_failed` |
+| `client.display.value_invalid` | Báo giá trị lưu không hợp lệ; dùng cỡ chữ an toàn và cho đặt lại | `errors.client.display.value_invalid` |

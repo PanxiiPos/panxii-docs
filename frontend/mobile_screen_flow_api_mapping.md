@@ -48,6 +48,8 @@ flowchart TD
 
 `SyncStatus` là UI dùng chung trong app shell, luôn hiển thị trên mọi màn hình sau đăng nhập; đây là trạng thái/chức năng toàn cục, không phải một destination trong navigation. Chuyển sang login khi logout, token/session bị thu hồi hoặc device bị revoke.
 
+Từ Hồ sơ có lối vào **Cài đặt ứng dụng > Hiển thị > Cỡ chữ** dành cho Staff/TenantAdmin; màn hình Login cũng có lối vào tùy chọn hiển thị. Đây là cài đặt local trên thiết bị, tách khỏi Cấu hình cửa hàng và không yêu cầu API.
+
 ## 3. Quy định UI đồng bộ toàn cục
 
 Hiển thị đồng thời trạng thái mạng và trạng thái dữ liệu; online không đồng nghĩa dữ liệu đã đồng bộ.
@@ -81,6 +83,16 @@ Banner/status component phải giữ vị trí và kích thước ổn định g
 | Đăng xuất | `POST /auth/logout`; nhận `data.revoked`; xóa session/token local và quay về Login. |
 
 Lỗi chính: `ERR_INVALID_CREDENTIALS`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_FORCE_UPDATE_REQUIRED`, `ERR_RATE_LIMITED`. Không đưa SuperAdmin vào tenant flow nếu app hiện chỉ phục vụ cửa hàng.
+
+**Đã triển khai UI:** Login dùng Cubit cho submitting/success/failure; validate username/password bắt buộc, username tối đa 120 ký tự; trim username nhưng không trim password. Có hiện/ẩn mật khẩu, autofill, đổi vi/en, chặn submit lặp và giữ dữ liệu khi đăng nhập lỗi. Lỗi field/credentials/network hiển thị tại form; tenant inactive/device revoked/force-update/access denied dùng thêm `AppDialog` qua `forui`, không tự đóng khi chạm ngoài. Chỉ vào Home sau repository hoàn tất, không tự retry đăng nhập.
+
+Form neo phía trên thay vì căn giữa lại theo chiều cao nội dung. Khi gửi request, giữ nguyên field/controller/focus và bàn phím; không disable/re-enable field hoặc đổi kích thước nút. Nút submit khóa lặp, có vùng tiến trình giữ chỗ; lỗi chung nằm sau nút nên không đẩy các ô nhập/nút lên xuống. Lỗi field dài vẫn được phép làm vùng validation tăng chiều cao để đọc đủ nội dung. Rebuild widget theo state là bình thường, nhưng không được remount/reset form hoặc thay toàn màn hình bằng loading khi retry/thất bại. Thành công chỉ chuyển Login sang Home sau khi lưu token.
+
+Kết nối backend local qua Android USB cần `adb reverse tcp:5099 tcp:5099` trước khi dùng `API_BASE_URL=http://127.0.0.1:5099/api/v1`. Cấu hình chạy từ workspace và smoke test backend thật được hướng dẫn trong [Mobile README](../../mobile/README.md#run-on-android-or-a-usb-connected-device).
+
+Login có lối vào Hiển thị và cỡ chữ; Home có cùng lối vào trên app bar cho mọi role đang hỗ trợ. Shared preference lưu local các preset system/large/extra_large; root `TextScaler` áp dụng đúng một lần cho mọi route/overlay. Cấu hình màu dialog lấy từ theme app, chữ từ typography chung.
+
+**Giới hạn hiện tại:** Repository đăng nhập lưu access token trong secure storage và từ chối tài khoản ngoài Staff/TenantAdmin trước khi lưu. Vòng đời refresh token/expiry, silent refresh và xử lý revoke của phiên đang hoạt động chưa được triển khai đầy đủ; UI này không thay thế các phần đó. `HOME_PREVIEW=true` vẫn bỏ qua Login theo cơ chế preview hiện có.
 
 ### 4.2 Trang chủ
 
@@ -182,6 +194,14 @@ Sau PUT dùng response để cập nhật cache hoặc đọc lại `/settings/e
 
 Password change không thuộc hồ sơ trong contract hiện tại; cần API riêng nếu bổ sung chức năng đổi mật khẩu.
 
+### 4.9 Cài đặt hiển thị trên thiết bị
+
+**Mô tả:** Chọn cỡ chữ cho toàn app, có preview và áp dụng ngay mà không mất form/nháp đang nhập. Ba lựa chọn: Theo hệ thống (mặc định), Lớn, Rất lớn; mọi lựa chọn đều tôn trọng cỡ chữ hệ điều hành.
+
+**Dữ liệu/API:** Preference local dùng chung trên thiết bị, không chứa PII; đọc/ghi offline, giữ qua restart. Không gọi `/settings/effective`, không PUT cấu hình cửa hàng hoặc `/me`, không tạo outbox hay endpoint mới. Lỗi đọc/ghi phải được báo rõ, cho thử lại/đặt lại và không báo lưu thành công khi thất bại.
+
+Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design System, mục 5](design_system.md#5-accessibility). Flutter đã có màn hình này từ Login/Home, preview, áp dụng ngay, khôi phục theo hệ thống và xử lý lỗi đọc/ghi local. Root scaler bao phủ mọi route/overlay; toast wrapper vẫn là yêu cầu cho bước triển khai sau.
+
 ## 5. Hợp đồng dữ liệu và xử lý lỗi dùng chung
 
 - Collection/query response: render `data`; cursor lấy từ `meta.paging.nextCursor`, `hasMore`, `pageSize`. Không tải toàn bộ danh sách; giữ nguyên scroll và deduplicate theo ID.
@@ -192,6 +212,15 @@ Password change không thuộc hồ sơ trong contract hiện tại; cần API r
 - `403 ERR_ACCESS_DENIED`: ẩn/disable action theo role để dễ dùng, nhưng luôn xử lý response server nếu quyền đã đổi.
 - Unknown enum/status: map về trạng thái “Không xác định” an toàn; không crash, không suy ra đã đồng bộ/thanh toán.
 - Server error UI dùng `error.code`, `args`, `fieldErrors`, `retryable`; map catalog sang `vi.json`/`en.json`. Không hiện stack trace hoặc `message` kỹ thuật.
+
+### 5.1. Thông báo và xác nhận dùng chung
+
+- Mọi màn hình dùng wrapper/policy chung theo [Design System, mục 4](design_system.md#4-component-catalog); không tự cấu hình popup/dialog/toast riêng.
+- Thông tin nhẹ/thành công dùng toast; lỗi nhập liệu hiển thị tại field/form; thông tin quan trọng cần xử lý dùng dialog. Mạng và sync nền ở banner/status, không mở popup liên tục.
+- Lưu local chỉ thông báo đã lưu trên thiết bị; `202` chỉ thông báo đang xử lý. Chỉ báo hoàn tất sau response xác nhận hoặc event/pull phù hợp, không đánh đồng `Queued` với `Synced`.
+- Đảo hóa đơn, xóa/vô hiệu hóa đối tượng và đăng xuất có xác nhận rõ đối tượng/hậu quả; Hủy/Back/chạm ngoài không thực hiện hành động. UI vẫn tuân theo quyền và contract hiện có.
+- Conflict giữ nội dung nhập và mở hướng xử lý, không dùng toast tự mất làm cách duy nhất để báo lỗi. Auth/revoke/force-update đi theo flow toàn cục, không phụ thuộc việc đóng dialog.
+- Toast/dialog hỗ trợ cỡ chữ toàn app, text scaling hệ điều hành, vi/en và screen reader; không cắt nội dung quan trọng hoặc làm khuất action.
 
 ## 6. API gaps cần đóng trước khi làm màn hình liên quan
 
@@ -212,4 +241,7 @@ Trang chủ không cần dashboard summary trong phạm vi hiện tại. Các AP
 - [ ] SyncStatus luôn thấy được ở mọi route authenticated, dễ đọc, không phụ thuộc riêng màu sắc.
 - [ ] List dùng cursor; đổi filter/search reset cursor; local pending không bị server response ghi đè.
 - [ ] Error code được localization trong tiếng Việt/Anh; test màn hình nhỏ, text lớn và trạng thái loading/empty/error.
+- [ ] Feedback dùng cấu hình chung, đúng toast/dialog/banner; test chống lặp, Hủy/Back, submit lặp và dọn popup khi đổi route/phiên.
+- [ ] Cài đặt cỡ chữ dùng được ở Login/Staff/TenantAdmin, áp dụng ngay cho toàn app/overlay, giữ qua offline restart và không gọi API cấu hình cửa hàng.
+- [ ] Test các preset chữ cùng system scaling 100%/200%, vi/en, màn hình 320 logical pixels và screen reader theo Design System.
 - [ ] Contract gaps trong mục 6 được ghi nhận; không tự thêm API/payload tại frontend.
