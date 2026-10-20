@@ -53,7 +53,7 @@ Mỗi component cần xác định `default`, `hover/focus`, `pressed`, `disable
 
 ### 4.1. Cấu hình thông báo dùng chung
 
-Đây là quy chuẩn đích khi triển khai. Flutter hiện có `AppDialog.showNotice` và `AppFeedbackConfig` dùng cho Login; `AppFeedback`/`AppToast`, destructive confirmation và điều phối hàng đợi toàn cục chưa được triển khai. Popup thông báo phải đi qua wrapper chung, không cấu hình riêng tại từng màn hình. Popup chọn dữ liệu/filter vẫn thuộc component tương ứng, không dùng dialog thông báo thay cho form.
+Đây là quy chuẩn đích khi triển khai. Flutter hiện có `AppDialog.showNotice` và `AppFeedbackConfig` dùng cho Login; `AppDialog.confirm` dùng chung cho đăng xuất, bỏ thay đổi và tải lại form conflict. Confirmation không đóng khi chạm ngoài, mặc định focus Hủy, trả kết quả typed; chỉ kết quả xác nhận mới thực hiện hành động. Settings dùng feedback inline có semantic live region cho lỗi/thành công và progress ổn định. `AppFeedback`/`AppToast` và điều phối hàng đợi toàn cục chưa được triển khai. Popup thông báo phải đi qua wrapper chung, không cấu hình riêng tại từng màn hình. Popup chọn dữ liệu/filter vẫn thuộc component tương ứng, không dùng dialog thông báo thay cho form.
 
 Tập trung cấu hình tại app theme và một policy dùng chung `AppFeedbackConfig`:
 

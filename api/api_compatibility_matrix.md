@@ -11,6 +11,7 @@
 ## 2. Contract rules
 
 - Additive optional response field: compatible.
+- `GET /settings/effective` bổ sung `settingVersions` (version tenant override theo từng key, `0` nếu chưa override). Deploy API này trước mobile có editor cấu hình; client cũ tiếp tục dùng `settingsVersion` cho cache. Editor mới không được suy diễn version ghi từ `settingsVersion` tổng hoặc tự retry với version mới khi `409`.
 - Required request field, field type, enum meaning, envelope hoặc error code đổi: breaking.
 - Thay đổi role được phép thực hiện command là behavioral breaking change; không xem việc trả `403` thay cho hành vi trước đây là additive.
 - Chuyển unknown request fields từ ignore sang reject là behavioral breaking change với client gửi extra fields; kiểm tra request thực tế trước rollout.

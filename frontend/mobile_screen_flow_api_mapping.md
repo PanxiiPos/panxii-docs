@@ -41,14 +41,19 @@ flowchart TD
     StaffList --> StaffDetail[Chi tiết nhân viên]
     StaffList --> StaffForm[Form tạo hoặc sửa nhân viên]
     StaffDetail --> StaffForm
-    Home --> StoreSettings[Cấu hình cửa hàng]
+    Home --> Settings[Cài đặt]
+    Settings --> StoreSettings[Cấu hình cửa hàng - chỉ TenantAdmin]
     StoreSettings --> ReceiptSettings[Mẫu hóa đơn in]
-    Home --> Profile[Hồ sơ]
+    Settings --> Profile[Hồ sơ]
+    Settings --> Display[Cỡ chữ]
+    Settings --> Language[Ngôn ngữ]
+    Settings --> Logout[Xác nhận đăng xuất]
+    Logout --> Login
 ```
 
 `SyncStatus` là UI dùng chung trong app shell, luôn hiển thị trên mọi màn hình sau đăng nhập; đây là trạng thái/chức năng toàn cục, không phải một destination trong navigation. Chuyển sang login khi logout, token/session bị thu hồi hoặc device bị revoke.
 
-Từ Hồ sơ có lối vào **Cài đặt ứng dụng > Hiển thị > Cỡ chữ** dành cho Staff/TenantAdmin; màn hình Login cũng có lối vào tùy chọn hiển thị. Đây là cài đặt local trên thiết bị, tách khỏi Cấu hình cửa hàng và không yêu cầu API.
+Từ Home có lối vào **Cài đặt > Hiển thị và cỡ chữ** dành cho Staff/TenantAdmin; màn hình Login cũng có lối vào tùy chọn hiển thị. Cỡ chữ và ngôn ngữ là cài đặt local trên thiết bị, tách khỏi Cấu hình cửa hàng và không yêu cầu API.
 
 ## 3. Quy định UI đồng bộ toàn cục
 
@@ -66,6 +71,8 @@ Hiển thị đồng thời trạng thái mạng và trạng thái dữ liệu; 
 | `Downloading` | Đang cập nhật dữ liệu | Đang pull/upsert changes |
 
 Banner/status component phải giữ vị trí và kích thước ổn định giữa các state, có nhãn dễ hiểu, biểu tượng và màu tương phản. `Queued` khác `Synced`. Tap có thể mở thông tin lỗi/hoạt động gần nhất dạng dialog/bottom sheet; không yêu cầu màn hình đồng bộ riêng. Realtime dùng `DataCreated`/`CommandRejected`; SignalR chỉ báo hiệu, dữ liệu server được xác nhận qua event snapshot hoặc `GET /sync/pull?afterSequence=&limit=`. Upsert local trước khi cập nhật sequence.
+
+**Giới hạn implementation hiện tại:** Home đổi nhãn kết nối theo trạng thái SignalR (`connected` hoặc mất kết nối/đang kết nối lại), chưa có bộ theo dõi Wi-Fi/mobile data riêng và chưa có banner kết nối toàn cục trên các route Settings. Refresh API lỗi giữ nội dung Home đã tải; lỗi lưu hồ sơ/cấu hình giữ form. Kiểm thử lỗi API giả lập không thay thế kiểm thử mất kết nối thật. Khi debug Android qua USB với `adb reverse tcp:5099 tcp:5099`, tắt Wi-Fi/mobile data vẫn có thể gọi backend qua USB; cần ngắt đường forwarding để kiểm thử backend không truy cập được, rồi khôi phục sau khi test.
 
 `Invoice.status` trong API là `InvoiceStatus` (`Active`, `Reversed`) và mô tả trạng thái nghiệp vụ server. Trường local `syncStatus` dùng enum `Draft`, `Pending`, `Sending`, `Queued`, `Synced`, `Failed`. API không trả `syncStatus`; trạng thái online/offline và downloading là trạng thái app-wide riêng.
 
@@ -98,7 +105,9 @@ Login có lối vào Hiển thị và cỡ chữ; Home có cùng lối vào trê
 
 **Mô tả:** Điều hướng tới bán hàng, hóa đơn, sản phẩm, khách hàng, nhân viên và cài đặt theo role; hiển thị SyncStatus toàn cục. Có thể hiển thị hoạt động gần đây từ local cache.
 
-**API:** Không cần số liệu dashboard hoặc endpoint tổng hợp trong phạm vi hiện tại. Trang chủ chỉ điều hướng theo role, hiển thị SyncStatus toàn cục và có thể đọc dữ liệu local gần đây. Cấu hình effective được lấy từ `GET /settings/effective` khi cần.
+**Đã triển khai:** Home hiển thị `Xin chào {displayName}` lấy từ `GET /me` và thẻ tenant từ `GET /tenant/profile`: tên, mã, trạng thái, tiền tệ, múi giờ. Tenant của hồ sơ phải khớp metadata; không dùng dữ liệu của tenant khác. Đọc `GET /settings/effective` để hiển thị cấu hình effective. Không cần API tổng hợp/dashboard mới.
+
+Refresh hoặc lưu hồ sơ/cấu hình thành công tải lại Home nhưng giữ nội dung đã có trong khi chờ; khi refresh lỗi, giữ dữ liệu cũ và báo chưa cập nhật được. Lần tải đầu lỗi có nút thử lại. Lối vào Cài đặt ở app bar và ô chức năng cùng mở một màn hình. Lưới chức năng chuyển sang danh sách khi chữ lớn hoặc màn hình hẹp.
 
 ### 4.3 Sản phẩm và danh mục
 
@@ -176,12 +185,16 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
 | Nạp metadata cửa hàng | `GET /tenant/profile`; TenantAdmin/Staff nhận `id, code, name, status, timeZone, currencyCode, version, createdAtUtc, updatedAtUtc` từ tenant trong JWT; không truyền tenant ID. |
-| Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags và `settingsVersion`. |
+| Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags, `settingsVersion` và `settingVersions` cho từng key có thể sửa. |
 | Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode? }, expectedVersion }`. |
 | Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText? }, expectedVersion }`; `templateId` phải là template app hỗ trợ. |
 | Lưu tùy chọn hiển thị sản phẩm | `PUT /settings/ProductDisplay`; body `{ value: { layout, sortBy, showSku, showBarcode, showCategory }, expectedVersion }`. |
 
-Sau PUT dùng response để cập nhật cache hoặc đọc lại `/settings/effective`. `RequireCustomerPhone`, Bluetooth và rounding flags chỉ được bật/hiển thị theo giá trị effective; client UI không thay thế enforcement server. Preview/in là local rendering.
+**Đã triển khai:** Menu và editor chỉ hiện cho TenantAdmin; Cubit chặn thao tác ghi của Staff và backend vẫn enforce quyền. Có lưu riêng từng nhóm StoreProfile, ReceiptTemplate (chỉ Standard), ProductDisplay và hai switch `AutoRoundMoney`/`EnableBluetoothPrint`. Không cho sửa `RequireCustomerPhone` hoặc global flags. Metadata tenant là chỉ đọc; StoreProfile chỉ đổi thông tin hiển thị/in, không đổi tên/mã tenant.
+
+Mỗi PUT gửi `expectedVersion = settingVersions[key]`, dùng `0` khi tenant chưa có override; **không dùng aggregate `settingsVersion`** hoặc version của global setting. Response cập nhật value/version của đúng key, giữ nội dung chưa lưu ở nhóm khác. Backend thiếu metadata thì editor báo lỗi rõ, không đoán version. Deploy backend bổ sung metadata trước khi bật mobile editor.
+
+Đây là thao tác online trực tiếp, chưa có outbox cho hồ sơ/cấu hình. Lỗi giữ form, không tự retry ghi. Conflict giữ nội dung và có nút tải bản mới nhất; phải xác nhận bỏ thay đổi trước khi tải lại. Rời form bẩn cũng cần xác nhận, không cho rời trong khi lưu. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Preview bản in và kết nối máy in thực tế chưa được triển khai trong màn hình này.
 
 ### 4.8 Hồ sơ cá nhân
 
@@ -193,6 +206,14 @@ Sau PUT dùng response để cập nhật cache hoặc đọc lại `/settings/e
 | Cập nhật | `PATCH /me`; gửi `{ username, displayName, email, phone, expectedVersion }`; email/phone nullable để xóa giá trị. Nhận UserProfile mới. Username trùng trả `ERR_DUPLICATE_USERNAME`; version cũ trả `ERR_VERSION_CONFLICT`. |
 
 Password change không thuộc hồ sơ trong contract hiện tại; cần API riêng nếu bổ sung chức năng đổi mật khẩu.
+
+**Đã triển khai:** Sửa/lưu username, tên hiển thị, email và điện thoại; role/status chỉ đọc. Validate bắt buộc/độ dài/email, giữ dữ liệu khi API lỗi và khi conflict; tải lại/rời form cần xác nhận bỏ thay đổi. Lưu thành công cập nhật tên trên Cài đặt và lời chào Home.
+
+### 4.8.1 Cài đặt chung và đăng xuất
+
+Staff/TenantAdmin đều có Hồ sơ, Hiển thị và cỡ chữ, Ngôn ngữ (vi/en), Đăng xuất; chỉ TenantAdmin thấy Cấu hình cửa hàng. Ngôn ngữ áp dụng ngay toàn app bằng `easy_localization`, lưu local.
+
+Đăng xuất dùng `AppDialog.confirm`; Hủy/Back không gọi API. Sau xác nhận, gọi `POST /auth/logout`, kiểm tra `revoked: true`, xóa token local, dừng realtime và đóng các route authenticated trước khi về Login. Session đã bị revoke/unauthenticated cũng được phép xóa token. Khi mạng/API lỗi, giữ phiên và báo lỗi để thử lại; **chưa hỗ trợ đăng xuất chỉ local khi offline**. Không xóa dữ liệu/nháp/outbox trong luồng này. Refresh token và tự động xử lý hết hạn phiên vẫn là phạm vi chưa hoàn tất.
 
 ### 4.9 Cài đặt hiển thị trên thiết bị
 
@@ -228,7 +249,7 @@ Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design
 |---|---|---|
 | Category không có delete/deactivate | Danh mục | Không hiển thị thao tác xóa cho đến khi có contract và rule lịch sử. |
 | SignalR hub URL/method handshake chưa khai báo trong OpenAPI | SyncStatus | Chốt hub URL, event payload/version/auth/reconnect; sync doc mới nêu event names. |
-| Backend chưa triển khai GET detail, `/me`, barcode update, Product `isActive`, invoice status split và correction rounding theo contract | Sản phẩm/khách hàng/hóa đơn/hồ sơ | Cập nhật implementation, authorization, DTO/response, persistence nếu cần và integration tests trước khi bật UI. |
+| Backend chưa triển khai GET detail, barcode update, Product `isActive`, invoice status split và correction rounding theo contract | Sản phẩm/khách hàng/hóa đơn | Cập nhật implementation, authorization, DTO/response, persistence nếu cần và integration tests trước khi bật UI. `/me` và tenant profile/settings đã được nối với Home/Cài đặt. |
 
 Trang chủ không cần dashboard summary trong phạm vi hiện tại. Các API mới được mô tả ở đây là contract đích; UI chỉ gọi sau khi backend triển khai và contract tests xác nhận.
 
