@@ -1062,10 +1062,70 @@ components:
       additionalProperties: false
       required: [templateId]
       properties:
-        templateId: { type: string, minLength: 1 }
+        templateId: { type: string, enum: [Standard] }
         showStoreAddress: { type: boolean }
         showTaxBreakdown: { type: boolean }
-        footerText: { type: string, nullable: true }
+        footerText: { type: string, nullable: true, maxLength: 500 }
+        layout: { $ref: '#/components/schemas/ReceiptLayout' }
+    ReceiptLayout:
+      type: object
+      additionalProperties: false
+      required: [version, paper, showSku, showUnit, blocks]
+      description: Optional versioned print design. Absent layout uses the legacy Standard template. All amounts are invoice snapshots, never template defaults. Items and Total must each appear exactly once and remain enabled; other built-in types appear at most once.
+      properties:
+        version: { type: integer, enum: [1] }
+        paper: { $ref: '#/components/schemas/ReceiptPaper' }
+        showSku: { type: boolean }
+        showUnit: { type: boolean }
+        blocks:
+          type: array
+          minItems: 2
+          maxItems: 40
+          description: Ordered blocks with unique stable ids. At most 10 Service blocks. Enabled controls printing only, never invoice arithmetic.
+          items:
+            oneOf:
+              - { $ref: '#/components/schemas/ReceiptBuiltInBlock' }
+              - { $ref: '#/components/schemas/ReceiptTextBlock' }
+              - { $ref: '#/components/schemas/ReceiptServiceBlock' }
+    ReceiptPaper:
+      type: object
+      additionalProperties: false
+      required: [preset, widthMm, heightMm, marginMm]
+      description: Portrait A0 through A10 use ISO 216 dimensions. Roll58/80 require matching width and null height. Custom requires a finite height. Printable width and fixed height after both margins must each be at least 10 mm.
+      properties:
+        preset: { type: string, enum: [Roll58, Roll80, A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, Custom] }
+        widthMm: { type: number, minimum: 25, maximum: 1500 }
+        heightMm: { type: number, nullable: true, minimum: 25, maximum: 2000 }
+        marginMm: { type: number, minimum: 0, maximum: 10 }
+    ReceiptBuiltInBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [StoreName, StoreAddress, StorePhone, TaxCode, InvoiceNumber, DateTime, Cashier, Customer, Items, Discount, Tax, Total, Footer] }
+        enabled: { type: boolean }
+    ReceiptTextBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled, text, align]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [Text] }
+        enabled: { type: boolean }
+        text: { type: string, minLength: 1, maxLength: 1000, description: Plain text only; whitespace-only is invalid. No HTML or executable placeholders. }
+        align: { type: string, enum: [Left, Center, Right] }
+    ReceiptServiceBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled, label, hideWhenZero]
+      description: Service definition only; no amount or price may be stored in the template. Future invoice entry defaults each amount to 0, permits non-negative amounts and adds fees to the total; hiding a printed block must not remove incurred fees from arithmetic.
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [Service] }
+        enabled: { type: boolean }
+        label: { type: string, minLength: 1, maxLength: 120 }
+        hideWhenZero: { type: boolean, description: New editor defaults to true. }
     ProductDisplaySetting:
       type: object
       additionalProperties: false
