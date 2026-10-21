@@ -24,6 +24,8 @@ flowchart TD
     Login[Đăng nhập] --> Home[Trang chủ]
     Home --> ProductList[Danh sách sản phẩm]
     ProductList --> ProductDetail[Chi tiết sản phẩm]
+    ProductDetail --> VariantList[Danh sách biến thể]
+    VariantList --> VariantForm[Tạo hoặc sửa biến thể]
     ProductList --> ProductForm[Form tạo hoặc sửa sản phẩm]
     ProductDetail --> ProductEdit[Tạo hoặc sửa sản phẩm]
     ProductList --> BulkPrice[Cập nhật giá hàng loạt]
@@ -111,20 +113,28 @@ Refresh hoặc lưu hồ sơ/cấu hình thành công tải lại Home nhưng gi
 
 ### 4.3 Sản phẩm và danh mục
 
-**Mô tả:** List có tìm tên/SKU/barcode, trạng thái loading/empty/error, filter danh mục và inactive (TenantAdmin). Detail tải record theo ID. Form create/edit validate trước lưu. Bulk price cho chọn sản phẩm, thao tác tăng/giảm, chọn phần trăm/số tiền và xem trước giá mới.
+**Mô tả:** Product là nhóm hàng gốc; `ProductVariant` mới là mặt hàng được chọn để bán và mang SKU, barcode, đơn vị, giá, trạng thái active cùng thuộc tính riêng. Ví dụ product `Sắt hộp 30x60` có variant `Hòa Phát` và `Việt Nhật`, mỗi variant có SKU/giá riêng; độ dày/thương hiệu đặt trong `extraData.attributes` khi cần. Product list có trạng thái loading/empty/error, filter danh mục và inactive (TenantAdmin); detail tải product và danh sách variants. Staff chỉ chọn variant active; TenantAdmin quản lý vòng đời product/variant.
 
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
-| List/search | `GET /products?search=&cursor=&pageSize=&updatedSince=&includeInactive=`. Nhận `id, sku, barcode, name, unit, basePrice, taxRate, isActive, version, updatedAtUtc`; response list có cursor metadata. Staff chỉ thấy active. |
-| Đọc detail | `GET /products/{id}`; nhận cùng Product schema với list, gồm `isActive`; Staff chỉ đọc product active, TenantAdmin đọc active/inactive. Có thể render cache trước khi response về. |
-| Tạo | `POST /products` + `Idempotency-Key`; gửi `sku, barcode?, name, unit, basePrice, taxRate, categoryId?`; nhận `202` với `operationId, status=Queued`, sau đó chờ event/pull. TenantAdmin only. |
-| Sửa | `PATCH /products/{id}`; gửi field cần đổi trong `name, barcode, unit, basePrice, taxRate, categoryId` và `expectedVersion`; `barcode: null` để xóa mã; nhận Product mới gồm `isActive`. TenantAdmin only. |
-| Ngừng bán | `POST /products/{id}/deactivate`; gửi `{ expectedVersion }`. Dùng thay cho xóa nếu có invoice/history. |
-| Xóa | `DELETE /products/{id}?expectedVersion=`; chỉ hard-delete khi chưa được tham chiếu; nếu không thì báo lỗi và hướng dẫn ngừng bán. |
-| Tăng/giảm giá hàng loạt | `POST /products/bulk-price`; gửi `{ productIds, operation, mode, value, expectedVersions }`; `value > 0`; nhận danh sách Product đã cập nhật. Chỉ gọi khi TenantAdmin. |
+| List/search nhóm hàng | `GET /products?search=&cursor=&pageSize=&updatedSince=&includeInactive=`. Nhận product gốc `id, sku, barcode, name, unit, basePrice, taxRate, isActive, version, updatedAtUtc`; response list có cursor metadata. Search API hiện dùng tên/SKU/barcode legacy của product, chưa tìm xuyên qua SKU/barcode variant. Không dùng trường legacy để quyết định giá khi variant đã tải. |
+| Đọc product và variants | `GET /products/{productId}` rồi `GET /products/{productId}/variants?includeInactive=`. Variant có `id, productId, sku, barcode, name, unit, basePrice, taxRate, isActive, version, extraData, updatedAtUtc`. `includeInactive=true` chỉ cho TenantAdmin. Cache riêng product và variant theo ID; ghép danh sách variant vào product theo `productId`. |
+| Chọn mặt hàng bán | Chỉ cho chọn variant active thuộc product active. Hiển thị tên product + nhãn variant (nếu có), SKU, đơn vị và giá của chính variant. `extraData` theo object `{ schemaVersion: 1, attributes: {...} }`; render thuộc tính đã biết, giữ nguyên key/type chưa biết thay vì parse thành các field cố định. |
+| Tạo product gốc | `POST /products` + `Idempotency-Key`; gửi `sku, barcode?, name, unit, basePrice, taxRate, categoryId?`; nhận `202` với `operationId, status=Queued`. Backend đồng thời tạo default variant có `id = productId`. Sau `DataCreated`/pull, tải lại `GET /products/{id}/variants` để đồng bộ variant; không tự tạo variant thứ hai chỉ vì event product chưa chứa collection. TenantAdmin only. |
+| Tạo variant | `POST /products/{productId}/variants`; gửi `{ sku, barcode?, name?, unit, basePrice, taxRate: 0, extraData? }`; giá > 0; `extraData` tối đa 16 KiB và có `schemaVersion: 1`, `attributes` object. Trả `201` với variant mới và Location. TenantAdmin only. |
+| Sửa product gốc | `PATCH /products/{productId}`; gửi field cần đổi trong `name, barcode, unit, basePrice, taxRate, categoryId` và `expectedVersion`. Các trường legacy được giữ để tương thích; chỉnh `basePrice/unit/barcode` ở product sẽ đồng bộ lên default variant, không sửa các variant khác. |
+| Sửa variant | `PATCH /products/{productId}/variants/{variantId}`; gửi `{ sku, barcode, name, unit, basePrice, taxRate, extraData, expectedVersion }`; `barcode: null` xóa barcode, `extraData: null` xóa thuộc tính. Xử lý `409 ERR_VERSION_CONFLICT` bằng tải lại bản mới và yêu cầu người dùng xử lý conflict; không tự retry ghi. TenantAdmin only. |
+| Ngừng bán | `POST /products/{productId}/variants/{variantId}/deactivate` + `{ expectedVersion }`. Không cho tắt variant active cuối cùng khi product còn active. Product có thể ngừng bán qua `POST /products/{productId}/deactivate`; xóa cứng chỉ khi chưa có lịch sử hóa đơn. |
+| Tăng/giảm giá hàng loạt | `POST /products/bulk-price`; chọn `productIds` để đổi giá gốc (đồng bộ default variant), `variantIds` để đổi giá của các variant đã chọn, hoặc gửi cả hai để đổi chung trong một transaction. Gửi `expectedVersions` và `variantExpectedVersions` tương ứng; `value > 0`. Nhận `products` và `variants` đã đổi. Nếu product và default variant được chọn đồng thời, server điều chỉnh giá dùng chung một lần; các variant còn lại được điều chỉnh riêng. |
 | Danh mục | `GET /categories?search=&cursor=&pageSize=&includeInactive=`, `POST /categories`, `PATCH /categories/{id}`. Contract chưa có delete/deactivate category. |
 
-**Lưu ý triển khai:** Backend đã có `barcode` trong create DTO; cần thêm barcode vào update DTO, `isActive` vào Product response và GET detail theo API contract. Category chưa có API detail/delete/deactivate.
+**Offline/local database:** Bản local phải lưu product gốc và variants thành hai loại record riêng, có index theo tenant/product và giữ nguyên `ExtraData` JSON. Chọn hàng, giá, đơn vị và snapshot invoice lấy từ variant; không suy diễn variant từ tên/giá. Mọi catalog change từ pull phải upsert đúng loại entity và tenant trước khi cập nhật sequence.
+
+Giá trị `extraData` backfill từ catalog cũ có thể chưa theo `schemaVersion: 1`. Khi đọc, giữ nguyên JSON chưa biết schema; không tự xóa hoặc ghi đè. Nếu giá trị cũ là object, chỉ wrap thành `{ schemaVersion: 1, attributes: <legacy object> }` khi người dùng chủ động sửa và lưu, để bảo toàn các key cũ. Nếu không phải object, yêu cầu luồng chuyển đổi rõ ràng thay vì tự bỏ dữ liệu.
+
+**GAP frontend:** Backend API variant đã có, nhưng mobile chưa tích hợp list/detail/create/edit/deactivate variant, local schema/migration và catalog pull/upsert. Trước khi bật chọn variant offline, triển khai đầy đủ các phần này và bảo đảm client cũ vẫn đọc legacy product/default variant.
+
+**GAP API tìm kiếm:** `GET /products?search=` chưa tìm SKU/barcode của các variant không phải default. Cho đến khi có endpoint/filter variant-aware, mobile không được tuyên bố tìm catalog server-side là đầy đủ theo SKU mọi variant; tìm local chỉ bảo đảm trên catalog đã cache và phải thể hiện trạng thái tải dữ liệu.
 
 ### 4.4 Khách hàng
 
@@ -149,11 +159,12 @@ Refresh hoặc lưu hồ sơ/cấu hình thành công tải lại Home nhưng gi
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
 | Lưu nháp | Chỉ SQLite local; không gọi API cho draft chưa chốt. Cho phép mở lại/chỉnh sửa local draft. |
-| Chốt và đưa vào outbox | Lưu invoice + details + outbox trong một transaction local; gán UUID ổn định cho invoice và `clientOperationId`. Sau đó worker gọi sync. |
-| Sync Sale | `POST /invoices/sync`; header `Idempotency-Key = clientOperationId`; body `{ clientOperationId, payloadVersion: 1, invoice }`. Invoice gửi `id, invoiceNumber?, invoiceType: Sale, customerId|null, clientCreatedAtUtc, currencyCode, subtotal, discountAmount, taxAmount: 0, roundingAmount, totalAmount, details[]`. Mỗi detail gửi `lineNumber, productId, skuSnapshot, productNameSnapshot, unitSnapshot, quantity>0, unitPrice>0, discountAmount, taxRate:0, taxAmount:0, lineTotal`. |
+| Chốt và đưa vào outbox | Lưu invoice + details + outbox trong một transaction local; gán UUID ổn định cho invoice và `clientOperationId`. Mỗi detail giữ `productId` (product gốc), `productVariantId` (variant bán được), SKU/tên/unit/giá cùng snapshot thuộc tính lúc chốt. Sau đó worker gọi sync. |
+| Sync Sale | `POST /invoices/sync`; header `Idempotency-Key = clientOperationId`; body `{ clientOperationId, payloadVersion: 1, invoice }`. Invoice gửi `id, invoiceNumber?, invoiceType: Sale, customerId|null, clientCreatedAtUtc, currencyCode, subtotal, discountAmount, taxAmount: 0, roundingAmount, totalAmount, details[]`. Mỗi detail gửi `lineNumber, productId, productVariantId, skuSnapshot, productNameSnapshot` (tên product gốc), `variantNameSnapshot?`, `unitSnapshot`, `quantity>0, unitPrice>0, discountAmount, taxRate:0, taxAmount:0, lineTotal`. `variantExtraDataSnapshot` được server lấy từ catalog và lưu; không gửi `ExtraData` tùy ý trong line. |
+| Giá/variant stale | Server đối chiếu variant ID thuộc product, active state, SKU/tên/unit/giá với catalog lúc sync. Nếu catalog đã đổi khiến line không hợp lệ, giữ invoice local ở trạng thái lỗi nghiệp vụ, hiển thị lỗi có thể xử lý và không xóa/ghi đè snapshot/draft; yêu cầu tải catalog mới và cho người dùng xác nhận chỉnh invoice rồi tạo operation mới theo quy tắc retry/idempotency. |
 | Nhận sync | `202` chỉ xác nhận command được queue; nhận `operationId, status=Queued`. Không báo “đã đồng bộ” tới khi `DataCreated` khớp operation hoặc pull xác nhận committed change. |
 | List | `GET /invoices?search=&from=&to=&invoiceType=&cursor=&pageSize=`. Nhận summary gồm `id, invoiceNumber, invoiceType, status: InvoiceStatus, customerId, createdByUserId, clientCreatedAtUtc, syncedAtUtc, totalAmount, currencyCode, originalInvoiceId`. Staff chỉ thấy invoice mình tạo; TenantAdmin thấy tenant. |
-| Detail | `GET /invoices/{id}`; nhận invoice và detail snapshots gồm mặt hàng, quantity, giá, tổng và liên kết invoice gốc nếu là reverse/correction. Staff chỉ đọc invoice do mình tạo. |
+| Detail | `GET /invoices/{id}`; nhận invoice và detail snapshots gồm `productId, productVariantId, skuSnapshot, productNameSnapshot, variantNameSnapshot, variantExtraDataSnapshot, unitSnapshot`, quantity, giá, tổng và liên kết invoice gốc nếu là reverse/correction. Render invoice từ snapshot, không lookup giá/tên hiện tại để thay đổi lịch sử. Staff chỉ đọc invoice do mình tạo. |
 | In | Dựng bản in trên thiết bị từ invoice snapshot + `ReceiptTemplate`; không có print API. Lỗi in không đổi invoice. Không in thông tin thanh toán. |
 | Sửa/xóa | Không có API edit/delete invoice. Draft local được sửa/hủy local. Invoice đã sync là immutable. |
 | Đảo | TenantAdmin gọi `POST /invoices/{id}/reverse`; gửi `{ reasonCode }`, `Idempotency-Key`, `X-Device-Id`; nhận `201` operation result. Chỉ reverse một lần. |
@@ -161,7 +172,7 @@ Refresh hoặc lưu hồ sơ/cấu hình thành công tải lại Home nhưng gi
 
 Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client chỉ sync Sale. Không cập nhật invoice đã sync bằng PATCH/DELETE. Thông tin `Paid/Unpaid` không thuộc UI hoặc model màn hình của phạm vi này.
 
-**Lưu ý triển khai:** Backend hiện trả `Invoice.Status` dạng string; cần triển khai enum `InvoiceStatus`, lưu `syncStatus` riêng ở client, và bổ sung `roundingAmount` vào correction request/validation. Server không trả payment state.
+**Lưu ý triển khai:** Lưu `invoiceStatus` riêng với `syncStatus` local. Correction dùng cùng snapshot variant trong details; server reverse invoice gốc và tạo correction atomically. Server không trả payment state. Legacy client có thể bỏ `productVariantId`/`variantNameSnapshot`; backend ánh xạ sang default variant, nhưng client mới phải luôn gửi ID variant đã chọn.
 
 ### 4.6 Nhân viên
 
@@ -266,7 +277,10 @@ Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design
 |---|---|---|
 | Category không có delete/deactivate | Danh mục | Không hiển thị thao tác xóa cho đến khi có contract và rule lịch sử. |
 | SignalR hub URL/method handshake chưa khai báo trong OpenAPI | SyncStatus | Chốt hub URL, event payload/version/auth/reconnect; sync doc mới nêu event names. |
-| Backend chưa triển khai GET detail, barcode update, Product `isActive`, invoice status split và correction rounding theo contract | Sản phẩm/khách hàng/hóa đơn | Cập nhật implementation, authorization, DTO/response, persistence nếu cần và integration tests trước khi bật UI. `/me` và tenant profile/settings đã được nối với Home/Cài đặt. |
+| Mobile chưa triển khai product variant, local schema/migration, variant catalog sync và invoice snapshot fields | Catalog, lập hóa đơn, hóa đơn offline | Bổ sung model product gốc/variant riêng, migration local an toàn, repository/BLoC và upsert sync. Chỉ bật chọn hàng khi catalog có variant; không dùng giá legacy thay cho variant. |
+| Product search server chưa tìm SKU/barcode qua mọi variant | Danh sách/chọn hàng | Thêm query variant-aware hoặc endpoint tìm variant với cursor trước khi hứa kết quả server-side đầy đủ; local filtering chỉ tìm được trong catalog đã tải. |
+| Category không có delete/deactivate | Danh mục | Không hiển thị thao tác xóa cho đến khi có contract và rule lịch sử. |
+| SignalR hub URL/method handshake chưa khai báo trong OpenAPI | SyncStatus | Chốt hub URL, event payload/version/auth/reconnect; sync doc mới nêu event names. |
 
 Trang chủ không cần dashboard summary trong phạm vi hiện tại. Các API mới được mô tả ở đây là contract đích; UI chỉ gọi sau khi backend triển khai và contract tests xác nhận.
 

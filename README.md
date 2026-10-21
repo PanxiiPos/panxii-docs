@@ -72,7 +72,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 
 | File | Vai trò |
 |---|---|
-| [database_design.md](database/database_design.md) | Schema MySQL/SQLite, entity, index, tenant isolation, invoice immutable, outbox |
+| [database_design.md](database/database_design.md) | Schema MySQL/SQLite, Product/ProductVariant, entity, index, tenant isolation, contract `ExtraDataJson`, invoice immutable, outbox |
 | [migration_seed_strategy.md](backend/migration_seed_strategy.md) | EF Core migration, seed, expand/contract và rollback data |
 
 > `database/` là nhóm tài liệu database và persistence.
@@ -304,7 +304,7 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Backend hiện triển khai API SuperAdmin CRUD/lifecycle tenant, tạo tenant cùng TenantAdmin đầu tiên trong một transaction, quản lý các TenantAdmin tiếp theo và đọc/cập nhật global feature flags. Tenant soft-delete giữ nguyên dữ liệu nghiệp vụ và revoke sessions.
 - Backend có API Staff đọc/tìm product/customer, đọc invoice/effective settings và `GET /api/v1/sync/pull?afterSequence=`. `POST /api/v1/invoices/sync`, TenantAdmin `POST /api/v1/products` và `POST /api/v1/customers` trả `202 Queued` sau RabbitMQ publisher confirm.
 - Worker xử lý idempotent theo tenant/operation/payload hash; entity, operation, `server_changes` sequence và outbox commit cùng transaction. Sau commit, outbox phát full snapshot qua RabbitMQ; SignalR `/hubs/pos` chỉ join group theo tenant claim và gửi `DataCreated` tới client cùng tenant. Client insert snapshot lên đầu và deduplicate bằng `serverSequence`/`messageId`; `/sync/pull` khôi phục event bị lỡ. Mobile repository hiện chưa có Dart implementation để xác nhận UI listener/list insertion.
-- TenantAdmin quản lý tài khoản Staff, vòng đời sản phẩm/customer, cấu hình cửa hàng và các thao tác invoice reverse/correction chưa được xác nhận triển khai.
+- TenantAdmin quản lý tài khoản Staff, product/variant/customer và cấu hình cửa hàng; invoice reverse/correction có API trong backend.
 - Access token mặc định 15 phút; refresh token opaque được rotate và chỉ lưu hash SHA-256; password lưu BCrypt hash.
 - Middleware API đã chuẩn hóa correlation ID (`X-Correlation-Id`), exception/error envelope và localization theo `Accept-Language` (`vi`/`en`, mặc định `vi`); response có `Content-Language`.
 - MVC result filter bọc response success/error theo `data` + `meta` hoặc error envelope; backend trả error code, mobile vẫn dịch qua `easy_localization`.
@@ -329,9 +329,11 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Các migrations đã apply: `InitialPosSchema`, `AddDatabaseForeignKeys`, `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex`, `SeparatePlatformAdmin`, `AddPlatformAdministration` và `AddTenantVersion`.
 - Nhánh backend `feature/async-pos-realtime` bổ sung migrations `AddInvoiceSkuSnapshot`, `AddInvoiceLineAndTaxAmounts` và `AddRealtimeChangeFeed` (bao gồm operation ID); apply trước khi chạy API/Worker.
 - Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events`, optimistic concurrency version và durable `server_changes` sequence đã có trong model/migration.
-- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `customers`, `invoices`, `invoice_details`, `sync_operations`, `outbox_events` và `server_changes`.
+- Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `product_variants`, `customers`, `invoices`, `invoice_details`, `sync_operations`, `outbox_events` và `server_changes`.
+- Mô hình Product/ProductVariant theo ADR-011 đã có migration expand/backfill và API CRUD/list/get/deactivate variant. Product legacy vẫn giữ các cột SKU/đơn vị/giá; product mới có default variant dùng cùng ID để tương thích invoice client cũ. Invoice sync nhận variant ID và lưu snapshot thuộc tính/tên variant. Mobile/offline cache và migration contract bỏ cột legacy chưa triển khai.
+- `AddProductVariants` và `AddInvoiceVariantSnapshot` đã được áp dụng vào MySQL local `PanxiiDev`; kiểm tra sau migration cho thấy 5 products/5 default variants và 0 invoice details thiếu `ProductVariantId`. Chưa áp dụng hoặc xác nhận trên production. Migration giữ barcode index không unique để chấp nhận dữ liệu legacy; cần báo cáo/dọn barcode trùng trước khi lên kế hoạch unique index ở migration sau.
 - Các quan hệ nghiệp vụ dùng composite foreign key theo `(TenantId, Id)` để bảo vệ tenant isolation.
-- Development seed script: `backend/database/seed-development.sql`.
+- Development seed script: `backend/database/seed-development.sql`; tạo default variants và gắn variant ID vào seed invoice detail khi dùng trên schema mới.
 - Tài khoản development (chỉ dùng local; seed reset mật khẩu theo role): `superadmin` / `SuperAdmin123`, `demo.admin` / `TenantAdmin123`, `demo.staff` / `Staff123`.
 - Dữ liệu development: 1 tenant (`DEMO`), 2 tenant users, 1 platform admin, 2 categories, 2 products, 1 customer, 1 invoice, 2 invoice details, 1 sync operation và 1 outbox event.
 
