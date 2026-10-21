@@ -16,7 +16,7 @@
 Mọi bảng (trừ hệ thống gốc) phải thỏa mãn 3 điều kiện:
 1.  Kế thừa `IMustHaveTenant` (Có cột `TenantId`).
 2.  Kế thừa `IAuditable` (Có cột `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`).
-3.  Có cột mở rộng `ExtraDataJson` (NVARCHAR MAX) để tránh migration khi phát sinh data nhỏ.
+3.  Entity phù hợp có `ExtraDataJson` kiểu `JSON` của MySQL để lưu thuộc tính nghiệp vụ bổ sung theo contract `schemaVersion`/`attributes`; không dùng thay cho cột nghiệp vụ cố định hoặc cấu hình trong `AppSettings`. Chi tiết tại [database_design.md](database/database_design.md).
 
 **Các Entity chính:**
 *   `Tenants`: Lưu thông tin cửa hàng.

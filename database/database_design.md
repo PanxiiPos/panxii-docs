@@ -6,6 +6,8 @@
 **ORM:** Entity Framework Core 8, Code-First  
 **Database local:** SQLite + SQLCipher AES-256
 
+> **Trạng thái biến thể:** Backend đã có migration expand/backfill và API quản lý `ProductVariant`; các cột legacy trên `products` vẫn được giữ để tương thích API/client cũ. Client cũ map invoice line về variant mặc định bằng ID của product. Offline/mobile cache và việc contract bỏ cột legacy chưa nằm trong thay đổi này.
+
 ---
 
 ## 1. Mục tiêu và nguyên tắc bất biến
@@ -30,7 +32,7 @@ Database phải hỗ trợ SaaS multi-tenant, bán hàng offline-first, đồng 
 | Nền tảng | `tenants` | Không | Chỉ trạng thái bằng quyền SuperAdmin |
 | Danh tính | `users`, `user_devices` | Có | Có, theo chính sách audit |
 | Quản trị nền tảng | `platform_admins`, `platform_admin_sessions` | Không | Có, theo chính sách audit |
-| Danh mục | `categories`, `products`, `customers` | Có | Có trước khi phát sinh giao dịch |
+| Danh mục | `categories`, `products`, `product_variants`, `customers` | Có | Có trước khi phát sinh giao dịch |
 | Giao dịch | `invoices`, `invoice_details` | Có | Không sửa/xóa nội dung sau sync |
 | Cấu hình | `app_settings` | Có thể null | Có, theo phạm vi cấu hình |
 | Đồng bộ | `sync_operations`, `outbox_events` | Có | Trạng thái kỹ thuật được cập nhật |
@@ -47,12 +49,15 @@ erDiagram
     TENANTS ||--o{ USER_DEVICES : owns
     TENANTS ||--o{ CATEGORIES : owns
     TENANTS ||--o{ PRODUCTS : owns
+    TENANTS ||--o{ PRODUCT_VARIANTS : owns
     TENANTS ||--o{ CUSTOMERS : owns
     TENANTS ||--o{ INVOICES : owns
     TENANTS ||--o{ APP_SETTINGS : configures
     TENANTS ||--o{ SYNC_OPERATIONS : tracks
     TENANTS ||--o{ OUTBOX_EVENTS : broadcasts
     CATEGORIES ||--o{ PRODUCTS : contains
+    PRODUCTS ||--|{ PRODUCT_VARIANTS : offers
+    PRODUCT_VARIANTS ||--o{ INVOICE_DETAILS : sold_as
     CUSTOMERS ||--o{ INVOICES : buys
     USERS ||--o{ USER_DEVICES : signs_in
     USERS ||--o{ INVOICES : creates
@@ -91,6 +96,75 @@ ExtraDataJson  JSON         NULL
 ```
 
 `CreatedBy` và `UpdatedBy` có thể null cho dữ liệu system/import. Không cascade delete từ user sang dữ liệu nghiệp vụ.
+
+### 3.1. Chuẩn `ExtraDataJson`
+
+`ExtraDataJson` là vùng mở rộng có cấu trúc cho thuộc tính nghiệp vụ riêng của từng cửa hàng/ngành hàng; không chỉ là chỗ chứa seed development. Mục tiêu là để client đọc/hiển thị các thuộc tính mới bằng renderer dùng chung, không cần thêm một model/UI riêng cho từng ngành.
+
+Contract áp dụng cho thuộc tính mở rộng của entity. `app_settings` vẫn là nơi lưu cấu hình điều khiển hành vi ứng dụng/feature flag; không chuyển các setting đó vào `ExtraDataJson`. Trong catalog mục tiêu, `product_variants.Unit`, `BasePrice`, `TaxRate`, SKU và barcode là nguồn dữ liệu chuẩn cho nghiệp vụ tương ứng. `ExtraDataJson` chỉ bổ sung thông tin như kích thước, chất liệu, độ dày hoặc thuộc tính tương tự.
+
+Giá trị root luôn là object theo phiên bản:
+
+```json
+{
+  "schemaVersion": 1,
+  "attributes": {
+    "product.thickness": {
+      "type": "measurement",
+      "label": {
+        "vi": "Độ dày",
+        "en": "Thickness"
+      },
+      "value": {
+        "amount": "2.50",
+        "unitCode": "mm",
+        "unitLabel": {
+          "vi": "mm",
+          "en": "mm"
+        }
+      }
+    },
+    "product.material": {
+      "type": "string",
+      "label": {
+        "vi": "Chất liệu",
+        "en": "Material"
+      },
+      "value": "cotton"
+    },
+    "product.care_instruction": {
+      "type": "string",
+      "label": {
+        "vi": "Hướng dẫn bảo quản",
+        "en": "Care instructions"
+      },
+      "value": "Giặt ở nhiệt độ thấp"
+    }
+  }
+}
+```
+
+Quy ước contract:
+
+| Thành phần | Quy tắc |
+|---|---|
+| `schemaVersion` | Bắt buộc, hiện là `1`; tăng phiên bản chỉ khi thay đổi cấu trúc/ý nghĩa contract |
+| `attributes` | Bắt buộc là object; mỗi property là một thuộc tính mở rộng |
+| Key thuộc tính | Ổn định, chữ thường ASCII, dạng `namespace.name` dùng dấu chấm và `_`; ví dụ `product.thickness`, `retail.reorder_point`. Không dùng nhãn hiển thị làm key |
+| `type` | Bắt buộc; một trong `string`, `integer`, `decimal`, `boolean`, `date`, `datetime`, `enum`, `multiEnum`, `measurement`, `money` |
+| `label` | Không bắt buộc; object theo locale như `vi`/`en`. Client dùng locale hiện tại, sau đó fallback sang locale còn lại hoặc key |
+| `value` | Bắt buộc và đúng kiểu theo `type`; thuộc tính không có giá trị thì bỏ khỏi `attributes`, không ghi `null` |
+| `decimal` | Lưu dạng chuỗi thập phân chuẩn để tránh mất độ chính xác khi đi qua JSON/client; không dùng dấu phân tách hàng nghìn |
+| `date` / `datetime` | ISO 8601; `date` là `YYYY-MM-DD`, `datetime` dùng UTC |
+| `enum` / `multiEnum` | Giá trị là mã ổn định, không phải text đã dịch. Khi cần render tên lựa chọn, khai báo `options` gồm mã và `label` theo locale |
+| `measurement` | `value` là `{ "amount": "<decimal>", "unitCode": "...", "unitLabel": { ... } }`; `unitCode` là mã máy ổn định, không dùng nhãn dịch làm mã |
+| `money` | `value` là `{ "amount": "<decimal>", "currencyCode": "VND" }`; dùng mã tiền tệ ISO 4217 |
+
+`ExtraDataJson = NULL` hoặc `attributes` rỗng đều có nghĩa là chưa có thuộc tính mở rộng. Khi API của entity hỗ trợ trường này, DTO chuyển cột thành property JSON `extraData` (object, không phải chuỗi JSON đã escape); SQLite lưu cùng contract để offline. Khi cập nhật một phần, client/server phải merge theo key và giữ nguyên key/type chưa nhận biết; không ghi đè toàn object bằng một subset. Client gặp `schemaVersion` hoặc `type` chưa hỗ trợ phải bỏ qua phần không hiểu mà vẫn giữ nguyên dữ liệu, không làm hỏng việc đọc các trường cố định.
+
+Chỉ đưa vào đây dữ liệu bổ sung, không nhạy cảm, không cần ràng buộc quan hệ/FK, lọc/sắp xếp/báo cáo thường xuyên hoặc tính toán tài chính. Thuộc tính trở thành invariant nghiệp vụ, cần index, hoặc được dùng trong hóa đơn/kho/báo cáo phải được đưa thành cột/bảng có kiểu rõ ràng qua migration. Không lưu password, token, PII nhạy cảm hay bản sao của dữ liệu đã có cột chuẩn. `sync_operations.ExtraDataJson` hiện chứa metadata kỹ thuật `payloadHash` và không theo contract thuộc tính nghiệp vụ này.
+
+Chuẩn này là bộ kiểu và quy tắc đọc chung, không phải danh sách đóng mọi thuộc tính của mọi ngành. Tenant có thể thêm key mới theo namespace; việc thêm key dùng các type đã định nghĩa và không yêu cầu thay đổi schema database. Seed development chỉ dùng để minh họa/kiểm thử, không định nghĩa danh sách key được phép.
 
 ---
 
@@ -180,25 +254,66 @@ Unique `(TenantId, Code)`. Không cho `ParentId = Id`; service phải kiểm tra
 
 ### 4.5. `products`
 
-Giá hiện tại nằm ở đây; giá lúc bán phải snapshot vào `invoice_details`.
+`products` là sản phẩm gốc/nhóm hàng để tổ chức danh mục và hiển thị. Một sản phẩm gốc có một hoặc nhiều biến thể bán được; không lưu SKU, barcode, đơn vị hoặc giá bán tại bảng này.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `TenantId` | `CHAR(36)` | Không | FK tenant |
 | `CategoryId` | `CHAR(36)` | Có | FK category |
-| `Sku` | `VARCHAR(64)` | Không | Mã SKU |
-| `Barcode` | `VARCHAR(64)` | Có | Mã quét |
-| `Name` | `VARCHAR(200)` | Không | Tên sản phẩm |
-| `Unit` | `VARCHAR(32)` | Không | Đơn vị tính |
-| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, > 0 |
-| `CostPrice` | `DECIMAL(19,4)` | Có | Giá vốn nếu bật kho |
-| `TaxRate` | `DECIMAL(9,4)` | Không | Giữ 0 trong v1; nghiệp vụ thuế thuộc phần mở rộng sau |
+| `Name` | `VARCHAR(200)` | Không | Tên gốc, ví dụ `Sắt hộp 30x60` |
+| `Description` | `VARCHAR(2000)` | Có | Mô tả chung |
 | `IsActive` | `TINYINT(1)` | Không | Đang bán |
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(TenantId, Sku)`; barcode nên unique theo tenant nếu có giá trị. Bulk update chỉ cho TenantAdmin, nhận magnitude dương cùng operation `Increase`/`Decrease`, giá sau cập nhật phải > 0; transaction và tăng `Version`.
+`Product` không đại diện cho một dòng được tính tiền. Mỗi sản phẩm gốc phải có tối thiểu một `ProductVariant` hoạt động; invariant này được kiểm tra trong application transaction. `ExtraDataJson` ở sản phẩm gốc dành cho thuộc tính chung của mọi biến thể.
+Tạo alternate key `(TenantId, Id)` để các bảng liên quan có thể enforce tenant cùng FK.
+
+Với sắt hộp 30x60 có cùng độ dày, `product.ExtraDataJson` giữ thuộc tính chung `product.thickness`; mỗi variant lưu thương hiệu riêng trong `ExtraDataJson`, còn SKU/giá đặt ở cột tương ứng:
+
+```json
+{
+  "schemaVersion": 1,
+  "attributes": {
+    "product.thickness": {
+      "type": "measurement",
+      "label": { "vi": "Độ dày", "en": "Thickness" },
+      "value": {
+        "amount": "1.40",
+        "unitCode": "mm",
+        "unitLabel": { "vi": "mm", "en": "mm" }
+      }
+    }
+  }
+}
+```
+
+Variant Hòa Phát và Việt Nhật có thể cùng thuộc product trên, mỗi variant có `product.brand` riêng và `BasePrice` riêng. Nếu độ dày khác nhau giữa từng mặt hàng bán được thì chuyển thuộc tính đó xuống variant.
+
+### 4.5.1. `product_variants`
+
+Mỗi biến thể là một mặt hàng bán được độc lập, có mã định danh và giá riêng. Các thuộc tính phân biệt như thương hiệu, kích thước hoặc độ dày có thể dùng contract `ExtraDataJson`; thuộc tính nào cần lọc/tìm kiếm thường xuyên hoặc là invariant thì cần được chuẩn hóa thành cột/bảng riêng.
+
+| Cột | Kiểu | Null | Mô tả |
+|---|---|---:|---|
+| `Id` | `CHAR(36)` | Không | PK |
+| `TenantId` | `CHAR(36)` | Không | FK tenant |
+| `ProductId` | `CHAR(36)` | Không | FK sản phẩm gốc cùng tenant |
+| `Sku` | `VARCHAR(64)` | Không | SKU duy nhất trong tenant |
+| `Barcode` | `VARCHAR(64)` | Có | Barcode; API kiểm tra không trùng trong tenant |
+| `Name` | `VARCHAR(200)` | Có | Tên hiển thị tùy chọn; null thì ghép tên gốc với nhãn thuộc tính |
+| `Unit` | `VARCHAR(32)` | Không | Đơn vị bán của biến thể |
+| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, > 0 |
+| `CostPrice` | `DECIMAL(19,4)` | Có | Giá vốn nếu bật kho |
+| `TaxRate` | `DECIMAL(9,4)` | Không | Giữ 0 trong v1 |
+| `IsActive` | `TINYINT(1)` | Không | Trạng thái bán của riêng biến thể |
+| `Version` | `BIGINT` | Không | Optimistic concurrency |
+| Audit + ExtraData | ... | ... | `ExtraDataJson` chứa đặc tính riêng của biến thể |
+
+Unique `(TenantId, Sku)`; index barcode `(TenantId, Barcode)` không unique để migration giữ nguyên các barcode trùng có thể tồn tại trong dữ liệu product cũ. API kiểm tra SKU/barcode trước khi ghi; cần xử lý dữ liệu trùng trước khi có thể nâng barcode index thành unique ở migration sau. Alternate key `(TenantId, ProductId, Id)` phục vụ FK cùng tenant/sản phẩm. FK `(TenantId, ProductId)` trỏ `(TenantId, Id)` của `products`. Giá bán được lưu ở variant; giá gốc legacy của product đồng bộ với default variant. Bulk-price có thể cập nhật product/base, variant cụ thể hoặc cả hai trong cùng transaction; target alias product/default variant chỉ áp dụng một lần. TenantAdmin được phép sửa giá; variant được vô hiệu hóa để giữ lịch sử.
+
+Ví dụ: Product `Sắt hộp 30x60` có các ProductVariant `Sắt hộp 30x60 Hòa Phát` và `Sắt hộp 30x60 Việt Nhật`. Mỗi variant giữ SKU, barcode và `BasePrice` riêng. Brand/thickness/size là thuộc tính có thể để trong `ExtraDataJson`; nếu các chiều này được dùng trong báo cáo, tồn kho hoặc bộ lọc chính, chuẩn hóa chúng thành dữ liệu có cấu trúc thay vì truy vấn JSON tùy tiện.
 
 ### 4.6. `customers`
 
@@ -251,11 +366,14 @@ Snapshot để hiển thị và kiểm toán, không phụ thuộc giá/sản ph
 |---|---|---:|---|
 | `Id` | `CHAR(36)` | Không | PK |
 | `InvoiceId` | `CHAR(36)` | Không | FK invoice |
-| `ProductId` | `CHAR(36)` | Có | FK product, có thể null |
+| `ProductId` | `CHAR(36)` | Không | FK product gốc |
+| `ProductVariantId` | `CHAR(36)` | Có | FK biến thể đã bán; nullable để tương thích lịch sử/import |
 | `LineNumber` | `INT` | Không | Thứ tự dòng |
 | `SkuSnapshot` | `VARCHAR(64)` | Không | SKU lúc bán |
 | `ProductNameSnapshot` | `VARCHAR(200)` | Không | Tên lúc bán |
+| `VariantNameSnapshot` | `VARCHAR(200)` | Có | Tên/nhãn biến thể lúc bán |
 | `UnitSnapshot` | `VARCHAR(32)` | Không | Đơn vị lúc bán |
+| `VariantExtraDataSnapshot` | `JSON` | Có | Snapshot thuộc tính biến thể cần hiển thị trên hóa đơn |
 | `Quantity` | `DECIMAL(19,4)` | Không | Âm đối với Reverse |
 | `UnitPrice` | `DECIMAL(19,4)` | Không | Giá snapshot dương; dấu hiển thị do UI quyết định |
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá dòng |
@@ -264,7 +382,7 @@ Snapshot để hiển thị và kiểm toán, không phụ thuộc giá/sản ph
 | `LineTotal` | `DECIMAL(19,4)` | Không | Thành tiền |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-Unique `(InvoiceId, LineNumber)`. Không cascade delete detail của invoice đã sync.
+Unique `(InvoiceId, LineNumber)`. FK `(TenantId, ProductId, ProductVariantId)` trỏ `(TenantId, ProductId, Id)` của `product_variants`, bảo đảm biến thể thuộc đúng sản phẩm gốc cùng tenant. Không cascade delete detail của invoice đã sync. API nhận `ProductVariantId` từ client mới; client cũ được map về default variant bằng `ProductId`, và response luôn trả variant ID. Tên, SKU, đơn vị, thuộc tính cần hiển thị và giá đều là snapshot bất biến, không đọc ngược từ catalog hiện tại.
 
 ### 4.9. `app_settings`
 
@@ -348,8 +466,12 @@ Durable change feed cho `GET /sync/pull`. Tạo `ServerChange` cùng transaction
 ```sql
 CREATE INDEX IX_Products_Tenant_Name
     ON Products (TenantId, IsActive, Name);
-CREATE INDEX IX_Products_Tenant_Barcode
-    ON Products (TenantId, Barcode);
+CREATE INDEX IX_ProductVariants_Product_Active
+    ON ProductVariants (TenantId, ProductId, IsActive);
+CREATE UNIQUE INDEX UX_ProductVariants_Tenant_Sku
+    ON ProductVariants (TenantId, Sku);
+CREATE INDEX IX_ProductVariants_Tenant_Barcode
+    ON ProductVariants (TenantId, Barcode);
 CREATE INDEX IX_Invoices_Tenant_CreatedAt
     ON Invoices (TenantId, CreatedAt DESC);
 CREATE INDEX IX_Invoices_Tenant_Status
@@ -368,7 +490,7 @@ CREATE INDEX IX_ServerChanges_Tenant_Sequence
     ON server_changes (TenantId, ServerSequence);
 ```
 
-Tên bảng thực tế phải theo một naming convention thống nhất của EF Core. Khóa ngoại dùng `RESTRICT` cho giao dịch và không cascade delete từ tenant, user hoặc product xuống invoice.
+Tên bảng thực tế phải theo một naming convention thống nhất của EF Core. Unique barcode cần bỏ qua giá trị `NULL` theo cách tương thích MySQL. Khóa ngoại dùng `RESTRICT` cho giao dịch và không cascade delete từ tenant, user, product hoặc variant xuống invoice.
 
 ---
 
@@ -390,11 +512,12 @@ Không gọi API trước khi commit local. Nếu app đóng sau commit, backgro
 3. Mở transaction MySQL.
 4. Insert `sync_operations` bằng `ClientOperationId`.
 5. Nếu operation đã `Applied`, trả kết quả cũ, không insert invoice lại.
-6. Insert `invoices` và `invoice_details`.
-7. Insert `outbox_events` trong cùng transaction.
-8. Commit.
-9. Worker publish SignalR sau commit.
-10. Client đánh dấu local record `Synced` khi nhận response thành công.
+6. Kiểm tra từng `ProductVariantId` thuộc tenant và đang active; snapshot SKU, tên sản phẩm/biến thể, đơn vị, thuộc tính và giá vào `invoice_details`.
+7. Insert `invoices` và `invoice_details`.
+8. Insert `outbox_events` trong cùng transaction.
+9. Commit.
+10. Worker publish SignalR sau commit.
+11. Client đánh dấu local record `Synced` khi nhận response thành công.
 
 Lỗi nghiệp vụ chỉ trả `ErrorCode`, ví dụ `ERR_PRODUCT_NOT_FOUND`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_DEVICE_REVOKED`; API không hardcode message tiếng Việt.
 
@@ -462,11 +585,11 @@ Giữ `Id`, `TenantId`, `InvoiceNumber`, `OriginalInvoiceId`, tổng tiền snap
 
 ### `local_invoice_details`
 
-Giữ snapshot sản phẩm, `InvoiceId`, `LineNumber`, `Quantity`, `UnitPrice`, discount, tax và total.
+Giữ `ProductId`, `ProductVariantId`, `InvoiceId`, `LineNumber`, snapshot tên/SKU/đơn vị/thuộc tính biến thể, `Quantity`, `UnitPrice`, discount, tax và total.
 
-### `local_products`, `local_categories`, `local_customers`
+### `local_products`, `local_product_variants`, `local_categories`, `local_customers`
 
-Bản sao phục vụ tìm kiếm. Mỗi bảng cần `ServerUpdatedAt` hoặc `Version` để pull incremental.
+Bản sao phục vụ tìm kiếm. `local_products` lưu sản phẩm gốc; `local_product_variants` lưu từng lựa chọn bán được, gồm SKU, barcode, đơn vị, giá, trạng thái, version và thuộc tính riêng. Mỗi bảng cần `ServerUpdatedAt` hoặc `Version` để pull incremental. Giữ quan hệ variant-product và nguyên vẹn `ExtraDataJson` theo contract `schemaVersion`/`attributes` để UI đọc được cả offline.
 
 ### `local_outbox`
 
@@ -565,9 +688,9 @@ Không lưu password, PIN, raw token hoặc SQLCipher key trong audit.
 - Mọi thay đổi schema đi qua EF Core migration; review SQL trước khi deploy.
 - Production migration chạy trong pipeline có backup và health check.
 - Dùng transaction cho sync invoice, reverse invoice, bulk price update và thay đổi feature flag liên quan nhiều bản ghi.
-- Dùng `Version`/concurrency token cho product và app settings để tránh lost update.
+- Dùng `Version`/concurrency token cho product, product variant và app settings để tránh lost update.
 - Không dùng `ExecuteUpdateAsync` trên `invoices` hoặc `invoice_details` để đổi nội dung sau sync.
-- `ExecuteUpdateAsync` phù hợp cho bulk update `products.BasePrice`, nhưng phải giới hạn tenant, quyền và predicate version.
+- `ExecuteUpdateAsync` phù hợp cho bulk update `product_variants.BasePrice`, nhưng phải giới hạn tenant, quyền và predicate version.
 - Không giữ transaction mở khi gọi SignalR; chỉ ghi outbox trong transaction rồi publish sau commit.
 
 ---
@@ -589,6 +712,7 @@ Không lưu password, PIN, raw token hoặc SQLCipher key trong audit.
 
 - Staff tenant A không đọc product, customer, invoice tenant B.
 - TenantAdmin A không bulk update product tenant B.
+- SKU/barcode của product variant không bị trùng trong tenant; cùng product gốc có thể có nhiều variant khác giá.
 - SuperAdmin tạo/khóa tenant được nhưng vẫn có audit.
 - User disabled hoặc device revoked nhận 401 và không sync được.
 
@@ -599,6 +723,7 @@ Không lưu password, PIN, raw token hoặc SQLCipher key trong audit.
 - Hai request hủy đồng thời không tạo hai reverse invoice.
 - Retry cùng `ClientOperationId` không tạo duplicate.
 - Payload khác với cùng operation id bị từ chối.
+- Invoice line tham chiếu đúng ProductVariant và giữ nguyên snapshot SKU/tên/đơn vị/thuộc tính/giá sau khi catalog thay đổi.
 - Tổng header cân bằng tổng detail trong tolerance.
 
 ### Offline và realtime

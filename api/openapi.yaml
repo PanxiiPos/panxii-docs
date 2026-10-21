@@ -304,12 +304,95 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}/variants:
+    parameters:
+      - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listProductVariants
+      tags: [Products]
+      description: Staff and TenantAdmin may list variants in their tenant. Inactive variants are included only when includeInactive=true for TenantAdmin.
+      parameters:
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND]
+      responses:
+        '200': { description: Product variants, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantListResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Creates a sellable variant; ExtraData follows the versioned schemaVersion/attributes contract and is limited to 16 KiB.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_INVALID_REQUEST, ERR_PRICE_MUST_BE_POSITIVE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProductVariantRequest' }
+      responses:
+        '201': { description: Variant created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /products/{productId}/variants/{variantId}:
+    parameters:
+      - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getProductVariant
+      tags: [Products]
+      description: Returns a variant belonging to the product in the authenticated tenant. Staff may read active variants only.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND]
+      responses:
+        '200': { description: Product variant, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Updates the sellable variant with optimistic concurrency.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_INVALID_REQUEST, ERR_VERSION_CONFLICT, ERR_PRICE_MUST_BE_POSITIVE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProductVariantRequest' }
+      responses:
+        '200': { description: Variant updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /products/{productId}/variants/{variantId}/deactivate:
+    post:
+      operationId: deactivateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Deactivates a variant while preserving invoice history; an active product must retain at least one active variant.
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_PRODUCT_REQUIRES_ACTIVE_VARIANT, ERR_VERSION_CONFLICT]
+      responses:
+        '200': { description: Variant deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /invoices/sync:
     post:
       operationId: syncInvoice
       tags: [Invoices]
       summary: Queue invoice synchronization
-      description: Staff and TenantAdmin may create and sync Sale invoices within their tenant.
+      description: Staff and TenantAdmin may create and sync Sale invoices within their tenant. New clients identify a sellable item with productId plus productVariantId; legacy clients may omit productVariantId and resolve to the backfilled default variant.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH, ERR_IDEMPOTENCY_KEY_MISMATCH, ERR_UNSUPPORTED_PAYLOAD_VERSION]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
@@ -497,7 +580,7 @@ paths:
     post:
       operationId: bulkUpdateProductPrices
       tags: [Products]
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
       requestBody:
         required: true
         content:
@@ -937,6 +1020,52 @@ components:
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
         expectedVersion: { type: integer, format: int64, minimum: 1 }
+    CreateProductVariantRequest:
+      type: object
+      additionalProperties: false
+      required: [sku, unit, basePrice]
+      properties:
+        sku: { type: string, minLength: 1, maxLength: 64 }
+        barcode: { type: string, maxLength: 64, nullable: true }
+        name: { type: string, maxLength: 200, nullable: true }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        taxRate: { type: number, format: decimal, enum: [0], default: 0 }
+        extraData:
+          type: object
+          nullable: true
+          required: [schemaVersion, attributes]
+          properties:
+            schemaVersion: { type: integer, enum: [1] }
+            attributes: { type: object, additionalProperties: true }
+    UpdateProductVariantRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateProductVariantRequest'
+        - type: object
+          required: [expectedVersion]
+          properties:
+            expectedVersion: { type: integer, format: int64, minimum: 1 }
+    ProductVariant:
+      type: object
+      required: [id, productId, sku, unit, basePrice, taxRate, isActive, version, updatedAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        sku: { type: string }
+        barcode: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        unit: { type: string }
+        basePrice: { type: number, format: decimal }
+        taxRate: { type: number, format: decimal }
+        isActive: { type: boolean }
+        version: { type: integer, format: int64 }
+        extraData:
+          type: object
+          nullable: true
+          properties:
+            schemaVersion: { type: integer, enum: [1] }
+            attributes: { type: object, additionalProperties: true }
+        updatedAtUtc: { type: string, format: date-time }
     CreateCategoryRequest:
       type: object
       additionalProperties: false
@@ -984,18 +1113,22 @@ components:
     BulkPriceRequest:
       type: object
       additionalProperties: false
-      required: [productIds, operation, mode, value, expectedVersions]
+      required: [operation, mode, value]
+      description: Select one or both price collections. Product IDs target the legacy/base price and its default variant; variant IDs target those specific variant prices. Selecting a product and its default variant together applies one adjustment to the shared price, not two.
       properties:
-        productIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        productIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Product/base prices to adjust. }
+        variantIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Specific variant prices to adjust. }
         operation: { type: string, enum: [Increase, Decrease], x-error-code: ERR_INVALID_ENUM }
         mode: { type: string, enum: [Percentage, FixedAmount], x-error-code: ERR_INVALID_ENUM }
         value: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE }
-        expectedVersions: { type: object, additionalProperties: { type: integer, format: int64 } }
+        expectedVersions: { type: object, additionalProperties: { type: integer, format: int64, minimum: 1 }, description: Exact productId-to-version map for the selected productIds. }
+        variantExpectedVersions: { type: object, additionalProperties: { type: integer, format: int64, minimum: 1 }, description: Exact variantId-to-version map for the selected variantIds. }
     BulkPriceResult:
       type: object
-      required: [products]
+      required: [products, variants]
       properties:
         products: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        variants: { type: array, items: { $ref: '#/components/schemas/ProductVariant' } }
     ReverseInvoiceRequest:
       type: object
       additionalProperties: false
@@ -1168,8 +1301,10 @@ components:
       properties:
         lineNumber: { type: integer, minimum: 1 }
         productId: { type: string, format: uuid }
+        productVariantId: { type: string, format: uuid, nullable: true, description: Omit only for legacy clients; resolves to product's default variant. }
         skuSnapshot: { type: string, maxLength: 64 }
         productNameSnapshot: { type: string, maxLength: 200 }
+        variantNameSnapshot: { type: string, maxLength: 200, nullable: true }
         unitSnapshot: { type: string, maxLength: 32 }
         quantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_INVALID_QUANTITY }
         unitPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
@@ -1212,8 +1347,11 @@ components:
             properties:
               lineNumber: { type: integer, nullable: true }
               productId: { type: string, format: uuid }
+              productVariantId: { type: string, format: uuid, nullable: true }
               skuSnapshot: { type: string, nullable: true }
               productNameSnapshot: { type: string }
+              variantNameSnapshot: { type: string, nullable: true }
+              variantExtraDataSnapshot: { type: object, nullable: true }
               unitSnapshot: { type: string }
               quantity: { type: number, format: decimal }
               unitPrice: { type: number, format: decimal }
@@ -1518,6 +1656,12 @@ components:
     SuccessProductListResponse:
       type: object
       properties: { data: { type: array, items: { $ref: '#/components/schemas/Product' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductVariantResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ProductVariant' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductVariantListResponse:
+      type: object
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/ProductVariant' } }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessBulkPriceResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/BulkPriceResult' }, meta: { $ref: '#/components/schemas/Meta' } }

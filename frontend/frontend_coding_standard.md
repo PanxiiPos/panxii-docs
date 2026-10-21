@@ -106,6 +106,15 @@ graph TD
 - `core` chỉ chứa capability thật sự dùng chung, không chứa business logic của feature.
 - Feature A không import trực tiếp BLoC, datasource hoặc repository implementation của feature B.
 
+### 2.2. Product và sellable variant
+
+- `Product` là nhóm hàng gốc; chỉ `ProductVariant` đại diện mặt hàng được chọn để bán. SKU, barcode, đơn vị, giá và thuộc tính riêng của từng SKU phải đọc từ variant.
+- Mobile domain/local schema phải giữ `productId` và `productVariantId` riêng; không gộp variant thành JSON field hoặc suy ra variant từ tên/giá.
+- Invoice line local giữ snapshot `skuSnapshot`, `productNameSnapshot`, `variantNameSnapshot`, `unitSnapshot`, giá và dữ liệu thuộc tính cần in. Khi đọc invoice đã sync, luôn render snapshot; không thay bằng catalog mới nhất.
+- Deserialize `extraData` thành JSON object có version; xử lý an toàn key/type chưa biết và giữ dữ liệu nguyên dạng. Không dùng thuộc tính mở rộng làm thay cho ID/SKU/unit/giá cố định.
+- Dữ liệu backfill có thể chứa JSON legacy chưa version hóa; không tự xóa/ghi đè khi đọc. Chỉ wrap JSON object thành schema version mới khi lưu có chủ ý, giữ nguyên mọi key cũ trong `attributes`; legacy JSON không phải object cần luồng chuyển đổi rõ ràng.
+- API variants hiện có trên backend nhưng mobile phải chỉ bật tính năng sau khi local schema migration, catalog sync, offline selection và invoice payload đã được cập nhật cùng nhau.
+
 ---
 
 ## 3. Quy tắc Theme bằng `flex_color_scheme`

@@ -14,8 +14,9 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
 *   **`TenantAdmin` (Chủ cửa hàng):**
     *   Được sử dụng các chức năng của `Staff` và có toàn quyền CRUD trên dữ liệu thuộc `TenantId` của mình, theo các giới hạn bên dưới.
     *   Xem, tạo, sửa, vô hiệu hóa và xóa tài khoản Staff. Nếu tài khoản đã được tham chiếu trong lịch sử nghiệp vụ/audit, thao tác xóa phải là xóa mềm.
-    *   Xem, thêm, sửa và vô hiệu hóa sản phẩm; chỉ được xóa sản phẩm chưa có dữ liệu lịch sử.
-    *   Giá sản phẩm và `UnitPrice` phải lớn hơn 0. Tăng/giảm giá hàng loạt dùng độ lớn dương cùng hướng thao tác riêng (`Increase`/`Decrease`); UI quyết định cách hiển thị dấu.
+    *   Xem, thêm, sửa và vô hiệu hóa sản phẩm gốc/biến thể; chỉ được xóa sản phẩm hoặc biến thể chưa có dữ liệu lịch sử.
+    *   Mỗi sản phẩm gốc có một hoặc nhiều biến thể bán được. SKU, barcode, đơn vị, giá bán và giá vốn thuộc về biến thể; SKU duy nhất trong tenant và giá bán/`UnitPrice` phải lớn hơn 0.
+    *   Tăng/giảm giá hàng loạt cho phép chọn giá gốc/product, từng variant hoặc kết hợp cả hai trong cùng giao dịch; mỗi target được tính giá riêng, dùng độ lớn dương cùng hướng thao tác (`Increase`/`Decrease`). Giá product và default variant là cùng giá nên nếu cùng chọn chỉ điều chỉnh một lần; chọn variant khác thì điều chỉnh giá variant đó độc lập. UI quyết định cách hiển thị dấu.
     *   Nghiệp vụ tính thuế chưa thuộc v1; giữ `TaxRate` và `TaxAmount` bằng 0 cho đến khi triển khai phần mở rộng thuế.
     *   Xem, tạo, sửa và xóa khách hàng. Chỉ xóa vật lý khách hàng chưa được tham chiếu bởi hóa đơn; nếu đã có lịch sử, phải vô hiệu hóa hoặc xóa mềm để giữ nguyên tham chiếu.
     *   Cấu hình thông tin hiển thị cửa hàng, mẫu hóa đơn và cách hiển thị sản phẩm.
@@ -23,7 +24,7 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
     *   Duyệt thực hiện bút toán đảo ngược (hủy/sửa hóa đơn đã đồng bộ).
     *   Cấu hình `Tenant Feature Flags` (tự động làm tròn tiền, in Bluetooth).
 *   **`Staff` (Nhân viên/Thu ngân):**
-    *   Xem/tìm kiếm sản phẩm và xem giá; không được sửa giá gốc sản phẩm.
+    *   Xem/tìm kiếm sản phẩm, chọn biến thể bán được và xem giá của biến thể; không được sửa giá.
     *   Xem/tìm kiếm và tạo khách hàng để phục vụ lập hóa đơn; không được sửa hoặc xóa khách hàng.
     *   Lập hóa đơn mới.
     *   Được in hóa đơn trên thiết bị client; Bluetooth phụ thuộc cấu hình cửa hàng/feature flag.
@@ -68,6 +69,7 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
 Dữ liệu cấu hình lấy từ bảng `AppSettings`.
 *   App sẽ khóa hoặc ẩn các tab trên UI dựa vào cấu hình.
 *   Ví dụ: Nếu `AppSettings` trả về `{"RequireCustomerPhone": true}`, nút "Thanh toán" sẽ bị disable nếu field Số điện thoại bị bỏ trống.
+*   Thuộc tính bổ sung riêng của sản phẩm/cửa hàng như chất liệu, kích thước hoặc độ dày không phải feature flag; lưu theo contract `ExtraDataJson` trong [database_design.md](database/database_design.md). Cấu hình làm thay đổi hành vi ứng dụng vẫn phải lưu trong `AppSettings`.
 
 ---
 

@@ -169,6 +169,8 @@ Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login
 
 TenantAdmin có quyền quản lý sản phẩm trong tenant; Staff chỉ được tìm/xem sản phẩm active. Mọi thao tác lấy tenant từ JWT, không nhận tenant scope do client quyết định.
 
+API hỗ trợ product gốc và các variant bán được. Để tương thích client cũ, product vẫn giữ SKU/đơn vị/giá legacy; khi tạo product, server đồng thời tạo variant mặc định có cùng ID với product. Client mới đọc danh sách variant và gửi `productVariantId` khi đồng bộ hóa đơn. `ProductNameSnapshot` là tên product gốc, còn `VariantNameSnapshot` là nhãn variant riêng. Không dùng `ExtraData` để thay thế SKU hoặc giá. Schema `ExtraData` của variant theo contract ở [database_design.md](../database/database_design.md).
+
 ### `GET /products?search=&cursor=&pageSize=&updatedSince=&includeInactive=`
 
 **Role:** Staff, TenantAdmin.  
@@ -210,6 +212,28 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 **Role:** Staff, TenantAdmin. Trả chi tiết product trong tenant hiện tại theo cùng `Product` schema như list. Staff chỉ đọc product active; product inactive hoặc khác tenant trả `404 ERR_PRODUCT_NOT_FOUND`. TenantAdmin đọc được product active/inactive để quản lý.
 
+### `GET /products/{productId}/variants?includeInactive=`
+
+**Role:** Staff, TenantAdmin. Trả các variant của product; mặc định chỉ variant active. `includeInactive=true` chỉ dành cho TenantAdmin. Response gồm `id`, `productId`, `sku`, `barcode`, `name`, `unit`, `basePrice`, `taxRate`, `isActive`, `version`, `extraData` và `updatedAtUtc`.
+
+### `GET /products/{productId}/variants/{variantId}`
+
+**Role:** Staff, TenantAdmin. Trả variant nếu thuộc product và tenant hiện tại. Staff chỉ đọc variant active; TenantAdmin có thể đọc variant inactive.
+
+### `POST /products/{productId}/variants`
+
+**Role:** TenantAdmin. Tạo variant bán được với SKU, unit, giá và tùy chọn barcode, tên, `extraData`. Barcode/SKU phải không trùng trong tenant ở kiểm tra nghiệp vụ. Giá phải lớn hơn 0; `taxRate` hiện phải bằng 0. Thành công trả `201` và Location tới variant mới.
+
+`extraData` nhận object dạng `{"schemaVersion":1,"attributes":{...}}`; giới hạn JSON 16 KiB. Dùng attributes cho đặc tính hàng hóa linh hoạt như thương hiệu, độ dày, kích thước hoặc quy cách; dữ liệu định danh/bán hàng như SKU, unit, giá phải nằm ở field riêng.
+
+### `PATCH /products/{productId}/variants/{variantId}`
+
+**Role:** TenantAdmin. Cập nhật SKU/barcode/tên/unit/giá/thuộc tính với `expectedVersion` bắt buộc. Trả `409 ERR_VERSION_CONFLICT` nếu version cũ.
+
+### `POST /products/{productId}/variants/{variantId}/deactivate`
+
+**Role:** TenantAdmin. Vô hiệu hóa variant bằng `expectedVersion`; không cho vô hiệu hóa variant active cuối cùng khi product vẫn active. Variant đã xuất hiện trên hóa đơn không được xóa vật lý.
+
 ### `PATCH /products/{id}`
 
 **Role:** TenantAdmin. Cho cập nhật `name`, `barcode`, `unit`, `basePrice`, `taxRate`, `categoryId` và bắt buộc `expectedVersion`. `barcode: null` dùng để xóa barcode; barcode khác null phải duy nhất trong tenant. Nếu version không khớp trả `409 ERR_VERSION_CONFLICT`; barcode trùng trả `409 ERR_DUPLICATE_BARCODE`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
@@ -229,15 +253,21 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 ```json
 {
   "productIds": ["uuid"],
+  "variantIds": ["variant-uuid"],
   "operation": "Increase",
   "mode": "Percentage",
   "value": 5.0,
-  "expectedVersions": { "product-uuid": 4 }
+  "expectedVersions": { "product-uuid": 4 },
+  "variantExpectedVersions": { "variant-uuid": 2 }
 }
 ```
 
-`operation` nhận `Increase` hoặc `Decrease`; `mode` nhận `Percentage` hoặc `FixedAmount`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
-Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_VERSION_CONFLICT`.
+Chọn `productIds`, `variantIds`, hoặc cả hai; mỗi collection tối đa 100 ID và tổng target tối đa 100. `expectedVersions` phải khớp chính xác các product được chọn; `variantExpectedVersions` phải khớp chính xác các variant được chọn. Collection không chọn có thể bỏ qua cùng version map tương ứng.
+
+Product ID nhắm vào giá gốc/legacy của product và đồng bộ giá default variant. Variant ID nhắm vào giá riêng của variant. Có thể chọn cả giá gốc lẫn variant trong cùng request; server tính riêng từng giá và cập nhật tất cả trong một transaction, trả `products` và `variants` đã thay đổi. Nếu product và default variant cùng được chọn, đó là một giá dùng chung nên chỉ áp dụng điều chỉnh một lần; không cộng dồn hai lần. Chọn variant khác thì giá variant đó được thay đổi độc lập.
+
+`operation` nhận `Increase` hoặc `Decrease`; `mode` nhận `Percentage` hoặc `FixedAmount`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server lọc theo tenant, kiểm tra concurrency cho từng loại target và transaction toàn bộ.
+Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_REQUEST`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_VARIANT_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
 
 ### Categories
 
@@ -370,8 +400,10 @@ Request:
     "details": [{
       "lineNumber": 1,
       "productId": "uuid",
+      "productVariantId": "uuid",
       "skuSnapshot": "SKU-001",
       "productNameSnapshot": "Coffee",
+      "variantNameSnapshot": "Cup 500ml",
       "unitSnapshot": "cup",
       "quantity": 2,
       "unitPrice": 50000,
@@ -383,6 +415,8 @@ Request:
   }
 }
 ```
+
+`productVariantId` và `variantNameSnapshot` có thể bỏ khi gửi từ client cũ; server phân giải về variant mặc định. Client mới phải gửi ID variant được chọn, SKU, tên product gốc, nhãn variant và unit khớp catalog hiện tại. Response hóa đơn lưu `productVariantId`, `variantNameSnapshot` và `variantExtraDataSnapshot` để giữ nguyên thông tin bán tại thời điểm tạo hóa đơn.
 
 Response `202` sau khi RabbitMQ xác nhận đã nhận lệnh:
 
@@ -966,7 +1000,12 @@ Query trong bảng là contract ưu tiên cho client mới. API v1 vẫn nhận 
 | POST | `/auth/refresh` | `RefreshTokenRequest` | `TokenResponse` | 200 |
 | POST | `/auth/logout` | Không body | `LogoutResult` | 200 |
 | GET | `/products` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Product[]` + cursor paging | 200 |
-| POST | `/products` | `CreateProductRequest` | `Product` | 201 |
+| POST | `/products` | `CreateProductRequest` + `Idempotency-Key` | `AcceptedCommandResponse` | 202 |
+| GET | `/products/{productId}/variants` | query `includeInactive` | `ProductVariant[]` | 200 |
+| GET | `/products/{productId}/variants/{variantId}` | path `productId,variantId` | `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants` | TenantAdmin; `CreateProductVariantRequest` | `ProductVariant` | 201 |
+| PATCH | `/products/{productId}/variants/{variantId}` | TenantAdmin; `UpdateProductVariantRequest` + `expectedVersion` | `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants/{variantId}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `ProductVariant` | 200 |
 | PATCH | `/products/{id}` | `UpdateProductRequest` + `expectedVersion` | `Product` | 200 |
 | POST | `/products/{id}/deactivate` | `expectedVersion` | `Product` | 200 |
 | DELETE | `/products/{id}` | query `expectedVersion` | `DeletionResult` | 200 |

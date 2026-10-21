@@ -35,6 +35,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_TENANT_INACTIVE` | 422 | No | `errors.tenantInactive` | Tenant bị khóa |
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |
 | `ERR_PRODUCT_NOT_FOUND` | 404 | No | `errors.productNotFound` | Không thấy product |
+| `ERR_PRODUCT_VARIANT_NOT_FOUND` | 404 | No | `errors.productVariantNotFound` | Không thấy variant thuộc product trong tenant |
 | `ERR_CATEGORY_NOT_FOUND` | 404 | No | `errors.categoryNotFound` | Không thấy category trong tenant |
 | `ERR_DUPLICATE_CATEGORY_CODE` | 409 | No | `errors.duplicateCategoryCode` | Category code trùng trong tenant |
 | `ERR_CATEGORY_PARENT_CYCLE` | 400 | No | `errors.categoryParentCycle` | Parent category tạo chu trình |
@@ -42,6 +43,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_DUPLICATE_CATEGORY_CODE` | 409 | No | `errors.duplicateCategoryCode` | Category code trùng trong tenant |
 | `ERR_CATEGORY_PARENT_CYCLE` | 400 | No | `errors.categoryParentCycle` | Parent category tạo chu trình |
 | `ERR_PRODUCT_INACTIVE` | 422 | No | `errors.productInactive` | Product ngừng bán |
+| `ERR_PRODUCT_REQUIRES_ACTIVE_VARIANT` | 409 | No | `errors.productRequiresActiveVariant` | Product active phải còn ít nhất một variant active |
 | `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.productDeleteRequiresDeactivation` | Product có lịch sử, chỉ được deactivate |
 | `ERR_DUPLICATE_SKU` | 409 | No | `errors.duplicateSku` | SKU trùng |
 | `ERR_DUPLICATE_BARCODE` | 409 | No | `errors.duplicateBarcode` | Barcode trùng |
