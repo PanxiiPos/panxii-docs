@@ -321,6 +321,7 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 
 - Phiên đăng nhập mobile lưu access/refresh token và expiry trong secure storage; API/SignalR tự gia hạn trước hết hạn, API retry 401 tối đa một lần với cùng request. Refresh bị từ chối chuyển về Login; lỗi mạng giữ phiên. Bản cũ chỉ lưu access token cần đăng nhập lại một lần sau khi token cũ hết hạn.
 - Mobile tenant configuration hiện cache theo tenant trong SQLite/SQLCipher; StoreProfile, ReceiptTemplate, ProductDisplay và tenant flags ghi draft local trước request PUT, giữ draft khi lỗi mạng/conflict và chỉ báo lưu thành công khi server xác nhận.
+- Thanh kết nối dùng chung ở app shell, hiển thị cả các route Settings/editor và Login. Khởi động ở trạng thái đang kiểm tra, theo dõi khả năng truy cập backend qua health probe và API, độc lập với SignalR; trực tuyến không đồng nghĩa dữ liệu đã đồng bộ.
 - Chưa triển khai các local business repository/CRUD cho Product, Invoice hoặc Customer; tính năng này khác với persistence của tenant settings và vẫn cần schema/cache/outbox/catalog sync riêng.
 
 ### Database local
