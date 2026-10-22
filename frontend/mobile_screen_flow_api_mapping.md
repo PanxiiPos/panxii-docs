@@ -101,13 +101,15 @@ Kết nối backend local qua Android USB cần `adb reverse tcp:5099 tcp:5099` 
 
 Login có lối vào Hiển thị và cỡ chữ; Home có cùng lối vào trên app bar cho mọi role đang hỗ trợ. Shared preference lưu local các preset system/large/extra_large; root `TextScaler` áp dụng đúng một lần cho mọi route/overlay. Cấu hình màu dialog lấy từ theme app, chữ từ typography chung.
 
-**Giới hạn hiện tại:** Repository đăng nhập lưu access token trong secure storage và từ chối tài khoản ngoài Staff/TenantAdmin trước khi lưu. Vòng đời refresh token/expiry, silent refresh và xử lý revoke của phiên đang hoạt động chưa được triển khai đầy đủ; UI này không thay thế các phần đó. `HOME_PREVIEW=true` vẫn bỏ qua Login theo cơ chế preview hiện có.
+**Duy trì phiên:** Repository từ chối tài khoản ngoài Staff/TenantAdmin trước khi lưu; secure storage giữ access token, refresh token và thời điểm hết hạn trong một session record. Trước request API hoặc kết nối lại SignalR, tự refresh nếu access token sắp hết hạn trong 30 giây. Request nhận 401 được refresh và gửi lại tối đa một lần, giữ nguyên payload/idempotency key; các request đồng thời dùng chung một refresh để tránh rotate trùng. Lỗi mạng giữ phiên để thử lại. Refresh bị từ chối hoặc tenant/device bị khóa/thu hồi xóa token, dừng realtime và chuyển về Login kể cả khi đang mở editor. Logout xóa cả access/refresh token; không lưu mật khẩu. Session cũ chỉ có access token không thể tự khôi phục refresh token: khi token đó hết hạn phải đăng nhập lại một lần. `HOME_PREVIEW=true` vẫn bỏ qua Login theo cơ chế preview hiện có.
 
 ### 4.2 Trang chủ
 
 **Mô tả:** Điều hướng tới bán hàng, hóa đơn, sản phẩm, khách hàng, nhân viên và cài đặt theo role; hiển thị SyncStatus toàn cục. Có thể hiển thị hoạt động gần đây từ local cache.
 
 **Đã triển khai:** Home hiển thị `Xin chào {displayName}` lấy từ `GET /me` và thẻ tenant từ `GET /tenant/profile`: tên, mã, trạng thái, tiền tệ, múi giờ. Tenant của hồ sơ phải khớp metadata; không dùng dữ liệu của tenant khác. Đọc `GET /settings/effective` để hiển thị cấu hình effective. Không cần API tổng hợp/dashboard mới.
+
+Ba response khởi động được lưu bền trong bảng SQLCipher `account_snapshots`, khóa `(tenant_id, user_id, resource)`, sau khi kiểm tra contract và identity. Khi lỗi kết nối/timeout hoặc HTTP 502/503/504, kể cả lỗi mạng lúc tự refresh token, app khởi động bằng snapshot đúng tài khoản và báo dữ liệu chưa cập nhật thay vì lỗi toàn màn hình. Decode JWT lưu trong secure storage chỉ chọn partition local, không cấp quyền. HTTP 401/403, session bị thu hồi, response sai contract hoặc sai identity không được fallback cache. Thiết bị/tài khoản chưa từng tải đủ ba response online vẫn cần kết nối lần đầu; không tạo hồ sơ hoặc cấu hình giả. PATCH hồ sơ thành công cập nhật snapshot để lần mở offline giữ đúng tên mới.
 
 Refresh hoặc lưu hồ sơ/cấu hình thành công tải lại Home nhưng giữ nội dung đã có trong khi chờ; khi refresh lỗi, giữ dữ liệu cũ và báo chưa cập nhật được. Lần tải đầu lỗi có nút thử lại. Lối vào Cài đặt ở app bar và ô chức năng cùng mở một màn hình. Lưới chức năng chuyển sang danh sách khi chữ lớn hoặc màn hình hẹp.
 
@@ -201,11 +203,15 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 | Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText?, layout? }, expectedVersion }`; `templateId` là `Standard`, layout version 1 được mô tả ở mục 4.7.1. |
 | Lưu tùy chọn hiển thị sản phẩm | `PUT /settings/ProductDisplay`; body `{ value: { layout, sortBy, showSku, showBarcode, showCategory }, expectedVersion }`. |
 
-**Đã triển khai:** Menu và editor chỉ hiện cho TenantAdmin; Cubit chặn thao tác ghi của Staff và backend vẫn enforce quyền. Có lưu riêng từng nhóm StoreProfile, ReceiptTemplate (chỉ Standard), ProductDisplay và hai switch `AutoRoundMoney`/`EnableBluetoothPrint`. Không cho sửa `RequireCustomerPhone` hoặc global flags. Metadata tenant là chỉ đọc; StoreProfile chỉ đổi thông tin hiển thị/in, không đổi tên/mã tenant.
+**Đã triển khai:** Menu và editor chỉ hiện cho TenantAdmin; Cubit chặn thao tác ghi của Staff và backend vẫn enforce quyền. Có lưu riêng từng nhóm StoreProfile, ReceiptTemplate (chỉ Standard), ProductDisplay và hai switch `AutoRoundMoney`/`EnableBluetoothPrint`; cache và bản nháp được tenant-scope trong SQLite/SQLCipher, ProductDisplay và ReceiptTemplate dùng chung cơ chế local-first như các setting tenant khác. Không cho sửa `RequireCustomerPhone` hoặc global flags. Metadata tenant là chỉ đọc; StoreProfile chỉ đổi thông tin hiển thị/in, không đổi tên/mã tenant. Chưa có local business repository/CRUD cho product, invoice hoặc customer; đây chỉ là persistence cho tenant configuration hiện có.
 
 Mỗi PUT gửi `expectedVersion = settingVersions[key]`, dùng `0` khi tenant chưa có override; **không dùng aggregate `settingsVersion`** hoặc version của global setting. Response cập nhật value/version của đúng key, giữ nội dung chưa lưu ở nhóm khác. Backend thiếu metadata thì editor báo lỗi rõ, không đoán version. Deploy backend bổ sung metadata trước khi bật mobile editor.
 
-Đây là thao tác online trực tiếp, chưa có outbox cho hồ sơ/cấu hình. Lỗi giữ form, không tự retry ghi. Conflict giữ nội dung và có nút tải bản mới nhất; phải xác nhận bỏ thay đổi trước khi tải lại. Rời form bẩn cũng cần xác nhận, không cho rời trong khi lưu. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Kết nối máy in và xuất PDF chưa được triển khai.
+Tenant configuration được cache trong SQLite/SQLCipher ở bảng `tenant_settings_cache`, khóa theo `(TenantId, setting key)` và lưu riêng version, JSON value, trạng thái pending. Tải cấu hình luôn thử server trước; khi lỗi kết nối có cache thì dùng bản local và báo rõ dữ liệu có thể cũ. Mỗi lần lưu, app ghi bản nháp local trước rồi mới gọi `PUT`; nếu request thất bại, giữ nháp và cho người dùng thử lưu lại. Không có background outbox cho setting: server chỉ được báo đã lưu khi PUT thành công. Nếu server trả conflict, nháp local được giữ; thao tác tải bản mới nhất phải được xác nhận và chỉ xóa nháp sau khi tải server thành công. Cache có tenant isolation, không dùng để cấp quyền; backend vẫn enforce role/tenant/version. `RequireCustomerPhone` và global flags vẫn là cấu hình server chỉ đọc, không được biến thành tenant override.
+
+Snapshot `settings/effective` tải từ Home dùng chung cho editor: nếu chưa từng mở editor online, vẫn có thể mở lần đầu offline từ snapshot này. Bản local của editor (gồm value/version đã xác nhận và pending draft) được ưu tiên hơn snapshot server cũ khi offline; snapshot cũ không xóa draft hoặc lùi version. PUT thành công cập nhật đúng key/value/version trong snapshot effective của tài khoản hiện tại. Tải bản mới nhất để bỏ draft luôn yêu cầu response server mới, không dùng snapshot cũ để giả thành reload thành công.
+
+Rời form còn thay đổi chưa được ghi local vẫn cần xác nhận; bản nháp đã lưu local thì được giữ khi rời trang/đóng app. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Kết nối máy in và xuất PDF chưa được triển khai.
 
 #### 4.7.1 Thiết kế và xem trước hóa đơn
 
@@ -241,7 +247,7 @@ Password change không thuộc hồ sơ trong contract hiện tại; cần API r
 
 Staff/TenantAdmin đều có Hồ sơ, Hiển thị và cỡ chữ, Ngôn ngữ (vi/en), Đăng xuất; chỉ TenantAdmin thấy Cấu hình cửa hàng. Ngôn ngữ áp dụng ngay toàn app bằng `easy_localization`, lưu local.
 
-Đăng xuất dùng `AppDialog.confirm`; Hủy/Back không gọi API. Sau xác nhận, gọi `POST /auth/logout`, kiểm tra `revoked: true`, xóa token local, dừng realtime và đóng các route authenticated trước khi về Login. Session đã bị revoke/unauthenticated cũng được phép xóa token. Khi mạng/API lỗi, giữ phiên và báo lỗi để thử lại; **chưa hỗ trợ đăng xuất chỉ local khi offline**. Không xóa dữ liệu/nháp/outbox trong luồng này. Refresh token và tự động xử lý hết hạn phiên vẫn là phạm vi chưa hoàn tất.
+Đăng xuất dùng `AppDialog.confirm`; Hủy/Back không gọi API. Sau xác nhận, gọi `POST /auth/logout`, kiểm tra `revoked: true`, xóa access/refresh token local, dừng realtime và đóng các route authenticated trước khi về Login. Session đã bị revoke/unauthenticated cũng được phép xóa token. Khi mạng/API lỗi, giữ phiên và báo lỗi để thử lại; **chưa hỗ trợ đăng xuất chỉ local khi offline**. Không xóa dữ liệu/nháp/outbox trong luồng logout thường. Silent refresh/access token expiry đã triển khai như mục 4.1; quy trình kill-switch xóa database/key local khi device revoke vẫn cần hoàn thiện riêng, không đồng nhất với logout thường.
 
 ### 4.9 Cài đặt hiển thị trên thiết bị
 
@@ -295,5 +301,6 @@ Trang chủ không cần dashboard summary trong phạm vi hiện tại. Các AP
 - [ ] Error code được localization trong tiếng Việt/Anh; test màn hình nhỏ, text lớn và trạng thái loading/empty/error.
 - [ ] Feedback dùng cấu hình chung, đúng toast/dialog/banner; test chống lặp, Hủy/Back, submit lặp và dọn popup khi đổi route/phiên.
 - [ ] Cài đặt cỡ chữ dùng được ở Login/Staff/TenantAdmin, áp dụng ngay cho toàn app/overlay, giữ qua offline restart và không gọi API cấu hình cửa hàng.
+- [ ] Tenant configuration đọc được từ cache khi offline; mỗi PUT ghi draft local trước, giữ pending draft qua restart/lỗi mạng, chỉ xóa pending sau server confirmation hoặc user xác nhận tải bản mới nhất.
 - [ ] Test các preset chữ cùng system scaling 100%/200%, vi/en, màn hình 320 logical pixels và screen reader theo Design System.
 - [ ] Contract gaps trong mục 6 được ghi nhận; không tự thêm API/payload tại frontend.
