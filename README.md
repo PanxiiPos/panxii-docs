@@ -317,6 +317,12 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Controller chỉ phụ thuộc `IProductService`; service chỉ phụ thuộc `IUnitOfWork`; UoW expose repository interfaces; repository kế thừa generic repository và Infrastructure là layer duy nhất truy cập `AppDbContext`.
 - Local environment chạy bằng `Development` qua file `.env` trong backend.
 
+### Mobile
+
+- Phiên đăng nhập mobile lưu access/refresh token và expiry trong secure storage; API/SignalR tự gia hạn trước hết hạn, API retry 401 tối đa một lần với cùng request. Refresh bị từ chối chuyển về Login; lỗi mạng giữ phiên. Bản cũ chỉ lưu access token cần đăng nhập lại một lần sau khi token cũ hết hạn.
+- Mobile tenant configuration hiện cache theo tenant trong SQLite/SQLCipher; StoreProfile, ReceiptTemplate, ProductDisplay và tenant flags ghi draft local trước request PUT, giữ draft khi lỗi mạng/conflict và chỉ báo lưu thành công khi server xác nhận.
+- Chưa triển khai các local business repository/CRUD cho Product, Invoice hoặc Customer; tính năng này khác với persistence của tenant settings và vẫn cần schema/cache/outbox/catalog sync riêng.
+
 ### Database local
 
 - MySQL 8 chạy bằng Docker container `panxii_mysql_dev`.
@@ -329,6 +335,7 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Các migrations đã apply: `InitialPosSchema`, `AddDatabaseForeignKeys`, `AddUserDevices`, `AddUserDeviceRefreshTokenHashIndex`, `SeparatePlatformAdmin`, `AddPlatformAdministration` và `AddTenantVersion`.
 - Nhánh backend `feature/async-pos-realtime` bổ sung migrations `AddInvoiceSkuSnapshot`, `AddInvoiceLineAndTaxAmounts` và `AddRealtimeChangeFeed` (bao gồm operation ID); apply trước khi chạy API/Worker.
 - Session SuperAdmin và tenant-user được tách riêng; `app_settings`, `platform_audit_events`, optimistic concurrency version và durable `server_changes` sequence đã có trong model/migration.
+- SQLite/SQLCipher trên mobile có bảng `tenant_settings_cache` tenant-scoped cho cấu hình cửa hàng, mẫu hóa đơn, hiển thị sản phẩm và tenant flags. Schema version 3 bổ sung `account_snapshots` theo tenant/user cho effective settings, hồ sơ người dùng và metadata cửa hàng; migration giữ nguyên outbox, sync metadata và draft cấu hình. Home đã tải online ít nhất một lần có thể khởi động lại khi backend không truy cập được, kể cả khi refresh token gặp lỗi mạng; lần đầu chưa có cache vẫn cần mạng.
 - Schema gồm `tenants`, `users`, `user_devices`, `platform_admins`, `platform_admin_sessions`, `app_settings`, `platform_audit_events`, `categories`, `products`, `product_variants`, `customers`, `invoices`, `invoice_details`, `sync_operations`, `outbox_events` và `server_changes`.
 - Mô hình Product/ProductVariant theo ADR-011 đã có migration expand/backfill và API CRUD/list/get/deactivate variant. Product legacy vẫn giữ các cột SKU/đơn vị/giá; product mới có default variant dùng cùng ID để tương thích invoice client cũ. Invoice sync nhận variant ID và lưu snapshot thuộc tính/tên variant. Mobile/offline cache và migration contract bỏ cột legacy chưa triển khai.
 - `AddProductVariants` và `AddInvoiceVariantSnapshot` đã được áp dụng vào MySQL local `PanxiiDev`; kiểm tra sau migration cho thấy 5 products/5 default variants và 0 invoice details thiếu `ProductVariantId`. Chưa áp dụng hoặc xác nhận trên production. Migration giữ barcode index không unique để chấp nhận dữ liệu legacy; cần báo cáo/dọn barcode trùng trước khi lên kế hoạch unique index ở migration sau.
