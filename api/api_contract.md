@@ -195,6 +195,8 @@ Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, 
 
 Màn catalog mobile dùng `GET /products/catalog?search=&cursor=&pageSize=&includeInactive=` thay vì list nhóm hàng. Endpoint mới trả `data: [{product: <Product>, variant: <ProductVariant>}]` cùng `meta.paging`; mỗi dòng là một biến thể bán được, bao gồm default variant đúng một lần. Search tìm tên gốc, tên biến thể, SKU, barcode và JSON đặc điểm đã lưu; không biến kết quả variant thành product gốc. Sort `variant.sku ASC, variant.id ASC`, `pageSize` 1–200, bắt buộc cursor mode (`cursor=` ở trang đầu); cursor gắn tenant/search/filter, có hạn 15 phút. Staff chỉ thấy cả parent và variant active; `includeInactive=true` chỉ TenantAdmin. Endpoint product legacy phía trên không đổi.
 
+Cả `GET /products` và `GET /products/catalog` nhận query `categoryId=<uuid>` tùy chọn: lọc **đúng** category của product gốc, kết hợp với search/status/updatedSince hiện có, không tự gồm category con hoặc product chưa phân loại. Category không thuộc tenant hoặc không tồn tại trả collection rỗng; không rò rỉ ownership. Cursor gắn cả categoryId; không dùng cursor giữa hai category hoặc giữa có/không có filter (`400 ERR_INVALID_PAGING`). Bỏ categoryId vẫn giữ list legacy để tương thích API, không có nghĩa mobile có tab “Tất cả”. Product snapshot (list, catalog, detail và sync tạo mới) trả `categoryId` nullable và `extraData` nullable.
+
 Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong tenant. Form mobile cho bỏ trống mã: trước enqueue tự tạo `MH-<UUID local không dấu gạch nối>` viết hoa, giữ mã đó trong payload bền vững qua retry/remap; mã người dùng nhập không được thay thế. Không tạo mã mới khi replay operation.
 
 ```json
@@ -224,6 +226,10 @@ Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong t
 ### `POST /products`
 
 **Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `barcode` và `categoryId` tùy chọn. Barcode tối đa 64 ký tự và duy nhất trong tenant nếu có. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+
+`extraData` tùy chọn là object JSON (không phải chuỗi): `{"schemaVersion":1,"attributes":{...}}`, tối đa **16 KiB UTF-8**. Schema/giới hạn giống tạo/cập nhật variant. Worker lưu cùng attributes vào product và default variant; áp dụng cả catalog command `action: "create"`. Bỏ/null extraData không thêm property vào queued payload cũ, không thay cách tính payload hash và không tái serialize command đã xếp hàng để xác minh hash.
+
+Nếu gửi categoryId, API kiểm tra category cùng tenant và active trước khi queue; worker kiểm tra lại trước ghi (kể cả catalog create). Không tồn tại/khác tenant: `ERR_CATEGORY_NOT_FOUND`; inactive: `ERR_CATEGORY_INACTIVE`. Command đã nhận `202` vẫn có thể bị worker từ chối nếu category đổi trạng thái trước commit. categoryId vẫn tùy chọn ở API để tương thích command/client cũ; **mobile tạo mới bắt buộc chọn một category active**, không tạo product uncategorized. Dữ liệu sample/legacy chưa phân loại vẫn hợp lệ nhưng không xuất hiện trong category filter.
 Header `Idempotency-Key` là bắt buộc. API publish command bền vững tới RabbitMQ rồi trả `202` với `{ "operationId": "uuid", "status": "Queued" }`. Worker mới tạo product; client nhận event `DataCreated` sau khi MySQL commit.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
@@ -300,6 +306,16 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 ### Categories
 
 `GET /categories?search=&cursor=&pageSize=&includeInactive=` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. Search theo tên/mã; sort `sortOrder ASC, name ASC, id ASC`; paging dùng cursor keyset opaque. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
+
+Mọi Category response gồm `id`, `parentId`, `code`, `name`, `isActive`, `sortOrder`, `version`, `updatedAtUtc`, **`productCount`**. Count là số product gốc tham chiếu trực tiếp category trong tenant, gồm cả product inactive; không đếm variant hoặc descendants.
+
+Lifecycle chỉ dành cho TenantAdmin, scoped tenant từ JWT và ghi audit cùng transaction:
+
+- `PATCH /categories/{id}/status` body `{"isActive":false,"expectedVersion":3}` (hoặc true để bật lại); thành công `200` theo envelope `{data: <Category>, meta: ...}`. Không cascade trạng thái xuống product/category con; dữ liệu tham chiếu được giữ.
+- `DELETE /categories/{id}?expectedVersion=3`: hard delete chỉ khi **không có product nào** tham chiếu, kể cả product inactive, và không có category con. Thành công `204` không body. Có product: `409 ERR_CATEGORY_IN_USE` (chỉ bật/tắt, không xóa); có con: `409 ERR_CATEGORY_HAS_CHILDREN` (xử lý/chuyển category con trước, không cascade/detach ngầm).
+- Version bắt buộc >= 1; version cũ trả `409 ERR_VERSION_CONFLICT`; không tồn tại/khác tenant `404 ERR_CATEGORY_NOT_FOUND`. Tạo/gán product hoặc category con tham gia concurrency token của category được tham chiếu, nên version có thể tăng khi số tham chiếu thay đổi. Nếu association/status/delete chạy đồng thời, một write bị conflict và rollback; client reload trước retry. Không tự retry request phá optimistic concurrency.
+
+Mobile chỉ dùng category active làm tab, không tạo tab “Tất cả”. Khi lần đầu vào mà không có category active, chuyển quản lý category; tạo product yêu cầu category đang chọn. Trạng thái lỗi/offline không được suy diễn là danh sách category rỗng đã xác nhận.
 Errors: `ERR_ACCESS_DENIED`, `ERR_CATEGORY_NOT_FOUND`, `ERR_DUPLICATE_CATEGORY_CODE`, `ERR_CATEGORY_PARENT_CYCLE`, `ERR_VERSION_CONFLICT`.
 
 ### TenantAdmin quản lý tài khoản Staff
@@ -1049,6 +1065,8 @@ Query trong bảng là contract ưu tiên cho client mới. API v1 vẫn nhận 
 | GET | `/categories` | query `search,cursor,pageSize,includeInactive` | `Category[]` + cursor paging | 200 |
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
+| PATCH | `/categories/{id}/status` | `isActive,expectedVersion` | `Category` | 200 |
+| DELETE | `/categories/{id}` | query `expectedVersion` | Không có body; chỉ category không có product/con | 204 |
 | GET | `/customers` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Customer[]` + cursor paging; Staff chỉ thấy active | 200 |
 | POST | `/customers` | `CreateCustomerRequest` | `Customer` | 201 |
 | PATCH | `/customers/{id}` | TenantAdmin; `UpdateCustomerRequest` + `expectedVersion` | `Customer` | 200 |

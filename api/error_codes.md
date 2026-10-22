@@ -40,9 +40,9 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_CATEGORY_NOT_FOUND` | 404 | No | `errors.categoryNotFound` | Không thấy category trong tenant |
 | `ERR_DUPLICATE_CATEGORY_CODE` | 409 | No | `errors.duplicateCategoryCode` | Category code trùng trong tenant |
 | `ERR_CATEGORY_PARENT_CYCLE` | 400 | No | `errors.categoryParentCycle` | Parent category tạo chu trình |
-| `ERR_CATEGORY_NOT_FOUND` | 404 | No | `errors.categoryNotFound` | Không thấy category trong tenant |
-| `ERR_DUPLICATE_CATEGORY_CODE` | 409 | No | `errors.duplicateCategoryCode` | Category code trùng trong tenant |
-| `ERR_CATEGORY_PARENT_CYCLE` | 400 | No | `errors.categoryParentCycle` | Parent category tạo chu trình |
+| `ERR_CATEGORY_INACTIVE` | 409 | No | `errors.categoryInactive` | Category đã ngừng hoạt động; chọn category active trước tạo/gán product; worker kiểm tra lại |
+| `ERR_CATEGORY_IN_USE` | 409 | No | `errors.categoryInUse` | Không xóa category còn product tham chiếu, kể cả product inactive; chỉ bật/tắt |
+| `ERR_CATEGORY_HAS_CHILDREN` | 409 | No | `errors.categoryHasChildren` | Không xóa category còn category con; xử lý/chuyển con trước, không cascade |
 | `ERR_PRODUCT_INACTIVE` | 422 | No | `errors.productInactive` | Product ngừng bán |
 | `ERR_PRODUCT_REQUIRES_ACTIVE_VARIANT` | 409 | No | `errors.productRequiresActiveVariant` | Product active phải còn ít nhất một variant active |
 | `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.productDeleteRequiresDeactivation` | Product có lịch sử, chỉ được deactivate |

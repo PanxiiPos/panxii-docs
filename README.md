@@ -325,6 +325,9 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 - Thanh kết nối dùng chung ở app shell, hiển thị cả các route Settings/editor và Login. Khởi động ở trạng thái đang kiểm tra, theo dõi khả năng truy cập backend qua health probe và API, độc lập với SignalR; trực tuyến không đồng nghĩa dữ liệu đã đồng bộ.
 - Product đã có local CRUD/journal, receipt và pull sync theo tenant/user. Danh sách mobile hiện từng variant bán được với tên gốc/đặc điểm, mã hàng bỏ trống tự tạo và badge hoạt động/đồng bộ riêng. API `GET /products/catalog` tìm trực tiếp variant theo tên/SKU/barcode/đặc điểm với cursor. Invoice và Customer local CRUD chưa triển khai; xem [mobile_screen_flow_api_mapping.md](frontend/mobile_screen_flow_api_mapping.md).
 
+- Danh mục sản phẩm đã có quản lý trong Cài đặt (TenantAdmin), bật/tắt theo version và chỉ xóa khi chưa có sản phẩm/danh mục con. Mã danh mục không bắt nhập; để trống mobile tự tạo mã `DM-<UUID>` duy nhất, có thể nhập mã riêng. Danh sách sản phẩm dùng tab danh mục active theo tenant dưới search; search và tạo mới luôn theo tab. Chưa có danh mục active thì chủ cửa hàng được chuyển sang tạo danh mục trước. Tạo sản phẩm nhập được độ dày/thương hiệu ngay, lưu cùng default variant.
+- SQLCipher schema 6 thêm cache danh mục theo tenant/user và cột/index `category_id` cho catalog; giữ nguyên dữ liệu và journal cũ. API list/catalog nhận bộ lọc `categoryId`; API tạo product nhận `extraData`. Backend vẫn cho phép client legacy không gửi category để giữ tương thích.
+
 ### Database local
 
 - MySQL 8 chạy bằng Docker container `panxii_mysql_dev`.
