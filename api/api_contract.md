@@ -11,12 +11,14 @@
 ### Catalog offline commands (mobile)
 
 - `POST /products/commands`: TenantAdmin, bắt buộc `Idempotency-Key` UUID khác rỗng; trả `202` với `{operationId,status:"Queued"}`. Worker kiểm tra lại tài khoản/tenant/quyền khi thực thi.
-- Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
+- Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `activate`, `activateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
 - `prices`: 1–100 `{productId,variantId?,expectedVersion,price}`. Giá tuyệt đối riêng từng target, >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Có thể gửi `price` và `data.basePrice` dưới dạng chuỗi decimal invariant để giữ chính xác. Client tính tăng/giảm số tiền cố định trước khi gửi. Không nhận cùng physical ID hai lần (product/default variant); không điều chỉnh phần trăm trong luồng mobile này.
 - `GET /products/commands/{operationId}`: TenantAdmin, chỉ tenant hiện tại và người tạo operation. `200 data={status:"Completed"|"Rejected",errorCode?,result?}`; chưa có receipt trả `404 ERR_OPERATION_NOT_FOUND` (có thể vẫn đang chờ trong RabbitMQ). Payload mismatch giữ nguyên lỗi `ERR_SYNC_PAYLOAD_MISMATCH`; không thay payload của UUID đã gửi.
 - Result: `{clientEntityId,entityId,products:[],variants:[],deletedProductIds:[],deletedVariantIds:[]}`; `entityId` là ID server của resource vừa tạo, hoặc ID target/batch. `products`/`variants` là snapshot đầy đủ của các product bị tác động, không phải chỉ các dòng đổi giá. `deletedVariantIds` có thể null ở receipt cũ.
 - Mutation, receipt chứa result, audit, `CatalogBatch` server change và realtime outbox cùng transaction. Một version sai từ chối toàn batch; retry UUID/payload không thực thi lại. API legacy giữ nguyên để tương thích.
-- Không xóa riêng default variant; variant đã có lịch sử hóa đơn phải ngừng bán. Không xóa/ngừng bán variant active cuối cùng của product active.
+- Không xóa riêng default variant; variant đã có lịch sử hóa đơn phải ngừng bán. Không xóa variant active cuối cùng của product active. Cho phép ngừng/bán lại riêng bất kỳ variant (kể cả default/cuối cùng) mà không đổi product gốc hoặc variant khác.
+- `deactivate`/`activate` đổi trạng thái product và TẤT CẢ variant trong cùng transaction, kể cả variant đã ngừng riêng. `deactivateVariant`/`activateVariant` chỉ đổi variant chỉ định. Mỗi entity chỉ tăng version khi cờ active của chính nó đổi; invoice history không đổi. Variant chỉ bán được khi cả gốc và variant active.
+- REST tương ứng: `POST /products/{id}/activate` và `POST /products/{productId}/variants/{variantId}/activate`, TenantAdmin only, body `{expectedVersion}`, trả envelope `Product`/`ProductVariant` giống deactivate; lỗi invalid request/not found/version conflict/access denied theo contract hiện có. Mobile tiếp tục dùng durable commands thay vì gọi REST trực tiếp.
 - Product/variant response bổ sung `basePriceText` invariant string; `basePrice` numeric giữ nguyên để tương thích. Client mới ưu tiên string; không dùng floating point để tính giá.
 - Variant update có thể gửi lại `extraData` legacy/schema chưa hỗ trợ **không đổi** (so sánh cấu trúc JSON với dữ liệu hiện tại) để sửa tên/giá mà không mất thuộc tính. Vẫn kiểm tra tenant và `expectedVersion`. Tạo mới hoặc thay đổi schema chưa hỗ trợ vẫn bị từ chối; không phải cơ chế ghi JSON tùy ý. Mobile dùng form tên/giá trị, tự tạo schema 1, không gửi tiền đã format theo locale.
 - Pull `CatalogBatch.entity` dùng result shape trên; áp dụng snapshot/tombstone/ID mapping và sequence cùng local transaction. Client không xem `202` là sync thành công và không tự rebase conflict.
@@ -191,6 +193,10 @@ API hỗ trợ product gốc và các variant bán được. Để tương thíc
 Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental. `search` tìm theo tên, SKU hoặc barcode. Kết quả sắp xếp `name ASC, id ASC`.
 Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ; không dùng trong client mới.
 
+Màn catalog mobile dùng `GET /products/catalog?search=&cursor=&pageSize=&includeInactive=` thay vì list nhóm hàng. Endpoint mới trả `data: [{product: <Product>, variant: <ProductVariant>}]` cùng `meta.paging`; mỗi dòng là một biến thể bán được, bao gồm default variant đúng một lần. Search tìm tên gốc, tên biến thể, SKU, barcode và JSON đặc điểm đã lưu; không biến kết quả variant thành product gốc. Sort `variant.sku ASC, variant.id ASC`, `pageSize` 1–200, bắt buộc cursor mode (`cursor=` ở trang đầu); cursor gắn tenant/search/filter, có hạn 15 phút. Staff chỉ thấy cả parent và variant active; `includeInactive=true` chỉ TenantAdmin. Endpoint product legacy phía trên không đổi.
+
+Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong tenant. Form mobile cho bỏ trống mã: trước enqueue tự tạo `MH-<UUID local không dấu gạch nối>` viết hoa, giữ mã đó trong payload bền vững qua retry/remap; mã người dùng nhập không được thay thế. Không tạo mã mới khi replay operation.
+
 ```json
 {
   "data": [{
@@ -246,7 +252,11 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### `POST /products/{productId}/variants/{variantId}/deactivate`
 
-**Role:** TenantAdmin. Vô hiệu hóa variant bằng `expectedVersion`; không cho vô hiệu hóa variant active cuối cùng khi product vẫn active. Variant đã xuất hiện trên hóa đơn không được xóa vật lý.
+**Role:** TenantAdmin. Vô hiệu hóa riêng variant bằng `expectedVersion`, kể cả default/variant active cuối cùng; không đổi product gốc hoặc variant khác. Variant đã xuất hiện trên hóa đơn không được xóa vật lý.
+
+### `POST /products/{productId}/variants/{variantId}/activate`
+
+**Role:** TenantAdmin. Body `{expectedVersion}`; bán lại riêng variant, trả `ProductVariant`. Không đổi gốc hoặc variant khác; bán thực tế vẫn yêu cầu gốc active. Version cũ trả `409 ERR_VERSION_CONFLICT`.
 
 ### `PATCH /products/{id}`
 
@@ -254,7 +264,11 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### `POST /products/{id}/deactivate`
 
-**Role:** TenantAdmin. Vô hiệu hóa sản phẩm, giữ nguyên dữ liệu lịch sử; không cho invoice mới sử dụng sản phẩm inactive. Request có `expectedVersion`; trả Product đã cập nhật.
+**Role:** TenantAdmin. Vô hiệu hóa sản phẩm và TẤT CẢ biến thể trong cùng transaction, giữ nguyên dữ liệu lịch sử; không cho invoice mới sử dụng sản phẩm inactive. Request có `expectedVersion`; trả Product đã cập nhật.
+
+### `POST /products/{id}/activate`
+
+**Role:** TenantAdmin. Body `{expectedVersion}`; bán lại gốc và TẤT CẢ biến thể trong cùng transaction, kể cả biến thể đã ngừng riêng. Trả `Product`; không đổi invoice history. Version cũ trả `409 ERR_VERSION_CONFLICT`.
 
 ### `DELETE /products/{id}?expectedVersion=`
 
@@ -1020,8 +1034,10 @@ Query trong bảng là contract ưu tiên cho client mới. API v1 vẫn nhận 
 | POST | `/products/{productId}/variants` | TenantAdmin; `CreateProductVariantRequest` | `ProductVariant` | 201 |
 | PATCH | `/products/{productId}/variants/{variantId}` | TenantAdmin; `UpdateProductVariantRequest` + `expectedVersion` | `ProductVariant` | 200 |
 | POST | `/products/{productId}/variants/{variantId}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants/{variantId}/activate` | TenantAdmin; `expectedVersion` | Active `ProductVariant`; parent/siblings unchanged | 200 |
 | PATCH | `/products/{id}` | `UpdateProductRequest` + `expectedVersion` | `Product` | 200 |
 | POST | `/products/{id}/deactivate` | `expectedVersion` | `Product` | 200 |
+| POST | `/products/{id}/activate` | TenantAdmin; `expectedVersion` | `Product`; all variants active | 200 |
 | DELETE | `/products/{id}` | query `expectedVersion` | `DeletionResult` | 200 |
 | POST | `/products/bulk-price` | `BulkPriceRequest` | `BulkPriceResult` | 200 |
 | GET | `/tenant/staff` | query `search,cursor,pageSize` | `StaffAccount[]` + cursor paging | 200 |

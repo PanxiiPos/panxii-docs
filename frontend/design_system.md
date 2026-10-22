@@ -44,6 +44,8 @@ Catalog money inputs share one locale-aware formatter across product/variant edi
 
 Variant characteristics use named key/value rows with everyday examples and optional suggestions (Thickness, Brand, Length), never a raw JSON input. Product-family guidance explains that each sellable thickness is a separate variant with its own SKU and price. Forms use themed sections, outlined fields, scrollable content, and an accessible save action above the keyboard.
 
+Catalog list cards represent sellable variants, not family search hits. Show the family name and bracketed variant characteristics, prominent variant price/unit, and a secondary item code. Leave item code optional in forms and explain automatic generation; prefill a new variant name from its family. Each card has separate activity and synchronization `FBadge` labels using `AppStatusColors` background/foreground pairs: pending, sending, queued, complete and failed must remain distinguishable in light/dark themes. Processing/queued is never styled as synchronized. Long names and badges wrap at narrow widths and large text sizes.
+
 - `AppPrimaryButton`, `AppSecondaryButton`, `AppDestructiveButton`
 - `AppTextField`, `AppSearchField`, `AppMoneyField`
 - `AppScaffold`, `AppSection`, `AppSurface`
@@ -98,6 +100,7 @@ Thông báo kết quả thao tác dùng dialog chung nổi trên nội dung, kh�
 - Chỉ thực hiện nghiệp vụ sau typed result xác nhận. Khi đang thực thi, khóa submit lặp; nếu dialog chứa tiến trình thì không cho Back/chạm ngoài/đóng làm mất trạng thái. Lỗi phải hiển thị rõ và cho thử lại hoặc hủy khi an toàn, không kẹt loading.
 - Khi route bị hủy, logout hoặc đổi phiên/tenant, dọn toast/dialog cũ; không gọi callback của phiên trước. Dialog không thay thế authorization hoặc validation nghiệp vụ.
 - Dialog bỏ focus bàn phím khi mở, nằm trong safe area, nội dung cuộn được theo viewport/cỡ chữ. Action cập nhật lỗi hiển thị lỗi đã localization ngay trong dialog và cho thử lại, không giả thành công. Link chưa cấu hình là lỗi cần quản trị cung cấp URL hợp lệ. Logout chủ động giữ xác nhận riêng, không báo nhầm hết phiên.
+- Nút bỏ chỉnh sửa dùng nhãn ngắn `Bỏ thay đổi` / `Discard changes`; hậu quả rời trang hoặc tải lại giữ trong nội dung dialog. Action xếp dọc toàn chiều rộng; không thu nhỏ hoặc cắt nhãn để chữa xuống dòng ở cỡ chữ trợ năng.
 
 ## 5. Accessibility
 

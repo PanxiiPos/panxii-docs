@@ -83,6 +83,7 @@ Dữ liệu cấu hình lấy từ bảng `AppSettings`.
 *   UI phải co giãn theo kích thước màn hình và độ dài bản dịch; không cắt, tràn hoặc chồng lấn nội dung khi đổi ngôn ngữ. Mọi text hiển thị và lỗi dùng `easy_localization`, không hardcode trong widget.
 
 ### 6.2. Offline, lưu local và đồng bộ
+*   Ngừng bán sản phẩm gốc ngừng tất cả biến thể; bán lại sản phẩm gốc bật tất cả biến thể, bao gồm biến thể đã ngừng riêng trước đó. Ngừng/bán lại một biến thể (kể cả default hoặc biến thể active cuối cùng) không đổi gốc hoặc biến thể khác. Đây là quy tắc lifecycle thay cho hạn chế ngừng biến thể active cuối cùng trước đây; hạn chế xóa cứng và lịch sử hóa đơn vẫn giữ nguyên. Khả năng bán thực tế yêu cầu cả gốc và biến thể active.
 *   SQLite/SQLCipher là nguồn dữ liệu cho UI mobile. Tạo hoặc chỉnh sửa sản phẩm, khách hàng và hóa đơn phải được lưu local trước để người dùng tiếp tục thao tác khi mất mạng.
 *   Mỗi thay đổi cần đồng bộ được ghi cùng local outbox trong transaction, có `ClientOperationId` ổn định và idempotency; retry phải dùng lại operation ID để không tạo bản ghi trùng.
 *   Khi có mạng, app tự gửi outbox nền lên API/RabbitMQ và hỗ trợ đồng bộ thủ công. Đồng bộ không được khóa luồng bán hàng hoặc làm mất thay đổi người dùng đang nhập.

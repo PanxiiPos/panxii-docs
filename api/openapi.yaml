@@ -244,6 +244,38 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /products/catalog:
+    get:
+      operationId: browseCatalogVariants
+      tags: [Products]
+      summary: List and search sellable variants
+      description: Returns one row per variant with its product family snapshot. Searches family name, variant name, SKU, barcode and saved characteristic JSON. Ordered by variant SKU then ID. Staff see only active variants in active families; includeInactive requires TenantAdmin. Cursor mode only; send cursor= for the first page. Existing product list endpoints remain unchanged.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { name: cursor, in: query, required: true, schema: { type: string }, description: Empty on the first page; otherwise use nextCursor unchanged. }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Sellable variant collection with opaque keyset paging metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [product, variant]
+                      properties:
+                        product: { $ref: '#/components/schemas/Product' }
+                        variant: { $ref: '#/components/schemas/ProductVariant' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /products:
     get:
       operationId: listProducts
@@ -338,7 +370,7 @@ paths:
     post:
       operationId: deactivateProduct
       tags: [Products]
-      description: TenantAdmin only. Deactivates a product while preserving invoice history.
+      description: TenantAdmin only. Deactivates the product and ALL variants atomically while preserving invoice history.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/ProductId' }
@@ -349,6 +381,25 @@ paths:
             schema: { $ref: '#/components/schemas/ProductVersionRequest' }
       responses:
         '200': { description: Product deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{id}/activate:
+    post:
+      operationId: activateProduct
+      tags: [Products]
+      description: TenantAdmin only. Resumes the product and ALL variants atomically, including individually stopped variants. Invoice history is unchanged.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      responses:
+        '200': { description: Product and variants resumed, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -420,7 +471,7 @@ paths:
     post:
       operationId: deactivateProductVariant
       tags: [Products]
-      description: TenantAdmin only. Deactivates a variant while preserving invoice history; an active product must retain at least one active variant.
+      description: TenantAdmin only. Deactivates only this variant, including the default or last active variant, without changing its parent or siblings. Invoice history is preserved.
       parameters:
         - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -429,9 +480,29 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ProductVersionRequest' }
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_PRODUCT_REQUIRES_ACTIVE_VARIANT, ERR_VERSION_CONFLICT]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
       responses:
         '200': { description: Variant deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}/variants/{variantId}/activate:
+    post:
+      operationId: activateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Resumes only this variant without changing its parent or siblings. Selling still requires an active parent.
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      responses:
+        '200': { description: Variant resumed, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -997,7 +1068,7 @@ components:
       type: object
       required: [action, clientEntityId, productId, expectedVersion, data]
       properties:
-        action: { type: string, enum: [create, update, createVariant, updateVariant, deactivate, deactivateVariant, delete, deleteVariant, prices] }
+        action: { type: string, enum: [create, update, createVariant, updateVariant, deactivate, deactivateVariant, activate, activateVariant, delete, deleteVariant, prices] }
         clientEntityId: { type: string, format: uuid, description: Nonempty temporary resource or batch UUID }
         productId: { type: string, format: uuid }
         variantId: { type: string, format: uuid, nullable: true }
@@ -1005,7 +1076,7 @@ components:
         data:
           type: object
           additionalProperties: true
-          description: Corresponding legacy action DTO fields. Outer expectedVersion is authoritative. Decimal fields accept invariant strings. Empty object for delete/deactivate/prices.
+          description: Corresponding legacy action DTO fields. Outer expectedVersion is authoritative. Decimal fields accept invariant strings. Empty object for delete/deactivate/activate/prices. Product activation/deactivation cascades to ALL variants, while variant actions leave parent and siblings unchanged.
         prices:
           type: array
           nullable: true
