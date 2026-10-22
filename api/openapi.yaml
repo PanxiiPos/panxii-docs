@@ -249,13 +249,14 @@ paths:
       operationId: browseCatalogVariants
       tags: [Products]
       summary: List and search sellable variants
-      description: Returns one row per variant with its product family snapshot. Searches family name, variant name, SKU, barcode and saved characteristic JSON. Ordered by variant SKU then ID. Staff see only active variants in active families; includeInactive requires TenantAdmin. Cursor mode only; send cursor= for the first page. Existing product list endpoints remain unchanged.
+      description: Returns one row per variant with its product family snapshot. Searches family name, variant name, SKU, barcode and saved characteristic JSON. Ordered by variant SKU then ID. Optional categoryId strictly filters the family category, excluding uncategorized products and descendants. Cursor is bound to categoryId. Staff see only active variants in active families; includeInactive requires TenantAdmin. Cursor mode only; send cursor= for the first page.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
         - { name: cursor, in: query, required: true, schema: { type: string }, description: Empty on the first page; otherwise use nextCursor unchanged. }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/CategoryFilter' }
       responses:
         '200':
           description: Sellable variant collection with opaque keyset paging metadata
@@ -280,7 +281,7 @@ paths:
     get:
       operationId: listProducts
       tags: [Products]
-      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only. Search name, SKU, or barcode; order by name ascending then id ascending; uses opaque keyset cursor.
+      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only. Optional categoryId strictly filters the product category, excluding uncategorized products and descendants; cursor is bound to categoryId. Search name, SKU, or barcode; order by name ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
@@ -288,6 +289,7 @@ paths:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
+        - { $ref: '#/components/parameters/CategoryFilter' }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200':
@@ -302,7 +304,8 @@ paths:
       operationId: createProduct
       tags: [Products]
       summary: Queue product creation
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE]
+      description: categoryId is optional for legacy API clients but required for new mobile creation. A supplied category must be active and belong to the tenant; API and worker both validate. Optional extraData is copied to the product and default variant. Existing queued payload hashes are preserved.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_CATEGORY_NOT_FOUND, ERR_CATEGORY_INACTIVE, ERR_INVALID_REQUEST]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
@@ -317,7 +320,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -679,6 +684,22 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /categories/{id}:
+    delete:
+      operationId: deleteCategory
+      tags: [Products]
+      summary: Hard-delete an unreferenced category (TenantAdmin only)
+      description: All product references count, including inactive products. Categories with children are explicitly rejected. No cascade or implicit detachment. Version may advance when new product/child references are attached.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_CATEGORY_NOT_FOUND, ERR_CATEGORY_IN_USE, ERR_CATEGORY_HAS_CHILDREN, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CategoryId' }
+        - { name: expectedVersion, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '204': { description: Category deleted; no response body }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
     patch:
       operationId: updateCategory
       tags: [Products]
@@ -693,6 +714,27 @@ paths:
       responses:
         '200': { description: Category updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories/{id}/status:
+    patch:
+      operationId: setCategoryStatus
+      tags: [Products]
+      summary: Activate or deactivate a category (TenantAdmin only)
+      description: Keeps product and child references; does not cascade product or child status. Requires optimistic concurrency and records an audit event.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_CATEGORY_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CategoryId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetCategoryStatusRequest' }
+      responses:
+        '200': { description: Category status updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
@@ -1055,6 +1097,12 @@ components:
     ProductId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CustomerId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CategoryId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    CategoryFilter:
+      name: categoryId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+      description: Exact tenant-scoped product category; not descendants or uncategorized products. Unknown or foreign category yields an empty collection. Cursor cannot be reused with another category filter.
   responses:
     BadRequest: { description: 'Invalid request. Codes include ERR_INVALID_REQUEST, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_EMAIL, ERR_INVALID_TIME_ZONE, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL and ERR_INVALID_PAGING.', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Unauthorized: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
@@ -1178,6 +1226,7 @@ components:
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
+        extraData: { $ref: '#/components/schemas/ProductExtraData' }
     UpdateProductRequest:
       type: object
       additionalProperties: false
@@ -1237,6 +1286,21 @@ components:
             schemaVersion: { type: integer, enum: [1] }
             attributes: { type: object, additionalProperties: true }
         updatedAtUtc: { type: string, format: date-time }
+    ProductExtraData:
+      type: object
+      nullable: true
+      description: Optional structured attributes, at most 16384 UTF-8 bytes. Copied to product and default variant on creation.
+      required: [schemaVersion, attributes]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        attributes: { type: object, additionalProperties: true }
+    SetCategoryStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [isActive, expectedVersion]
+      properties:
+        isActive: { type: boolean }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCategoryRequest:
       type: object
       additionalProperties: false
@@ -1535,6 +1599,8 @@ components:
       required: [id, sku, name, unit, basePrice, taxRate, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid, nullable: true }
+        extraData: { $ref: '#/components/schemas/ProductExtraData' }
         sku: { type: string }
         barcode: { type: string, nullable: true }
         name: { type: string }
@@ -1547,6 +1613,7 @@ components:
         updatedAtUtc: { type: string, format: date-time }
     Category:
       type: object
+      required: [id, code, name, isActive, sortOrder, version, updatedAtUtc, productCount]
       properties:
         id: { type: string, format: uuid }
         code: { type: string }
@@ -1556,6 +1623,7 @@ components:
         sortOrder: { type: integer }
         version: { type: integer, format: int64 }
         updatedAtUtc: { type: string, format: date-time }
+        productCount: { type: integer, minimum: 0, description: All direct tenant product references including inactive products; excludes variants and descendant categories. }
     ProductVersionRequest:
       type: object
       additionalProperties: false
