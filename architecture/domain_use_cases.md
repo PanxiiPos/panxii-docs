@@ -41,6 +41,7 @@ Client-only `SyncStatus` enum: `Draft`, `Pending`, `Sending`, `Queued`, `Synced`
 | UC-TENANT-01 | Create/suspend tenant | SuperAdmin | Yes |
 | UC-PROD-01 | Create/update product | TenantAdmin | Yes |
 | UC-PROD-02 | Bulk update price | TenantAdmin | Yes |
+| UC-PROD-03 | Pause/resume product and all variants, or one variant independently | TenantAdmin | Local outbox + MySQL transaction |
 | UC-CUST-01 | Create/update/deactivate/delete customer | TenantAdmin | Yes |
 | UC-CUST-02 | Search/read customer for invoice | Staff, TenantAdmin | Read |
 | UC-INV-01 | Create invoice offline | Staff/Admin | Local transaction |

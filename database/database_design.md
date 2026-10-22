@@ -267,7 +267,7 @@ Unique `(TenantId, Code)`. Không cho `ParentId = Id`; service phải kiểm tra
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
-`Product` không đại diện cho một dòng được tính tiền. Mỗi sản phẩm gốc phải có tối thiểu một `ProductVariant` hoạt động; invariant này được kiểm tra trong application transaction. `ExtraDataJson` ở sản phẩm gốc dành cho thuộc tính chung của mọi biến thể.
+`Product` không đại diện cho một dòng được tính tiền. Mỗi sản phẩm gốc có default `ProductVariant` không được xóa riêng. Theo lifecycle hiện hành, có thể tạm ngừng mọi biến thể mà vẫn giữ gốc active; khả năng bán yêu cầu cả gốc và biến thể active. Ngừng/bán lại gốc đổi cờ của mọi biến thể trong cùng transaction, bán lại gốc bật cả biến thể đã ngừng riêng; đổi riêng một biến thể không đổi gốc/biến thể khác. `ExtraDataJson` ở sản phẩm gốc dành cho thuộc tính chung của mọi biến thể.
 Tạo alternate key `(TenantId, Id)` để các bảng liên quan có thể enforce tenant cùng FK.
 
 Với sắt hộp 30x60 có cùng độ dày, `product.ExtraDataJson` giữ thuộc tính chung `product.thickness`; mỗi variant lưu thương hiệu riêng trong `ExtraDataJson`, còn SKU/giá đặt ở cột tương ứng:
@@ -590,6 +590,8 @@ Giữ `ProductId`, `ProductVariantId`, `InvoiceId`, `LineNumber`, snapshot tên/
 ### `local_products`, `local_product_variants`, `local_categories`, `local_customers`
 
 Bản sao phục vụ tìm kiếm. `local_products` lưu sản phẩm gốc; `local_product_variants` lưu từng lựa chọn bán được, gồm SKU, barcode, đơn vị, giá, trạng thái, version và thuộc tính riêng. Mỗi bảng cần `ServerUpdatedAt` hoặc `Version` để pull incremental. Giữ quan hệ variant-product và nguyên vẹn `ExtraDataJson` theo contract `schemaVersion`/`attributes` để UI đọc được cả offline.
+
+**Ánh xạ catalog mobile đang triển khai:** Các tên `local_*` trên là mô hình logic. Implementation SQLCipher dùng `catalog_records` với `kind=product|variant` thay cho hai bảng riêng, PK `(tenant_id,user_id,kind,id)`, cùng `catalog_operations` và `catalog_sync` theo tenant/user; giữ tên vật lý hiện có khi nâng cấp. Schema 5 thêm `search_attributes TEXT NOT NULL DEFAULT ''` và backfill từ `body_json.extraData` bằng NFC/lowercase; mọi upsert tiếp tục cập nhật text này. List join variant-parent theo tenant/user/product, lọc cả parent lẫn variant active và phân trang trên variant, không trả nhóm gốc thay cho kết quả tìm variant. Migration không đổi payload journal, draft hoặc pull sequence.
 
 ### `local_outbox`
 

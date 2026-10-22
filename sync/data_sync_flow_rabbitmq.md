@@ -31,6 +31,12 @@ API chỉ trả `202 Queued` sau publisher confirm. Worker commit entity, `sync_
 
 Mỗi outbox có `ClientOperationId` UUID, `EntityId`, `PayloadJson`, `PayloadHash`, `AttemptCount`, `NextAttemptAt`.
 
+### 3.1. Catalog pause/resume
+
+Mobile ghi `activate`/`deactivate` cho gốc hoặc `activateVariant`/`deactivateVariant` cho một biến thể cùng local mutation trong một transaction tenant/user-scoped. Đổi gốc cascade mọi biến thể đang có trong cache; đổi riêng một biến thể không đổi gốc hoặc sibling, kể cả default variant. Chỉ entity thực sự đổi cờ active tăng version.
+
+Catalog command được gửi qua `POST /products/commands`; payload và operation UUID được đóng băng trước lần gửi đầu. Retry/replay không sửa payload hoặc `Idempotency-Key`. Worker kiểm tra quyền/version, áp dụng cascade lên mọi biến thể server (kể cả chưa cache local), lưu đầy đủ snapshot gốc/biến thể trong receipt `CatalogBatch` cùng operation/change/outbox. `202 Queued` chưa phải synced; client chỉ xác nhận sau receipt/pull, giữ các mutation local mới hơn đang pending khi áp dụng snapshot. Bán lại gốc bật cả biến thể đã ngừng riêng trước đó, không khôi phục lịch sử cờ cũ.
+
 ## 4. Luồng tạo invoice offline và realtime create
 
 ```mermaid
