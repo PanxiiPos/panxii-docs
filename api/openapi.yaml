@@ -195,6 +195,55 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /products/commands:
+    post:
+      operationId: submitCatalogCommand
+      tags: [Products]
+      description: TenantAdmin only. Durable offline mutation; permission rechecked by worker. Receipt, catalog batch, audit and realtime outbox commit atomically. Same UUID and payload may be retried.
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogCommand' }
+      responses:
+        '202':
+          description: Queued, not yet committed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /products/commands/{operationId}:
+    get:
+      operationId: getCatalogCommandStatus
+      tags: [Products]
+      description: TenantAdmin only, current tenant and creating user only. ERR_OPERATION_NOT_FOUND can mean queued but not yet processed; retry the unchanged command/UUID.
+      parameters:
+        - { name: operationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Durable completion or rejection receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { type: string, enum: [Completed, Rejected] }
+                      errorCode: { type: string, nullable: true }
+                      result: { $ref: '#/components/schemas/CatalogCommandResult' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /products:
     get:
       operationId: listProducts
@@ -944,6 +993,56 @@ components:
     NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     ServiceUnavailable: { description: RabbitMQ or required dependency is unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   schemas:
+    CatalogCommand:
+      type: object
+      required: [action, clientEntityId, productId, expectedVersion, data]
+      properties:
+        action: { type: string, enum: [create, update, createVariant, updateVariant, deactivate, deactivateVariant, delete, deleteVariant, prices] }
+        clientEntityId: { type: string, format: uuid, description: Nonempty temporary resource or batch UUID }
+        productId: { type: string, format: uuid }
+        variantId: { type: string, format: uuid, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 0 }
+        data:
+          type: object
+          additionalProperties: true
+          description: Corresponding legacy action DTO fields. Outer expectedVersion is authoritative. Decimal fields accept invariant strings. Empty object for delete/deactivate/prices.
+        prices:
+          type: array
+          nullable: true
+          minItems: 1
+          maxItems: 100
+          description: Required for prices; unique physical IDs, validated before any mutation.
+          items:
+            type: object
+            required: [productId, expectedVersion, price]
+            properties:
+              productId: { type: string, format: uuid }
+              variantId: { type: string, format: uuid, nullable: true }
+              expectedVersion: { type: integer, format: int64, minimum: 1 }
+              price:
+                oneOf:
+                  - { type: string, pattern: '^[0-9]{1,15}(\.[0-9]{1,4})?$', example: '25200.1234' }
+                  - { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, maximum: 999999999999999.9999 }
+    CatalogCommandResult:
+      type: object
+      nullable: true
+      required: [clientEntityId, entityId, products, variants, deletedProductIds]
+      properties:
+        clientEntityId: { type: string, format: uuid }
+        entityId: { type: string, format: uuid }
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariant' }
+        deletedProductIds:
+          type: array
+          items: { type: string, format: uuid }
+        deletedVariantIds:
+          type: array
+          nullable: true
+          items: { type: string, format: uuid }
     Meta:
       type: object
       required: [correlationId, serverTimeUtc, apiVersion]
@@ -1056,6 +1155,7 @@ components:
         name: { type: string, nullable: true }
         unit: { type: string }
         basePrice: { type: number, format: decimal }
+        basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
         taxRate: { type: number, format: decimal }
         isActive: { type: boolean }
         version: { type: integer, format: int64 }
@@ -1369,6 +1469,7 @@ components:
         name: { type: string }
         unit: { type: string }
         basePrice: { type: number, format: decimal }
+        basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
         taxRate: { type: number, format: decimal }
         isActive: { type: boolean }
         version: { type: integer, format: int64 }

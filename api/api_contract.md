@@ -8,6 +8,20 @@
 
 ## 1. Quy ước chung
 
+### Catalog offline commands (mobile)
+
+- `POST /products/commands`: TenantAdmin, bắt buộc `Idempotency-Key` UUID khác rỗng; trả `202` với `{operationId,status:"Queued"}`. Worker kiểm tra lại tài khoản/tenant/quyền khi thực thi.
+- Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
+- `prices`: 1–100 `{productId,variantId?,expectedVersion,price}`. Giá tuyệt đối riêng từng target, >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Có thể gửi `price` và `data.basePrice` dưới dạng chuỗi decimal invariant để giữ chính xác. Client tính tăng/giảm số tiền cố định trước khi gửi. Không nhận cùng physical ID hai lần (product/default variant); không điều chỉnh phần trăm trong luồng mobile này.
+- `GET /products/commands/{operationId}`: TenantAdmin, chỉ tenant hiện tại và người tạo operation. `200 data={status:"Completed"|"Rejected",errorCode?,result?}`; chưa có receipt trả `404 ERR_OPERATION_NOT_FOUND` (có thể vẫn đang chờ trong RabbitMQ). Payload mismatch giữ nguyên lỗi `ERR_SYNC_PAYLOAD_MISMATCH`; không thay payload của UUID đã gửi.
+- Result: `{clientEntityId,entityId,products:[],variants:[],deletedProductIds:[],deletedVariantIds:[]}`; `entityId` là ID server của resource vừa tạo, hoặc ID target/batch. `products`/`variants` là snapshot đầy đủ của các product bị tác động, không phải chỉ các dòng đổi giá. `deletedVariantIds` có thể null ở receipt cũ.
+- Mutation, receipt chứa result, audit, `CatalogBatch` server change và realtime outbox cùng transaction. Một version sai từ chối toàn batch; retry UUID/payload không thực thi lại. API legacy giữ nguyên để tương thích.
+- Không xóa riêng default variant; variant đã có lịch sử hóa đơn phải ngừng bán. Không xóa/ngừng bán variant active cuối cùng của product active.
+- Product/variant response bổ sung `basePriceText` invariant string; `basePrice` numeric giữ nguyên để tương thích. Client mới ưu tiên string; không dùng floating point để tính giá.
+- Variant update có thể gửi lại `extraData` legacy/schema chưa hỗ trợ **không đổi** (so sánh cấu trúc JSON với dữ liệu hiện tại) để sửa tên/giá mà không mất thuộc tính. Vẫn kiểm tra tenant và `expectedVersion`. Tạo mới hoặc thay đổi schema chưa hỗ trợ vẫn bị từ chối; không phải cơ chế ghi JSON tùy ý. Mobile dùng form tên/giá trị, tự tạo schema 1, không gửi tiền đã format theo locale.
+- Pull `CatalogBatch.entity` dùng result shape trên; áp dụng snapshot/tombstone/ID mapping và sequence cùng local transaction. Client không xem `202` là sync thành công và không tự rebase conflict.
+- Deployment: cập nhật API và worker cùng phiên bản. Worker cần `JWT_SECRET_KEY` hợp lệ (cùng cấu hình API) vì product service phụ thuộc cursor codec; thiếu key sẽ retry/DLQ trước khi ghi receipt. Local compose đã truyền biến này, không lưu giá trị secret vào source.
+
 ### Headers
 
 | Header | Bắt buộc | Mô tả |

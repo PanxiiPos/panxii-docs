@@ -31,6 +31,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVALID_CREDENTIALS` | 401 | No | `errors.invalidCredentials` | Tenant/user/password không hợp lệ |
 | `ERR_ACCESS_DENIED` | 403 | No | `errors.accessDenied` | Không đủ quyền |
 | `ERR_NOT_FOUND` | 404 | No | `errors.notFound` | Route/resource không tồn tại |
+| `ERR_OPERATION_NOT_FOUND` | 404 | Yes (catalog status only) | `errors.ERR_OPERATION_NOT_FOUND` | Chưa có receipt catalog của actor trong tenant; kiểm tra lại hoặc gửi nguyên UUID/payload, không tạo operation mới |
 | `ERR_CONFLICT` | 409 | No | `errors.conflict` | Request xung đột trạng thái hiện tại |
 | `ERR_TENANT_INACTIVE` | 422 | No | `errors.tenantInactive` | Tenant bị khóa |
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |

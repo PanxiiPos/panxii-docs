@@ -40,6 +40,10 @@ Mỗi component cần xác định `default`, `hover/focus`, `pressed`, `disable
 
 ## 4. Component catalog
 
+Catalog money inputs share one locale-aware formatter across product/variant editors and batch pricing. VND uses a visible currency suffix and thousands grouping while typing/pasting; cursor editing and Backspace around grouping separators must work. UI formatting must never enter journal/API payloads, and decimal arithmetic remains exact. Vietnamese examples: `25.000 ₫`, `30.123,4567 ₫`.
+
+Variant characteristics use named key/value rows with everyday examples and optional suggestions (Thickness, Brand, Length), never a raw JSON input. Product-family guidance explains that each sellable thickness is a separate variant with its own SKU and price. Forms use themed sections, outlined fields, scrollable content, and an accessible save action above the keyboard.
+
 - `AppPrimaryButton`, `AppSecondaryButton`, `AppDestructiveButton`
 - `AppTextField`, `AppSearchField`, `AppMoneyField`
 - `AppScaffold`, `AppSection`, `AppSurface`
