@@ -97,15 +97,15 @@ Refresh API lỗi giữ nội dung Home đã tải; lỗi lưu hồ sơ/cấu h�
 
 Lỗi chính: `ERR_INVALID_CREDENTIALS`, `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_FORCE_UPDATE_REQUIRED`, `ERR_RATE_LIMITED`. Không đưa SuperAdmin vào tenant flow nếu app hiện chỉ phục vụ cửa hàng.
 
-**Đã triển khai UI:** Login dùng Cubit cho submitting/success/failure; validate username/password bắt buộc, username tối đa 120 ký tự; trim username nhưng không trim password. Có hiện/ẩn mật khẩu, autofill, đổi vi/en, chặn submit lặp và giữ dữ liệu khi đăng nhập lỗi. Lỗi field/credentials/network hiển thị tại form; tenant inactive/device revoked/force-update/access denied dùng thêm `AppDialog` qua `forui`, không tự đóng khi chạm ngoài. Chỉ vào Home sau repository hoàn tất, không tự retry đăng nhập.
+**Đã triển khai UI:** Login dùng Cubit cho submitting/success/failure; validate username/password bắt buộc, username tối đa 120 ký tự; trim username nhưng không trim password. Có hiện/ẩn mật khẩu, autofill, đổi vi/en, chặn submit lặp và giữ dữ liệu khi đăng nhập lỗi. Lỗi field ở field; lỗi credentials/network và lỗi thao tác khác dùng dialog thường, đóng bằng Đã hiểu/Back/chạm ngoài. `ERR_FORCE_UPDATE_REQUIRED` kích hoạt dialog cập nhật bắt buộc toàn app. Chỉ vào Home sau repository hoàn tất, không tự retry đăng nhập.
 
-Form neo phía trên thay vì căn giữa lại theo chiều cao nội dung. Khi gửi request, giữ nguyên field/controller/focus và bàn phím; không disable/re-enable field hoặc đổi kích thước nút. Nút submit khóa lặp, có vùng tiến trình giữ chỗ; lỗi chung nằm sau nút nên không đẩy các ô nhập/nút lên xuống. Lỗi field dài vẫn được phép làm vùng validation tăng chiều cao để đọc đủ nội dung. Rebuild widget theo state là bình thường, nhưng không được remount/reset form hoặc thay toàn màn hình bằng loading khi retry/thất bại. Thành công chỉ chuyển Login sang Home sau khi lưu token.
+Form neo phía trên thay vì căn giữa lại theo chiều cao nội dung. Khi gửi request, giữ nguyên field/controller/focus và bàn phím; không disable/re-enable field hoặc đổi kích thước nút. Nút submit khóa lặp, có vùng tiến trình giữ chỗ. Khi mở dialog, chủ động bỏ focus bàn phím; giữ nguyên controller/dữ liệu, không chèn lỗi chung làm dịch form. Lỗi field dài vẫn được phép làm vùng validation tăng chiều cao để đọc đủ nội dung. Không remount/reset form hoặc thay toàn màn hình bằng loading khi retry/thất bại. Thành công chỉ chuyển Login sang Home sau khi lưu token.
 
 Kết nối backend local qua Android USB cần `adb reverse tcp:5099 tcp:5099` trước khi dùng `API_BASE_URL=http://127.0.0.1:5099/api/v1`. Cấu hình chạy từ workspace và smoke test backend thật được hướng dẫn trong [Mobile README](../../mobile/README.md#run-on-android-or-a-usb-connected-device).
 
 Login có lối vào Hiển thị và cỡ chữ; Home có cùng lối vào trên app bar cho mọi role đang hỗ trợ. Shared preference lưu local các preset system/large/extra_large; root `TextScaler` áp dụng đúng một lần cho mọi route/overlay. Cấu hình màu dialog lấy từ theme app, chữ từ typography chung.
 
-**Duy trì phiên:** Repository từ chối tài khoản ngoài Staff/TenantAdmin trước khi lưu; secure storage giữ access token, refresh token và thời điểm hết hạn trong một session record. Trước request API hoặc kết nối lại SignalR, tự refresh nếu access token sắp hết hạn trong 30 giây. Request nhận 401 được refresh và gửi lại tối đa một lần, giữ nguyên payload/idempotency key; các request đồng thời dùng chung một refresh để tránh rotate trùng. Lỗi mạng giữ phiên để thử lại. Refresh bị từ chối hoặc tenant/device bị khóa/thu hồi xóa token, dừng realtime và chuyển về Login kể cả khi đang mở editor. Logout xóa cả access/refresh token; không lưu mật khẩu. Session cũ chỉ có access token không thể tự khôi phục refresh token: khi token đó hết hạn phải đăng nhập lại một lần. `HOME_PREVIEW=true` vẫn bỏ qua Login theo cơ chế preview hiện có.
+**Duy trì phiên:** Repository từ chối tài khoản ngoài Staff/TenantAdmin trước khi lưu; secure storage giữ access token, refresh token và thời điểm hết hạn trong một session record. Trước request API hoặc kết nối lại SignalR, tự refresh nếu access token sắp hết hạn trong 30 giây. Request nhận 401 được refresh và gửi lại tối đa một lần, giữ nguyên payload/idempotency key; các request đồng thời dùng chung một refresh để tránh rotate trùng. Lỗi mạng giữ phiên để thử lại. Refresh bị từ chối hoặc tenant/device bị khóa/thu hồi xóa token ngay, khóa request và dừng realtime; dialog bắt buộc yêu cầu OK rồi xóa toàn bộ route về Login, kể cả editor có nháp. Không chờ OK mới bảo vệ phiên. Logout chủ động xóa cả token và về Login sau xác nhận đăng xuất, không báo hết phiên. Không lưu mật khẩu. Session cũ chỉ có access token không thể tự khôi phục refresh token: khi token đó hết hạn phải đăng nhập lại một lần. `HOME_PREVIEW=true` vẫn bỏ qua Login theo cơ chế preview hiện có.
 
 Mỗi request có xác thực được gắn session generation; login/logout thay generation, refresh token bình thường không thay generation. Request đang chờ và retry 401 không được gửi bằng credential của phiên thay thế. Response lỗi auth đến muộn từ phiên cũ không được refresh hoặc đăng xuất phiên mới.
 
@@ -263,7 +263,7 @@ Staff/TenantAdmin đều có Hồ sơ, Hiển thị và cỡ chữ, Ngôn ngữ 
 
 **Dữ liệu/API:** Preference local dùng chung trên thiết bị, không chứa PII; đọc/ghi offline, giữ qua restart. Không gọi `/settings/effective`, không PUT cấu hình cửa hàng hoặc `/me`, không tạo outbox hay endpoint mới. Lỗi đọc/ghi phải được báo rõ, cho thử lại/đặt lại và không báo lưu thành công khi thất bại.
 
-Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design System, mục 5](design_system.md#5-accessibility). Flutter đã có màn hình này từ Login/Home, preview, áp dụng ngay, khôi phục theo hệ thống và xử lý lỗi đọc/ghi local. Root scaler bao phủ mọi route/overlay; toast wrapper vẫn là yêu cầu cho bước triển khai sau.
+Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design System, mục 5](design_system.md#5-accessibility). Flutter đã có màn hình này từ Login/Home, preview, áp dụng ngay, khôi phục theo hệ thống và xử lý lỗi đọc/ghi local bằng dialog toàn cục. Root scaler bao phủ mọi route/overlay.
 
 ## 5. Hợp đồng dữ liệu và xử lý lỗi dùng chung
 
@@ -271,7 +271,7 @@ Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design
 - Mutation đồng bộ ngay: chỉ báo thành công theo response `200/201`. Mutation trả `202` hiển thị “đang xử lý”, giữ operation ID và đợi event/pull.
 - Offline mutation: ghi entity + outbox atomically trước; retry transient bằng cùng operation ID/key/payload. Lỗi nghiệp vụ không retry vô hạn; giữ form/dữ liệu và hiển thị lỗi đã localization.
 - `409 ERR_VERSION_CONFLICT`: giữ nội dung người dùng nhập; tải/nhận version mới và yêu cầu xử lý conflict, không tự ghi đè.
-- `401 ERR_DEVICE_REVOKED` hoặc session revoked: dừng worker, xử lý local data theo security policy, xóa token và đưa về Login.
+- `401 ERR_DEVICE_REVOKED` hoặc session revoked: xóa token/khóa request ngay, dừng realtime/worker theo security policy; dialog bắt buộc OK mới chuyển UI về Login.
 - `403 ERR_ACCESS_DENIED`: ẩn/disable action theo role để dễ dùng, nhưng luôn xử lý response server nếu quyền đã đổi.
 - Unknown enum/status: map về trạng thái “Không xác định” an toàn; không crash, không suy ra đã đồng bộ/thanh toán.
 - Server error UI dùng `error.code`, `args`, `fieldErrors`, `retryable`; map catalog sang `vi.json`/`en.json`. Không hiện stack trace hoặc `message` kỹ thuật.
@@ -279,10 +279,10 @@ Typography, hệ số chữ, phạm vi áp dụng và accessibility theo [Design
 ### 5.1. Thông báo và xác nhận dùng chung
 
 - Mọi màn hình dùng wrapper/policy chung theo [Design System, mục 4](design_system.md#4-component-catalog); không tự cấu hình popup/dialog/toast riêng.
-- Thông tin nhẹ/thành công dùng toast; lỗi nhập liệu hiển thị tại field/form; thông tin quan trọng cần xử lý dùng dialog. Mạng và sync nền ở banner/status, không mở popup liên tục.
+- Thông tin/thành công/lỗi thao tác dùng dialog thường, đóng bằng Đã hiểu/Back/chạm ngoài. Lỗi nhập liệu ở field; mạng và pending/sync nền ở banner/status, không mở popup liên tục.
 - Lưu local chỉ thông báo đã lưu trên thiết bị; `202` chỉ thông báo đang xử lý. Chỉ báo hoàn tất sau response xác nhận hoặc event/pull phù hợp, không đánh đồng `Queued` với `Synced`.
 - Đảo hóa đơn, xóa/vô hiệu hóa đối tượng và đăng xuất có xác nhận rõ đối tượng/hậu quả; Hủy/Back/chạm ngoài không thực hiện hành động. UI vẫn tuân theo quyền và contract hiện có.
-- Conflict giữ nội dung nhập và mở hướng xử lý, không dùng toast tự mất làm cách duy nhất để báo lỗi. Auth/revoke/force-update đi theo flow toàn cục, không phụ thuộc việc đóng dialog.
+- Conflict giữ nội dung nhập và mở hướng xử lý sau khi đóng dialog lỗi. Auth/revoke bảo vệ phiên ngay, OK chỉ điều khiển điều hướng. Force-update dùng dialog không thể bỏ qua; Cập nhật mở HTTPS URL theo nền tảng từ `GET /config/version`, lỗi mở link giữ dialog để thử lại. Cập nhật tùy chọn có Để sau; OTA tải xong báo cần khởi động lại, không giả lập restart.
 - Toast/dialog hỗ trợ cỡ chữ toàn app, text scaling hệ điều hành, vi/en và screen reader; không cắt nội dung quan trọng hoặc làm khuất action.
 
 ## 6. API gaps cần đóng trước khi làm màn hình liên quan

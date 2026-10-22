@@ -53,7 +53,7 @@ Mỗi component cần xác định `default`, `hover/focus`, `pressed`, `disable
 
 ### 4.1. Cấu hình thông báo dùng chung
 
-Đây là quy chuẩn đích khi triển khai. Flutter hiện có `AppDialog.showNotice` và `AppFeedbackConfig` dùng cho Login; `AppDialog.confirm` dùng chung cho đăng xuất, bỏ thay đổi và tải lại form conflict. Confirmation không đóng khi chạm ngoài, mặc định focus Hủy, trả kết quả typed; chỉ kết quả xác nhận mới thực hiện hành động. Settings dùng feedback inline có semantic live region cho lỗi/thành công và progress ổn định. `AppFeedback`/`AppToast` và điều phối hàng đợi toàn cục chưa được triển khai. Popup thông báo phải đi qua wrapper chung, không cấu hình riêng tại từng màn hình. Popup chọn dữ liệu/filter vẫn thuộc component tương ứng, không dùng dialog thông báo thay cho form.
+Flutter dùng `AppDialog.showNotice` cho lỗi/thành công/thông tin ở Login, Home, Settings và cài đặt hiển thị; `AppDialog.confirm` cho đăng xuất, bỏ thay đổi và tải lại form conflict; `AppDialog.showAction` cho cập nhật/hết phiên với ưu tiên toàn cục. Confirmation không đóng khi chạm ngoài, mặc định focus Hủy, trả kết quả typed; chỉ kết quả xác nhận mới thực hiện hành động. Settings giữ progress, stale-cache và pending bền, không giữ lỗi/thành công thao tác dưới form. Popup thông báo phải đi qua wrapper chung. Popup chọn dữ liệu/filter vẫn thuộc component tương ứng, không dùng dialog thông báo thay cho form.
 
 Tập trung cấu hình tại app theme và một policy dùng chung `AppFeedbackConfig`:
 
@@ -68,17 +68,19 @@ Feature chỉ cung cấp nội dung, mức độ, intent/action và khóa chốn
 
 ### 4.2. Chọn toast, dialog hay banner
 
-Mức độ lỗi không tự động quyết định modal: chỉ dùng dialog khi cần người dùng xác nhận hoặc xử lý trước khi tiếp tục.
+Thông báo kết quả thao tác dùng dialog chung nổi trên nội dung, không đặt lỗi chung trong vùng trống của form hoặc dùng toast dễ bị bàn phím che. Lỗi validation vẫn gắn với field; trạng thái kết nối và pending vẫn là banner bền.
 
 | Tình huống | Cách hiển thị | Quy tắc mặc định |
 |---|---|---|
-| Thông tin nhẹ, thao tác thành công | Toast `info`/`success` | Tự đóng sau 4 giây; có nút đóng; không chặn thao tác |
-| Cảnh báo/lỗi tạm thời không chặn thao tác | Toast `warning`/`error` | Tự đóng sau 6 giây; có nút đóng; chỉ dùng nếu không cần giữ thông tin để xử lý |
+| Thông tin nhẹ, thao tác thành công | Dialog thông báo thường | Đóng bằng nút Đã hiểu, Back hoặc chạm ngoài; không tự đóng theo thời gian |
+| Cảnh báo/lỗi thao tác | Dialog thông báo thường | Giữ nguyên form/nháp; Đã hiểu, Back hoặc chạm ngoài đều chỉ đóng thông báo |
 | Sai dữ liệu nhập | Lỗi tại field/form | Giữ dữ liệu và lỗi tới khi sửa; không chỉ hiện toast rồi mất |
 | Thông tin quan trọng cần đọc/xác nhận, lỗi chặn bước tiếp theo | Dialog thông báo | Không tự đóng; title, nội dung và action rõ ràng |
 | Xóa, đảo hóa đơn, đăng xuất thiết bị hoặc mất dữ liệu | Dialog xác nhận destructive | Nêu đối tượng và hậu quả; có Hủy và action cụ thể, không dùng nhãn mơ hồ “Có/Không” |
 | Mất mạng, pending/queued, đang đồng bộ hoặc lỗi sync nền | Banner/status toàn cục | Duy trì theo trạng thái thật; tap mở chi tiết; không bật modal mỗi lần retry |
-| Phiên bị thu hồi, thiết bị bị revoke, bắt buộc cập nhật | Flow toàn cục theo auth/update state | Không chỉ báo toast; dừng/chuyển flow theo policy tương ứng, không chờ người dùng đóng dialog mới bảo vệ phiên |
+| Phiên hết hạn không thể refresh, phiên/device bị thu hồi | Dialog bắt buộc toàn cục | Xóa token và khóa request ngay; không cho Back/chạm ngoài; OK xóa route/editor cũ và về Login |
+| Cập nhật native bắt buộc | Dialog bắt buộc toàn cục | Chỉ có Cập nhật; mở URL HTTPS từ `downloadUrls.android`/`ios`; không đóng sau khi mở trang tải, không cho Back/chạm ngoài |
+| Cập nhật tùy chọn/OTA patch | Dialog thường có action | Cập nhật hoặc Để sau; Back/chạm ngoài được phép trước khi chạy action |
 
 `202 Queued` chỉ báo đang xử lý; lưu local chỉ báo đã lưu trên thiết bị. Không dùng toast thành công “Đã đồng bộ” trước khi event/pull xác nhận.
 
@@ -86,11 +88,12 @@ Mức độ lỗi không tự động quyết định modal: chỉ dùng dialog 
 
 - Toast không chứa action bắt buộc hoặc thông tin quan trọng chỉ xuất hiện một lần. Khi screen reader hoạt động hoặc hệ điều hành yêu cầu thêm thời gian đọc, tắt tự đóng và giữ nút đóng; không bắt người dùng đọc kịp trong 4/6 giây.
 - Tối đa một toast hiển thị và ba toast chờ. Gộp sự kiện trùng theo intent/operation ID; khi đầy, bỏ toast tạm thời cũ nhất đang chờ. Không đưa thông báo cần xử lý vào hàng đợi có thể bị bỏ này.
-- Tối đa một dialog hiển thị; chặn mở lặp cùng intent/operation ID. Không tự xếp hàng xác nhận nghiệp vụ để bật lại trên route/phiên không còn phù hợp; caller phải kiểm tra context, route và trạng thái mới nhất.
-- Dialog mặc định không đóng khi chạm ngoài. Dialog thông báo có thể Back như action đóng; dialog xác nhận có thể Back như Hủy. Không có trường hợp Back/chạm ngoài/null result được hiểu là xác nhận.
+- Tối đa một dialog hiển thị. Thứ tự ưu tiên: hết phiên > cập nhật bắt buộc > thông báo thường. Thông báo thường chờ dialog thường trước đó khi context còn tồn tại; không xếp hàng xác nhận nghiệp vụ. Thông báo thường bị chặn khi có dialog bắt buộc; không gọi lại action phiên cũ. Cập nhật bắt buộc được trình bày lại sau OK về Login nếu vẫn còn yêu cầu.
+- Dialog thường cho phép Back/chạm ngoài. Dialog xác nhận không cho chạm ngoài, Back tương đương Hủy. Dialog bắt buộc chỉ thực hiện action được chỉ định, không có nút đóng/Hủy. Không có trường hợp Back/chạm ngoài/null result được hiểu là xác nhận.
 - Focus ban đầu ở nội dung hoặc action an toàn, không tự đặt vào destructive action. Giữ focus trong modal và trả về nơi mở khi còn tồn tại; công bố title/message cho screen reader.
 - Chỉ thực hiện nghiệp vụ sau typed result xác nhận. Khi đang thực thi, khóa submit lặp; nếu dialog chứa tiến trình thì không cho Back/chạm ngoài/đóng làm mất trạng thái. Lỗi phải hiển thị rõ và cho thử lại hoặc hủy khi an toàn, không kẹt loading.
 - Khi route bị hủy, logout hoặc đổi phiên/tenant, dọn toast/dialog cũ; không gọi callback của phiên trước. Dialog không thay thế authorization hoặc validation nghiệp vụ.
+- Dialog bỏ focus bàn phím khi mở, nằm trong safe area, nội dung cuộn được theo viewport/cỡ chữ. Action cập nhật lỗi hiển thị lỗi đã localization ngay trong dialog và cho thử lại, không giả thành công. Link chưa cấu hình là lỗi cần quản trị cung cấp URL hợp lệ. Logout chủ động giữ xác nhận riêng, không báo nhầm hết phiên.
 
 ## 5. Accessibility
 

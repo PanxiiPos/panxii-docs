@@ -100,7 +100,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 |---|---|
 | [backend_coding_standard.md](backend/backend_coding_standard.md) | Clean Architecture, ownership, reuse, dependency, Result, EF Core, anti-pattern |
 | [frontend_coding_standard.md](frontend/frontend_coding_standard.md) | Flutter/BLoC, offline UI, API parsing, i18n, `flex_color_scheme`, `hugeicons`, `forui` |
-| [design_system.md](frontend/design_system.md) | Color, typography, spacing, component states, policy toast/dialog/banner dùng chung và cài đặt cỡ chữ toàn app |
+| [design_system.md](frontend/design_system.md) | Color, typography, spacing, component states, dialog thường/bắt buộc (hết phiên, cập nhật), banner kết nối/pending và cỡ chữ toàn app |
 | [mobile_screen_flow_api_mapping.md](frontend/mobile_screen_flow_api_mapping.md) | Screen descriptions, navigation flow, API request/response mapping, cài đặt hiển thị local và contract gaps cho Flutter mobile |
 
 ### 2.7. Testing
@@ -319,7 +319,8 @@ Không tự chọn một cách im lặng. Ghi lại quyết định trong ADR v�
 
 ### Mobile
 
-- Phiên đăng nhập mobile lưu access/refresh token và expiry trong secure storage; API/SignalR tự gia hạn trước hết hạn, API retry 401 tối đa một lần với cùng request. Refresh bị từ chối chuyển về Login; lỗi mạng giữ phiên. Bản cũ chỉ lưu access token cần đăng nhập lại một lần sau khi token cũ hết hạn.
+- Phiên đăng nhập mobile lưu access/refresh token và expiry trong secure storage; API/SignalR tự gia hạn trước hết hạn, API retry 401 tối đa một lần với cùng request. Refresh bị từ chối xóa token/khóa request ngay, yêu cầu OK trên dialog bắt buộc rồi mới chuyển UI về Login; lỗi mạng giữ phiên. Bản cũ chỉ lưu access token cần đăng nhập lại một lần sau khi token cũ hết hạn.
+- Thông báo lỗi/thành công thao tác dùng dialog thường, đóng bằng Đã hiểu/Back/chạm ngoài; validation ở field, kết nối/pending vẫn là banner. Cập nhật bắt buộc dùng dialog không thể bỏ qua, action mở URL HTTPS theo nền tảng; cập nhật tùy chọn có Để sau. Dialog hết phiên ưu tiên cao nhất và logout chủ động không báo nhầm hết phiên.
 - Mobile tenant configuration hiện cache theo tenant trong SQLite/SQLCipher; StoreProfile, ReceiptTemplate, ProductDisplay và tenant flags ghi draft local trước request PUT, giữ draft khi lỗi mạng/conflict và chỉ báo lưu thành công khi server xác nhận.
 - Thanh kết nối dùng chung ở app shell, hiển thị cả các route Settings/editor và Login. Khởi động ở trạng thái đang kiểm tra, theo dõi khả năng truy cập backend qua health probe và API, độc lập với SignalR; trực tuyến không đồng nghĩa dữ liệu đã đồng bộ.
 - Chưa triển khai các local business repository/CRUD cho Product, Invoice hoặc Customer; tính năng này khác với persistence của tenant settings và vẫn cần schema/cache/outbox/catalog sync riêng.
