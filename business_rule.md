@@ -25,12 +25,12 @@ Hệ thống sử dụng JWT Authentication với 3 vai trò (Roles) phân lập
     *   Cấu hình thông tin hiển thị cửa hàng, mẫu hóa đơn và cách hiển thị sản phẩm.
     *   Đổi giá hàng loạt (Bulk Update).
     *   Duyệt thực hiện bút toán đảo ngược (hủy/sửa hóa đơn đã đồng bộ).
-    *   Cấu hình `Tenant Feature Flags` (tự động làm tròn tiền, in Bluetooth).
+    *   Cấu hình `Tenant Feature Flags` (tự động làm tròn tiền, in Wi-Fi, tùy chọn Bluetooth chưa có transport).
 *   **`Staff` (Nhân viên/Thu ngân):**
     *   Xem/tìm kiếm sản phẩm, chọn biến thể bán được và xem giá của biến thể; không được sửa giá.
     *   Xem/tìm kiếm và tạo khách hàng để phục vụ lập hóa đơn; không được sửa hoặc xóa khách hàng.
     *   Lập hóa đơn mới.
-    *   Được in hóa đơn trên thiết bị client; Bluetooth phụ thuộc cấu hình cửa hàng/feature flag.
+    *   Được in hóa đơn có quyền đọc qua PC Wi-Fi khi `EnableWifiPrint` đã được server xác nhận; không sửa quyền in/cấu hình ngân hàng. Bluetooth chưa triển khai.
     *   Không được quản lý tài khoản, cấu hình cửa hàng/feature flag hoặc thay đổi dữ liệu sản phẩm.
 
 ---
@@ -106,7 +106,13 @@ Dữ liệu cấu hình lấy từ bảng `AppSettings`.
 *   Realtime/pull upsert theo ID/version, deduplicate và không làm nhảy vị trí cuộn. Nếu thay đổi ảnh hưởng bộ lọc hoặc thứ tự hiện tại, cập nhật list có kiểm soát và làm mới cursor khi cần.
 
 ### 6.4. Nhập liệu và lập hóa đơn
+*   Danh sách hóa đơn hiển thị số hóa đơn, tổng tiền kèm tiền tệ và ngày giờ tạo. Người dùng nhập số để tìm hoặc quét barcode chứa đúng số hóa đơn để mở nhanh chi tiết; không tự mở hóa đơn chỉ khớp một phần. Tra cứu offline chỉ bao gồm dữ liệu đã lưu trên thiết bị.
+*   Số hóa đơn được tự sinh duy nhất ngay khi tạo nháp, hỗ trợ nhiều thiết bị offline và giữ nguyên qua lưu nháp/chốt/retry. Không bắt người dùng nhập số hóa đơn.
+*   Chi tiết hóa đơn và mẫu in vẫn có ba dòng Tên khách hàng, Địa chỉ, Số điện thoại. Khi `CustomerId = null`, giữ các dòng này trống và đủ chỗ ghi tay; không thay bằng tên khách vãng lai, thông tin cửa hàng hoặc dữ liệu customer trước đó.
 *   Hóa đơn đang nhập được tự lưu nháp local sau mỗi thay đổi có thể lưu; khi app bị đóng, gián đoạn hoặc có cuộc gọi, người dùng có thể tiếp tục từ danh sách/tìm kiếm nháp. Nháp chưa chốt không được gửi như hóa đơn hoàn tất.
+*   Mở composer trống không tạo nháp. Chỉ lưu khi đã chọn hàng hoặc có phí dịch vụ; bỏ hết hàng/phí thì loại nháp rỗng. Người dùng được xóa nháp local sau xác nhận; tuyệt đối không dùng thao tác này cho hóa đơn đã chốt, đang đồng bộ hoặc đã sync.
+*   Picker chỉ hiển thị variant bán được như danh sách sản phẩm; hiện tên/đặc điểm extraData để phân biệt variant có cùng tên gốc. Giỏ hàng, chi tiết và bản in giữ snapshot. Quantity được nhập trực tiếp hoặc +/−, phải >0 và tối đa 4 số thập phân; nút bỏ hàng là thao tác riêng.
+*   Service blocks cấu hình trong mẫu là danh mục phí: nhập tiền trên từng invoice, mặc định 0, không âm, giữ snapshot ID/nhãn/số tiền. `serviceTotal` cộng vào total, không giả phí thành product/rounding/discount. Reverse đảo dấu mọi khoản phí, correction giữ lịch sử cũ và lưu bộ phí mới trong cùng transaction. Thay/xóa mẫu không xóa phí hóa đơn cũ.
 *   Khi lập hóa đơn, mặc định là khách vãng lai: hóa đơn có `CustomerId = null` và phần thông tin khách hàng trên hóa đơn/invoice print để trống.
 *   Có nút dễ thấy `Chọn khách hàng đã lưu` để mở danh sách khách hàng, tìm kiếm và chọn nhanh; kết quả local hiển thị trước, tìm server khi có mạng theo quy tắc offline/search hiện hành. Chỉ customer được chọn từ danh bạ mới được gắn vào hóa đơn.
 *   Tạo customer dùng luồng riêng với nút `Lưu khách hàng`/`Lưu vào danh bạ`; chỉ thao tác xác nhận lưu này mới tạo customer master record. Không có form nhập thông tin khách tạm trên hóa đơn và không tự tạo customer khi lưu nháp hoặc chốt hóa đơn. Sau khi lưu thành công, customer được chọn cho hóa đơn hiện tại.
@@ -127,3 +133,13 @@ Dữ liệu cấu hình lấy từ bảng `AppSettings`.
 *   Người dùng chỉ xem được lịch sử thay đổi phù hợp quyền RBAC và dữ liệu audit server cung cấp. Hóa đơn đã đồng bộ vẫn bất biến; sửa/hủy phải dùng reverse/correction, không ghi đè lịch sử.
 *   TenantAdmin có thể cấu hình mẫu/thông tin hiển thị hóa đơn để in. Kết nối máy in Bluetooth tuân theo feature flag/cấu hình tenant; lỗi máy in không được rollback hóa đơn hoặc thanh toán.
 *   App kiểm tra chính sách phiên bản/cập nhật từ xa hiện có, thông báo rõ phiên bản mới và hướng dẫn cập nhật. Chỉ bắt buộc cập nhật khi cấu hình phiên bản tối thiểu hoặc yêu cầu bảo mật quy định; OTA patch phải tương thích với native version và API contract.
+
+### 6.7. In Wi-Fi qua PC và QR chuyển khoản
+*   Phạm vi đã chốt: Windows 10/11, Canon LBP 2900 nối cáp PC, giấy A4. Điện thoại render local và gửi PNG qua HTTPS pin chứng chỉ trong LAN; PC dùng Windows driver. Không chuyển job qua backend/Docker, không có Bluetooth transport.
+*   TenantAdmin bật/tắt `EnableWifiPrint` cho tenant, mặc định false. Staff và TenantAdmin có quyền đọc hóa đơn được in khi cờ bật và không còn draft quyền chưa xác nhận. Không in nháp chưa chốt; lỗi in không thay đổi invoice.
+*   Bản in có số hóa đơn tự sinh, Code128 chứa nguyên số đó, ngày tạo local, ba dòng khách hàng trống khi CustomerId null và chỗ ký người mua/người bán. Header cho phép hai cột chữ tùy chỉnh; không thay đổi dữ liệu hóa đơn.
+*   Code128 thu gọn bên phải số/ngày hóa đơn, không kéo ngang trang. QR và tài khoản nhận nằm gọn bên phải header; khi chưa có tài khoản hoặc toàn bộ thông tin ngân hàng trống thì bỏ khối này, không tạo QR rỗng. Thông tin nhập dở/sai vẫn phải báo lỗi.
+*   StoreProfile có tài khoản nhận tùy chọn: BIN 6 chữ số, tài khoản 6–34 chữ số, tên chủ tài khoản tối đa 100 ký tự. QR VietQR được tạo local từ tài khoản và tổng VND nguyên dương (tối đa 12 chữ số); không QR nhận tiền cho Reverse.
+*   Theo lựa chọn của chủ cửa hàng, không truyền nội dung chuyển khoản hoặc tên người chuyển trong QR; ứng dụng ngân hàng tự quyết định nội dung mặc định. Không suy diễn rằng QR đã thanh toán: chưa triển khai thu tiền, đối soát hay trạng thái đã/chưa trả.
+*   Print job độc lập invoice; retry cùng tài liệu dùng cùng UUID, không tự in lại khi trạng thái uncertain. Submitted chỉ xác nhận Windows spooler nhận job, không xác nhận giấy. In thêm bản mới phải xác nhận và kiểm tra queue khi kết quả chưa chắc chắn.
+*   Hướng dẫn vận hành và giới hạn quyền của bridge tại [Windows print bridge](../tools/windows-print-bridge/README.md).

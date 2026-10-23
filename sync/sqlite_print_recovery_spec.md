@@ -28,14 +28,16 @@ Invoice commit và printer là hai state machine độc lập.
 
 ```text
 Invoice: Pending -> Synced
-PrintJob: Pending -> Printing -> Completed | Failed
+PrintJob (PC): accepted -> printing -> submitted | uncertain | failed
 ```
 
 - Printer timeout không rollback invoice/payment.
 - Retry/reprint dùng `PrintJobId`.
 - UI hiển thị invoice success và print failure riêng.
 - Print payload lấy từ invoice snapshot, không đọc giá hiện tại.
-- Print worker có backoff, attempt limit và error code.
+- Bridge persist UUID/hash trước khi worker claim; gửi lại cùng UUID/nội dung chỉ đọc trạng thái. Không retry tự động job đã bắt đầu spool. Crash tại printing chuyển uncertain; chỉ in thêm bản mới sau xác nhận và kiểm tra queue/giấy. Submitted không phải giấy đã in.
+- Điện thoại lưu journal theo hash tài liệu trong secure storage tenant/user trước network; cùng tài liệu giữ UUID qua restart và in tài liệu khác xen giữa. Đổi ảnh (mẫu/ngôn ngữ/cấu hình) là tài liệu mới; phải kiểm tra queue nếu đã có lần in trước.
+- Ảnh chờ in được giữ trong SQLite PC rồi xóa khi terminal; metadata dedup được giữ. Pairing token/cert chỉ local; xem [vận hành bridge](../../tools/windows-print-bridge/README.md).
 
 ## 4. Acceptance tests
 

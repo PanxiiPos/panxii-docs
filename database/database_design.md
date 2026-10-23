@@ -352,11 +352,14 @@ Sổ giao dịch. Sau `Synced`, không được thay đổi nội dung, tổng t
 | `DiscountAmount` | `DECIMAL(19,4)` | Không | Giảm giá |
 | `TaxAmount` | `DECIMAL(19,4)` | Không | Giữ 0 trong v1; thuế là phần mở rộng sau |
 | `RoundingAmount` | `DECIMAL(19,4)` | Không | Làm tròn |
+| `ServiceTotal` | `DECIMAL(19,4)` | Không | Tổng snapshot phí dịch vụ; mặc định 0 cho lịch sử |
 | `TotalAmount` | `DECIMAL(19,4)` | Không | Tổng thanh toán |
 | `CurrencyCode` | `CHAR(3)` | Không | Snapshot tiền tệ |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
 `Reverse` bắt buộc có `OriginalInvoiceId`; Sale bình thường không có. Reverse phải có số lượng, subtotal, tax và total mang dấu âm tương ứng bản gốc. Một invoice gốc chỉ được reverse một lần cho mỗi nghiệp vụ hủy, kiểm tra trong transaction.
+
+Snapshot phí nằm trong `invoice_service_charges`: tenant/invoice, vị trí, `ServiceId` tối đa 80 ký tự, `LabelSnapshot` tối đa 120, `Amount DECIMAL(19,4)` và audit columns. FK cùng tenant, unique invoice-position và invoice-service. Tối đa 10 phí; Sale/Correction không âm, Reverse negate số tiền gốc. Nội dung immutable như invoice details, không đọc lại nhãn/giá từ mẫu khi xem hoặc in lịch sử. Tổng thanh toán cộng `ServiceTotal`; không mô phỏng phí bằng sản phẩm hoặc rounding.
 
 ### 4.8. `invoice_details`
 

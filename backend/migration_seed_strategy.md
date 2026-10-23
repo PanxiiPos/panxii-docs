@@ -43,6 +43,12 @@ Khi triển khai mô hình `Product`/`ProductVariant` theo [database_design.md](
 
 Migration hiện thực hiện backfill theo một lệnh SQL duy nhất và phụ thuộc EF migration history để chỉ chạy một lần. Với production có lượng dữ liệu lớn, cần rehearsal/backup trước khi apply; nếu vượt thời gian bảo trì, thay bằng job backfill riêng có checkpoint và idempotency. Không tự gộp hoặc xóa product trùng; cần xử lý conflict bằng quy trình dữ liệu có audit.
 
+### 4.2. Phí dịch vụ hóa đơn
+
+Migration `20261023084741_AddInvoiceServiceCharges` chỉ expand: thêm `invoices.ServiceTotal` kiểu `DECIMAL(19,4)` mặc định 0 và bảng `invoice_service_charges` lưu ID/nhãn/số tiền theo vị trí. FK cùng tenant và unique index theo invoice-position/invoice-service bảo vệ snapshot. Dữ liệu hóa đơn cũ có tổng phí 0; không seed hoặc tính lại tổng hóa đơn lịch sử.
+
+Apply schema trước khi triển khai API/Worker và mobile hỗ trợ payloadVersion 2. Sau khi có hóa đơn chứa phí, không rollback về backend cũ hoặc chạy Down migration vì sẽ mất snapshot phí. Chỉ nâng cấp schema bằng migration có kiểm soát, xác nhận target/backup trước khi apply.
+
 ## 5. Rollback
 
 Migration rollback chỉ dùng khi đã test. Với migration dữ liệu không đảo ngược được, rollback bằng forward migration hoặc restore backup theo runbook. Không hứa rollback code là rollback data.
