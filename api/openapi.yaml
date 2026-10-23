@@ -772,6 +772,33 @@ paths:
         '200': { description: Invoice summary collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessInvoiceListResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /invoices/operations/{operationId}:
+    get:
+      operationId: getInvoiceOperation
+      tags: [Invoices]
+      description: Durable confirmation of a queued invoice command, scoped to tenant and actor. Completed carries the persisted invoice; Rejected carries an error code. Online/HTTP 202 alone never proves completion.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice command receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [Queued, Completed, Rejected] }
+                      result: { $ref: '#/components/schemas/Invoice' }
+                      errorCode: { type: string, nullable: true }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /invoices/{id}:
     get:
       operationId: getInvoice
@@ -1377,6 +1404,12 @@ components:
       properties:
         reasonCode: { type: string, maxLength: 80 }
         roundingAmount: { type: number, format: decimal, default: 0 }
+        payloadVersion: { type: integer, enum: [1, 2], default: 1 }
+        serviceTotal: { type: number, format: decimal, minimum: 0 }
+        serviceCharges:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/InvoiceServiceChargeRequest' }
         details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
     UpdateSettingRequest:
       type: object
@@ -1425,6 +1458,17 @@ components:
         address: { type: string, nullable: true }
         phone: { type: string, nullable: true }
         taxCode: { type: string, nullable: true }
+        bankTransfer: { $ref: '#/components/schemas/BankTransferSetting' }
+    BankTransferSetting:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required: [bin, accountNumber, accountName]
+      description: Optional receiving account. Omit or set null to remove it. Used for local VietQR generation, not payment settlement.
+      properties:
+        bin: { type: string, pattern: '^[0-9]{6}$' }
+        accountNumber: { type: string, pattern: '^[0-9]{6,34}$' }
+        accountName: { type: string, minLength: 1, maxLength: 100, description: 'Nonblank, no control characters.' }
     ReceiptTemplateSetting:
       type: object
       additionalProperties: false
@@ -1441,7 +1485,15 @@ components:
       required: [version, paper, showSku, showUnit, blocks]
       description: Optional versioned print design. Absent layout uses the legacy Standard template. All amounts are invoice snapshots, never template defaults. Items and Total must each appear exactly once and remain enabled; other built-in types appear at most once.
       properties:
-        version: { type: integer, enum: [1] }
+        version: { type: integer, enum: [1, 2] }
+        header:
+          type: object
+          additionalProperties: false
+          description: Only allowed in version 2. Nonempty columns replace the default store information blocks. No executable placeholders.
+          required: [left, right]
+          properties:
+            left: { type: string, maxLength: 1000 }
+            right: { type: string, maxLength: 1000 }
         paper: { $ref: '#/components/schemas/ReceiptPaper' }
         showSku: { type: boolean }
         showUnit: { type: boolean }
@@ -1510,7 +1562,7 @@ components:
       required: [clientOperationId, payloadVersion, invoice]
       properties:
         clientOperationId: { type: string, format: uuid }
-        payloadVersion: { type: integer, minimum: 1 }
+        payloadVersion: { type: integer, enum: [1, 2], description: Version 1 remains supported without service fees. Version 2 snapshots configured service charges. }
         invoice: { $ref: '#/components/schemas/SaleInvoiceRequest' }
     SaleInvoiceRequest:
       type: object
@@ -1528,7 +1580,21 @@ components:
         taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         roundingAmount: { type: number, format: decimal }
         totalAmount: { type: number, format: decimal }
+        serviceTotal: { type: number, format: decimal, minimum: 0 }
+        serviceCharges:
+          type: array
+          maxItems: 10
+          description: Version 2 only for nonempty snapshots. Unique serviceIds; preserve zero amounts. Total must match the sum of amounts.
+          items: { $ref: '#/components/schemas/InvoiceServiceChargeRequest' }
         details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
+    InvoiceServiceChargeRequest:
+      type: object
+      additionalProperties: false
+      required: [serviceId, labelSnapshot, amount]
+      properties:
+        serviceId: { type: string, minLength: 1, maxLength: 80 }
+        labelSnapshot: { type: string, minLength: 1, maxLength: 120 }
+        amount: { type: number, format: decimal, minimum: 0, maximum: 999999999999999.9999, multipleOf: 0.0001 }
     SaleInvoiceDetailRequest:
       type: object
       additionalProperties: false
@@ -1575,6 +1641,17 @@ components:
         currencyCode: { type: string, minLength: 3, maxLength: 3 }
         totalAmount: { type: number, format: decimal }
         originalInvoiceId: { type: string, format: uuid, nullable: true }
+        serviceTotal: { type: number, format: decimal, description: Immutable service snapshot total; negative for a reversal. Absent on legacy responses. }
+        serviceCharges:
+          type: array
+          description: Historical labels and amounts, never replaced from the current template. Reversals carry negative amounts.
+          items:
+            type: object
+            required: [serviceId, labelSnapshot, amount]
+            properties:
+              serviceId: { type: string }
+              labelSnapshot: { type: string }
+              amount: { type: number, format: decimal }
         details:
           type: array
           items:
@@ -1947,6 +2024,7 @@ components:
       type: object
       additionalProperties: true
       properties:
+        EnableWifiPrint: { type: boolean, default: false }
         storeProfile:
           description: Effective store display values; storeName may be null before the tenant configures it.
           type: object
@@ -1956,6 +2034,7 @@ components:
             address: { type: string, nullable: true }
             phone: { type: string, nullable: true }
             taxCode: { type: string, nullable: true }
+            bankTransfer: { $ref: '#/components/schemas/BankTransferSetting' }
         receiptTemplate: { $ref: '#/components/schemas/ReceiptTemplateSetting' }
         productDisplay: { $ref: '#/components/schemas/ProductDisplaySetting' }
         settingsVersion: { type: integer, format: int64, minimum: 0, description: Aggregate cache version; never use this as the expectedVersion for a setting write. }
@@ -1969,6 +2048,7 @@ components:
             ProductDisplay: { type: integer, format: int64, minimum: 0 }
             AutoRoundMoney: { type: integer, format: int64, minimum: 0 }
             EnableBluetoothPrint: { type: integer, format: int64, minimum: 0 }
+            EnableWifiPrint: { type: integer, format: int64, minimum: 0 }
     SuccessTenantAdminResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/TenantAdminAccount' }, meta: { $ref: '#/components/schemas/Meta' } }

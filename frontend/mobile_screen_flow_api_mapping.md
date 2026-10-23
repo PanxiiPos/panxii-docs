@@ -2,6 +2,7 @@
 
 **Phạm vi:** Flutter app cho `TenantAdmin` và `Staff`; API v1; offline-first.
 **Nguồn contract:** [API Contract](../api/api_contract.md), [OpenAPI](../api/openapi.yaml), [Business Rules](../business_rule.md), [Sync Flow](../sync/data_sync_flow_rabbitmq.md).
+**Phạm vi hiện tại:** Module Customer chưa triển khai trên mobile. Invoice chỉ hỗ trợ khách vãng lai (`customerId: null`); không có picker hoặc form tạo khách hàng.
 
 Tài liệu này chỉ gọi endpoint/schema đã có trong contract. Các mục ghi **GAP** là điểm chưa có contract đủ để triển khai; không tự suy diễn endpoint hoặc payload.
 
@@ -29,12 +30,7 @@ flowchart TD
     ProductList --> ProductForm[Form tạo hoặc sửa sản phẩm]
     ProductDetail --> ProductEdit[Tạo hoặc sửa sản phẩm]
     ProductList --> BulkPrice[Cập nhật giá hàng loạt]
-    Home --> CustomerList[Danh sách khách hàng]
-    CustomerList --> CustomerDetail[Chi tiết khách hàng]
-    CustomerList --> CustomerForm[Form tạo hoặc sửa khách hàng]
-    CustomerDetail --> CustomerEdit[Tạo hoặc sửa khách hàng]
     Home --> NewInvoice[Lập hóa đơn]
-    NewInvoice --> CustomerList
     NewInvoice --> InvoiceDraft[Nháp hóa đơn]
     NewInvoice --> InvoiceList[Danh sách hóa đơn]
     InvoiceList --> InvoiceDetail[Chi tiết hóa đơn]
@@ -165,9 +161,9 @@ App tự tạo `{schemaVersion:1,attributes:{...}}`, giữ nguyên metadata chư
 
 **Tìm kiếm:** API catalog tìm trực tiếp các variant mà không cần tải toàn bộ nhóm trước. Tìm offline vẫn chỉ bảo đảm trên dữ liệu đã cache; banner nêu rõ giới hạn này. API legacy `GET /products?search=` vẫn chỉ tìm nhóm gốc và không dùng làm nguồn list mặt hàng mới.
 
-### 4.4 Khách hàng
+### 4.4 Khách hàng (để sau)
 
-**Mô tả:** List tìm theo tên/mã/số điện thoại; detail xem thông tin và có thể chọn khách cho hóa đơn. Tạo riêng vào danh bạ; không lưu dữ liệu nhập dở của khách vào hóa đơn. TenantAdmin sửa/ngừng hoạt động/xóa theo điều kiện; Staff chỉ xem/tìm và tạo.
+**Trạng thái:** Các endpoint dưới đây là contract cho giai đoạn sau; module Customer chưa nằm trong phạm vi triển khai mobile hiện tại. Không có màn hình danh sách/chi tiết/form khách hàng, cũng không có luồng chọn khách trên invoice.
 
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
@@ -182,24 +178,44 @@ App tự tạo `{schemaVersion:1,attributes:{...}}`, giữ nguyên metadata chư
 
 ### 4.5 Lập hóa đơn, danh sách và chi tiết
 
-**Mô tả:** Lập invoice bằng tìm/chọn product, chỉnh quantity, xem subtotal/discount/tax/rounding/total; chọn khách lưu hoặc giữ khách vãng lai. Lưu nháp local tự động. Không có vùng nhập tiền khách đưa, phương thức thu, hoặc nhãn đã/chưa thanh toán.
+**Mô tả:** Lập invoice bằng tìm/chọn product, chỉnh quantity, xem subtotal/discount/tax/rounding/total; trong phạm vi hiện tại invoice luôn là khách vãng lai (`customerId: null`). Lưu nháp local tự động. Không có vùng nhập tiền khách đưa, phương thức thu, hoặc nhãn đã/chưa thanh toán.
+
+**Khả năng sử dụng:** Chọn hàng chỉ hiển thị các variant bán được như Product list, không thêm dòng product gốc. Dùng chung formatter `tên gốc [tên variant nếu khác] [giá trị đặc điểm]`; đặc điểm từ extraData v1 hoặc legacy object. Giỏ hàng, chi tiết và bản in dùng snapshot thuộc tính, không tra catalog mới để đổi lịch sử. Tên hàng/giá không đặt cạnh hàng nút trailing cố định gây tràn; mỗi hàng dạng card, quantity nhập trực tiếp (thập phân tối đa 4 chữ số, phải >0), có +/− và nút bỏ riêng. Form cuộn khi bàn phím mở, hỗ trợ màn hẹp/chữ lớn.
+
+**Nháp:** Mở màn hình chưa chọn hàng không ghi nháp; chỉ lưu sau khi có hàng hoặc tiền dịch vụ. Bỏ hết hàng và phí bằng 0 thì xóa nháp rỗng đã lưu. Nháp cũ vẫn có nút Xóa bản nháp (xác nhận) trong danh sách và composer; chỉ xóa SQLite draft theo tenant/user, không xóa hóa đơn đã chốt hoặc outbox. Các lần ghi nháp được tuần tự hóa để nhập số nhanh không bị ghi đè bằng dữ liệu cũ.
+
+**Phí dịch vụ:** Composer tải Service blocks từ ReceiptTemplate qua AccountRepository và hiển thị ô tiền cho mỗi service (mặc định 0, không âm). Lưu snapshot `serviceId`, `labelSnapshot`, `amount`; tổng cộng = subtotal − discount + rounding + serviceTotal (thuế v1 vẫn 0). Invoice có service snapshots dùng payloadVersion 2; không có phí dùng v1 như cũ. Nháp/correction/historical print giữ snapshot, đổi/xóa định nghĩa mẫu không xóa phí lịch sử.
+
+**Danh sách và tra cứu:** Mỗi dòng hiển thị số hóa đơn, tổng tiền kèm tiền tệ, ngày giờ tạo theo giờ local và trạng thái. Gõ số hóa đơn lọc danh sách; nhấn tìm trên bàn phím (kể cả máy quét dạng bàn phím) hoặc quét camera mở chi tiết khi khớp chính xác số hóa đơn, không phân biệt hoa thường và bỏ khoảng trắng đầu/cuối. Barcode chứa nguyên số hóa đơn dạng text (Code128), không chứa customer/PII hoặc URL. Lookup lấy dữ liệu local theo tenant/user trước; online tìm server và duyệt cursor tới khi có exact match hoặc hết kết quả, rồi tải detail snapshots. Cursor tra cứu độc lập với cursor danh sách. Không tìm thấy/thiếu số/lỗi camera có thông báo; camera bị từ chối vẫn quay lại nhập tay được. Camera Android dùng ML Kit bundled để không cần tải model khi offline; iOS khai báo quyền camera. In Wi-Fi đã triển khai ở mục 4.7.
+
+**Số hóa đơn:** Sale mới tự sinh `INV-<UUID của invoice viết hoa, bỏ gạch nối>` (36 ký tự) khi tạo nháp; hiển thị ở composer và giữ nguyên khi lưu/chốt/retry. Không đổi số của nháp/hóa đơn cũ. Reverse/correction vẫn dùng số do backend tự sinh.
+
+**Khách hàng trên chi tiết/mẫu in:** Vẫn giữ ba nhãn Tên khách hàng, Địa chỉ, Số điện thoại cùng dòng trống để ghi tay khi `customerId: null`; chỉ đọc, không phải form nhập khách tạm, không phát sinh customer master/snapshot. Đã áp dụng trên bản in Wi-Fi; chưa có xuất PDF.
 **Status hiển thị:** API `status` được map thành `invoiceStatus` trong model mobile (`Active` hoặc `Reversed`); `syncStatus` là trạng thái outbox local. Không gộp hai trường thành một badge và không hiển thị `Paid/Unpaid`.
 
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
 | Lưu nháp | Chỉ SQLite local; không gọi API cho draft chưa chốt. Cho phép mở lại/chỉnh sửa local draft. |
 | Chốt và đưa vào outbox | Lưu invoice + details + outbox trong một transaction local; gán UUID ổn định cho invoice và `clientOperationId`. Mỗi detail giữ `productId` (product gốc), `productVariantId` (variant bán được), SKU/tên/unit/giá cùng snapshot thuộc tính lúc chốt. Sau đó worker gọi sync. |
-| Sync Sale | `POST /invoices/sync`; header `Idempotency-Key = clientOperationId`; body `{ clientOperationId, payloadVersion: 1, invoice }`. Invoice gửi `id, invoiceNumber?, invoiceType: Sale, customerId|null, clientCreatedAtUtc, currencyCode, subtotal, discountAmount, taxAmount: 0, roundingAmount, totalAmount, details[]`. Mỗi detail gửi `lineNumber, productId, productVariantId, skuSnapshot, productNameSnapshot` (tên product gốc), `variantNameSnapshot?`, `unitSnapshot`, `quantity>0, unitPrice>0, discountAmount, taxRate:0, taxAmount:0, lineTotal`. `variantExtraDataSnapshot` được server lấy từ catalog và lưu; không gửi `ExtraData` tùy ý trong line. |
+| Sync Sale | `POST /invoices/sync`; header `Idempotency-Key = clientOperationId`; body `{ clientOperationId, payloadVersion: 1, invoice }`. Invoice gửi `id, invoiceNumber, invoiceType: Sale, customerId: null, clientCreatedAtUtc, currencyCode, subtotal, discountAmount, taxAmount: 0, roundingAmount, totalAmount, details[]`. Mỗi detail gửi `lineNumber, productId, productVariantId, skuSnapshot, productNameSnapshot` (tên product gốc), `variantNameSnapshot`, `unitSnapshot`, `quantity>0, unitPrice>0, discountAmount, taxRate:0, taxAmount:0, lineTotal`. `variantExtraDataSnapshot` được server lấy từ catalog và lưu; không gửi `ExtraData` tùy ý trong line. |
 | Giá/variant stale | Server đối chiếu variant ID thuộc product, active state, SKU/tên/unit/giá với catalog lúc sync. Nếu catalog đã đổi khiến line không hợp lệ, giữ invoice local ở trạng thái lỗi nghiệp vụ, hiển thị lỗi có thể xử lý và không xóa/ghi đè snapshot/draft; yêu cầu tải catalog mới và cho người dùng xác nhận chỉnh invoice rồi tạo operation mới theo quy tắc retry/idempotency. |
-| Nhận sync | `202` chỉ xác nhận command được queue; nhận `operationId, status=Queued`. Không báo “đã đồng bộ” tới khi `DataCreated` khớp operation hoặc pull xác nhận committed change. |
+| Nhận sync | `202` chỉ xác nhận command được queue; nhận `operationId, status=Queued`. Timer/resume/online kiểm tra `GET /invoices/operations/{operationId}`: Completed áp full invoice và hoàn tất outbox; Rejected giữ dữ liệu và hiện lỗi; Queued tiếp tục chờ. Nếu API cũ chưa có receipt, GET invoice xác nhận commit; chưa thấy thì gửi lại nguyên operation/payload, không tạo UUID mới. Không giả thành công từ online/202. |
 | List | `GET /invoices?search=&from=&to=&invoiceType=&cursor=&pageSize=`. Nhận summary gồm `id, invoiceNumber, invoiceType, status: InvoiceStatus, customerId, createdByUserId, clientCreatedAtUtc, syncedAtUtc, totalAmount, currencyCode, originalInvoiceId`. Staff chỉ thấy invoice mình tạo; TenantAdmin thấy tenant. |
 | Detail | `GET /invoices/{id}`; nhận invoice và detail snapshots gồm `productId, productVariantId, skuSnapshot, productNameSnapshot, variantNameSnapshot, variantExtraDataSnapshot, unitSnapshot`, quantity, giá, tổng và liên kết invoice gốc nếu là reverse/correction. Render invoice từ snapshot, không lookup giá/tên hiện tại để thay đổi lịch sử. Staff chỉ đọc invoice do mình tạo. |
-| In | Dựng bản in trên thiết bị từ invoice snapshot + `ReceiptTemplate`; không có print API. Lỗi in không đổi invoice. Không in thông tin thanh toán. |
+| In | Dựng A4 local từ invoice snapshot + ReceiptTemplate/StoreProfile, gửi HTTPS tới PC trong LAN; không có backend print API. Có QR chỉ dẫn chuyển khoản, không có trạng thái thanh toán. Lỗi in không đổi invoice. |
 | Sửa/xóa | Không có API edit/delete invoice. Draft local được sửa/hủy local. Invoice đã sync là immutable. |
 | Đảo | TenantAdmin gọi `POST /invoices/{id}/reverse`; gửi `{ reasonCode }`, `Idempotency-Key`, `X-Device-Id`; nhận `201` operation result. Chỉ reverse một lần. |
 | Điều chỉnh | TenantAdmin gọi `POST /invoices/{id}/correction`; gửi `{ reasonCode, roundingAmount?, details[] }`, `Idempotency-Key`, `X-Device-Id`; rounding mặc định `0`, total = subtotal - discount + rounding; server reverse invoice cũ và tạo correction mới atomically. |
 
 Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client chỉ sync Sale. Không cập nhật invoice đã sync bằng PATCH/DELETE. Thông tin `Paid/Unpaid` không thuộc UI hoặc model màn hình của phạm vi này.
+
+**Bố cục in gọn:** Barcode Code128 giữ nguyên số hóa đơn đầy đủ để tra cứu nhưng chỉ nằm bên phải số/ngày hóa đơn (rộng tối đa 250 pt, cao 32 pt), không kéo ngang cả trang. QR chuyển khoản khoảng 90 pt đặt trong khối header bên phải cùng BIN/số tài khoản/tên người nhận; thông tin cửa hàng bên trái và nội dung header phải tùy chỉnh vẫn được giữ. Không có tài khoản, object trống hoặc cả ba field ngân hàng trống thì không có QR/khối ngân hàng; cấu hình nhập dở hoặc sai vẫn báo lỗi, không tạo QR sai. Reverse không hiện QR nhận tiền. Không thay đổi số hóa đơn hoặc snapshot vì bố cục in.
+
+**Nhập phí dịch vụ:** Dùng cùng formatter tiền với giá sản phẩm, phân cách hàng nghìn theo locale và hậu tố `₫` cho VND (ví dụ tiếng Việt `50.000 ₫`). Giá trị gửi/lưu vẫn là decimal chuẩn không có dấu phân nhóm; cho phép phí 0 và giữ chính xác tối đa 4 chữ số thập phân. Số lượng không dùng formatter tiền.
+
+**Khôi phục hóa đơn từ chối:** Chi tiết hiển thị cả thông báo đã dịch và mã lỗi; không chỉ hiện nhãn trạng thái. Khi người dùng xác nhận gửi lại, phải online và GET invoice kiểm tra chưa commit trước. Nếu đã có trên server thì cache kết quả, không POST lại. Nếu 404 và bản local đang failed, giữ invoice ID/số/nội dung, atomically tạo operation mới và giữ operation thất bại trước đó; không đổi UUID khi retry một operation đang Pending/Queued. Không tự sửa giá hoặc snapshot. Biến thể không có tên riêng gửi `variantNameSnapshot: null`; đọc snapshot null không lấy tên product thay vào. Backend coi null và chuỗi rỗng cùng nghĩa không có tên riêng, nhưng vẫn kiểm tra tên thật bằng ordinal. Chi tiết/list có SafeArea tránh thanh điều hướng hệ thống che tổng tiền/thao tác.
+
+**PC tự chạy:** Bộ nhận lệnh có trình cài `.bat`, thiết lập chạy ngầm theo tài khoản Windows khi đăng nhập để dùng đúng driver/printer và state ghép nối. Với PC tự đăng nhập, bridge tự chạy sau khi bật máy; không dùng service LocalSystem hay lưu mật khẩu Windows. Hướng dẫn và file chạy tại [windows-print-bridge](../../tools/windows-print-bridge/README.md).
 
 **Lưu ý triển khai:** Lưu `invoiceStatus` riêng với `syncStatus` local. Correction dùng cùng snapshot variant trong details; server reverse invoice gốc và tạo correction atomically. Server không trả payment state. Legacy client có thể bỏ `productVariantId`/`variantNameSnapshot`; backend ánh xạ sang default variant, nhưng client mới phải luôn gửi ID variant đã chọn.
 
@@ -220,17 +236,18 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 
 ### 4.7 Cấu hình cửa hàng và mẫu in
 
-**Mô tả:** TenantAdmin xem thông tin cửa hàng, cấu hình nội dung mẫu hóa đơn và xem preview render local. Máy in/Bluetooth được cấu hình và gọi tại thiết bị; không có server print API. Nhân viên có thể in theo quyền nhưng không sửa cấu hình.
+**Mô tả:** TenantAdmin sửa thông tin cửa hàng, tài khoản nhận tiền, mẫu in và quyền Wi-Fi. Staff/TenantAdmin ghép nối PC riêng trên thiết bị và in A4 qua Windows bridge khi quyền được xác nhận; Bluetooth chưa triển khai transport. Không có backend print API.
 
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
 | Nạp metadata cửa hàng | `GET /tenant/profile`; TenantAdmin/Staff nhận `id, code, name, status, timeZone, currencyCode, version, createdAtUtc, updatedAtUtc` từ tenant trong JWT; không truyền tenant ID. |
 | Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags, `settingsVersion` và `settingVersions` cho từng key có thể sửa. |
-| Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode? }, expectedVersion }`. |
-| Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText?, layout? }, expectedVersion }`; `templateId` là `Standard`, layout version 1 được mô tả ở mục 4.7.1. |
+| Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode?, bankTransfer? }, expectedVersion }`; bankTransfer gồm BIN 6 chữ số, số tài khoản 6–34 chữ số, tên chủ tài khoản tối đa 100 ký tự. Xóa cả ba field để bỏ property. |
+| Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText?, layout? }, expectedVersion }`; `templateId` là `Standard`, layout version 1/2 ở mục 4.7.1. |
+| Cho phép in Wi-Fi | TenantAdmin `PUT /settings/EnableWifiPrint`, body `{ value: true/false, expectedVersion }`; mặc định false. Staff không được ghi. |
 | Lưu tùy chọn hiển thị sản phẩm | `PUT /settings/ProductDisplay`; body `{ value: { layout, sortBy, showSku, showBarcode, showCategory }, expectedVersion }`. |
 
-**Đã triển khai:** Menu và editor chỉ hiện cho TenantAdmin; Cubit chặn thao tác ghi của Staff và backend vẫn enforce quyền. Có lưu riêng từng nhóm StoreProfile, ReceiptTemplate (chỉ Standard), ProductDisplay và hai switch `AutoRoundMoney`/`EnableBluetoothPrint`; cache và bản nháp được tenant-scope trong SQLite/SQLCipher, ProductDisplay và ReceiptTemplate dùng chung cơ chế local-first như các setting tenant khác. Không cho sửa `RequireCustomerPhone` hoặc global flags. Metadata tenant là chỉ đọc; StoreProfile chỉ đổi thông tin hiển thị/in, không đổi tên/mã tenant. Chưa có local business repository/CRUD cho product, invoice hoặc customer; đây chỉ là persistence cho tenant configuration hiện có.
+**Đã triển khai:** Editor tenant chỉ hiện cho TenantAdmin; Cubit và backend chặn Staff ghi. Lưu riêng StoreProfile, ReceiptTemplate (Standard), ProductDisplay và ba switch `AutoRoundMoney`/`EnableBluetoothPrint`/`EnableWifiPrint`; cache/draft tenant-scope trong SQLite/SQLCipher. Bluetooth có nhãn chưa triển khai. Không cho sửa `RequireCustomerPhone` hoặc global flags. StoreProfile không đổi metadata tên/mã tenant. Menu ghép nối PC hiện cho cả Staff/TenantAdmin; token/pin chỉ lưu secure storage tenant/user trên thiết bị, không gửi settings API.
 
 Mỗi PUT gửi `expectedVersion = settingVersions[key]`, dùng `0` khi tenant chưa có override; **không dùng aggregate `settingsVersion`** hoặc version của global setting. Response cập nhật value/version của đúng key, giữ nội dung chưa lưu ở nhóm khác. Backend thiếu metadata thì editor báo lỗi rõ, không đoán version. Deploy backend bổ sung metadata trước khi bật mobile editor.
 
@@ -240,7 +257,11 @@ Snapshot `settings/effective` tải từ Home dùng chung cho editor: nếu chư
 
 Tải/lưu cấu hình và PATCH hồ sơ giữ cố định tenant/user cùng session generation từ đầu thao tác. Kiểm tra lại sau các bước đọc local, request và trước/sau ghi cache; xác nhận PUT dùng partition đã chụp ban đầu, không lấy tenant/user mới từ token tại thời điểm response về. Nếu đổi tài khoản hoặc logout/login lại cùng tài khoản, thao tác cũ báo lỗi thay vì trả cache/draft cũ cho phiên mới; bản nháp đã ghi vẫn thuộc tenant ban đầu. Không đổi schema: settings/draft là dữ liệu chung theo tenant, snapshot hồ sơ/effective settings vẫn phân vùng tenant/user.
 
-Rời form còn thay đổi chưa được ghi local vẫn cần xác nhận; bản nháp đã lưu local thì được giữ khi rời trang/đóng app. Kết quả/lỗi cấu hình được giữ hiển thị cạnh vùng thao tác, không bị mất ngoài màn hình cuộn. Kết nối máy in và xuất PDF chưa được triển khai.
+Rời form còn thay đổi chưa được ghi local vẫn cần xác nhận; bản nháp đã lưu local thì được giữ khi rời trang/đóng app. Kết quả/lỗi cấu hình được giữ cạnh vùng thao tác. Có kết nối PC Wi-Fi; chưa có xuất PDF/Bluetooth.
+
+**In thực tế:** Chi tiết hóa đơn > Xem trước/in Wi-Fi. Chặn nháp, cờ false/pending, giấy không phải A4; kiểm tra cờ lại trước gửi. Render PNG 200dpi từ chính renderer preview. Luôn có mã hóa đơn + Code128, ngày tạo, ba dòng khách hàng trống và chữ ký. Header trái/phải thay nhóm thông tin cửa hàng. Nếu cấu hình ngân hàng, tạo VietQR local từ tài khoản và tổng VND nguyên dương, không gắn memo/tên người chuyển; Reverse không có QR. Không thêm payment status hoặc module Customer. Preview designer vẫn dùng dữ liệu mẫu; QR/barcode thật xem ở preview invoice.
+
+**PC bridge:** HTTPS URL/token/SHA-256 pin nhập từ PC; không bypass TLS. Journal client lưu UUID theo tài liệu trước request; retry/restart cùng ảnh không in trùng, kể cả đã in tài liệu khác xen giữa. PC SQLite giữ UUID/hash/trạng thái, `accepted -> printing -> submitted/uncertain/failed`. Submitted không xác nhận giấy đã in; uncertain không tự retry, yêu cầu xem Windows queue trước xác nhận in thêm bản mới. Không qua Docker. Hướng dẫn [Windows bridge](../../tools/windows-print-bridge/README.md).
 
 #### 4.7.1 Thiết kế và xem trước hóa đơn
 
@@ -251,13 +272,13 @@ Rời form còn thay đổi chưa được ghi local vẫn cần xác nhận; b�
 - Preview cập nhật theo nội dung chưa lưu, dùng tên/thông tin cửa hàng đang chỉnh và hóa đơn mẫu (không lấy hóa đơn/PII thật). Nêu rõ đây là bản mẫu và tiền tệ của tenant; số tiền dịch vụ mẫu là 0. Không sinh invoice, không ghi phí hoặc giá trị preview vào database.
 - Controls tôn trọng cỡ chữ hệ thống/app; nội dung giấy in dùng kích thước chữ vật lý riêng và thu phóng để không làm thay đổi bố cục in khi đổi accessibility scaling. Giấy trắng/chữ đen là mô phỏng bản in kể cả app dark mode. Có semantic nội dung và nút thay thế kéo thả.
 - Căn trái/giữa/phải của khối chữ áp dụng trên toàn chiều rộng vùng in sau khi trừ lề, kể cả từng dòng xuống hàng; không căn theo độ rộng nội tại của chữ. Kiểm thử vị trí pixel của chữ khi render preview, không chỉ kiểm tra giá trị `align` được lưu.
-- Lưu `ReceiptTemplate.layout` version 1 (paper, showSku/showUnit, ordered blocks). Template cũ không có layout vẫn nạp được; chuyển sang layout khi người dùng lưu thay đổi. Lưu lỗi giữ draft; reload/Back yêu cầu xác nhận bỏ thay đổi. Các thay đổi StoreProfile chưa lưu vẫn được giữ khi quay lại từ designer; preview có thể dùng chúng nhưng chỉ lưu ReceiptTemplate, không tự lưu StoreProfile.
-- Preview là tham chiếu bố cục/phân trang, chưa đảm bảo font và vùng in giống mọi máy in. Chưa có Bluetooth/ESC-POS, in thử, xuất PDF hoặc editor đặt tọa độ tự do.
+- Lưu layout v1 (paper, showSku/showUnit, ordered blocks); có header hai cột thì v2 thêm `{ header: { left, right } }`, mỗi chuỗi tối đa 1000 ký tự. Không có layout mặc định A4, giấy explicit cũ giữ nguyên. Lưu lỗi giữ draft; reload/Back xác nhận bỏ thay đổi. StoreProfile chưa lưu giữ khi quay về designer; preview có thể dùng chúng nhưng chỉ lưu ReceiptTemplate.
+- Preview là tham chiếu bố cục/phân trang; preview invoice thật dùng chung PNG renderer với job Wi-Fi nhưng Windows driver vẫn có thể fit vào vùng in. Cần kiểm tra bản in giấy. Chưa có Bluetooth/ESC-POS, nút in thử trong designer, xuất PDF hoặc editor đặt tọa độ tự do.
 - Preview giữ cache một bố cục hiện tại theo nội dung đã dịch và kích thước giấy; đổi zoom hoặc rebuild với nội dung tương đương không đo chữ/chia trang lại. Đổi nội dung, ngôn ngữ hoặc giấy sẽ tính lại và giải phóng TextPainter cũ; không giữ lịch sử nhiều bản preview.
 - Thiếu `layout` là template legacy hợp lệ, chỉ chuyển thành layout trong bộ nhớ theo flag boolean hợp lệ; không tự ghi migration. `layout: null`, version không hỗ trợ hoặc cấu trúc sai phải báo lỗi theo catalog và giữ cấu hình/draft trước đó, không fallback thành mẫu trắng có thể lưu đè. Repository kiểm tra trước khi vào editor; Cubit bắt lỗi, ghi event kèm error code (không log payload).
 - Khi phát triển có thêm/sửa asset bản dịch, cần hot restart để EasyLocalization nạp lại; hot reload riêng UI có thể giữ map bản dịch cũ và hiện key. Không cần gỡ/cài lại app hoặc xóa dữ liệu.
 
-**Phí dịch vụ — phạm vi đã chốt nhưng chưa triển khai giao dịch:** Đợt này chỉ lưu danh mục/nhãn dịch vụ trong mẫu. Màn tạo hóa đơn sau này nhập tiền cho từng dịch vụ trên từng invoice, mặc định 0, không âm, cộng vào tổng. Ẩn phần in hoặc xóa định nghĩa tương lai không được xóa phí khỏi lịch sử; phải snapshot ID/nhãn/số tiền vào invoice và reverse đúng dấu. Cần mở rộng schema/API payload version, tổng tiền, persistence, outbox, pull/realtime và reverse/correction trước khi bật nhập phí thật. Không gửi phí vào invoice v1 hoặc giả thành rounding/discount/sản phẩm để né contract. Chi tiết thuế vẫn bằng 0 theo nghiệp vụ v1.
+**Phí dịch vụ giao dịch:** Service blocks là danh mục để composer nhập tiền riêng trên mỗi invoice, mặc định 0. Invoice snapshot giữ ID/nhãn/số tiền; server kiểm tra tổng/precision, persistence và reverse/correction giữ đúng dấu. PayloadVersion 2 mở rộng phí; v1 giữ tương thích và không dùng rounding/discount/sản phẩm giả để chứa phí. Deploy migration và API/worker hỗ trợ v2 trước mobile mới. Ẩn phần in hay xóa/đổi định nghĩa tương lai không được xóa phí lịch sử. Chi tiết thuế vẫn bằng 0.
 
 ### 4.8 Hồ sơ cá nhân
 

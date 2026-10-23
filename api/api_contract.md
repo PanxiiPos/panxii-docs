@@ -418,9 +418,11 @@ Trạng thái mạng `Online`/`Offline` và hoạt động pull `Downloading` l�
 ### `POST /invoices/sync`
 
 **Role:** Staff, TenantAdmin. Đây là command idempotent và là endpoint chính cho offline outbox.
-Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hiện hỗ trợ giá trị `1`.
+Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hỗ trợ `1` (không phí dịch vụ) và `2` (có snapshot phí dịch vụ).
 
 Sale `quantity` và `unitPrice` phải lớn hơn 0. `taxRate`/`taxAmount` phải bằng 0 trong v1; không áp dụng nghiệp vụ tính thuế cho đến phần mở rộng sau. Hóa đơn Reverse và Correction do endpoint tương ứng tạo ở server, không được gửi như Sale payload từ client.
+
+`variantNameSnapshot` là tùy chọn: biến thể không có tên riêng gửi `null`. Trong kiểm tra catalog, `null` và `""` được coi cùng nghĩa không có tên; không thay bằng tên product và không bỏ kiểm tra ordinal khi tên biến thể thật tồn tại.
 Money và quantity dùng `decimal` tối đa 4 chữ số thập phân. Server kiểm tra công thức bằng decimal chính xác, không tự làm tròn hoặc áp tolerance; client gửi `roundingAmount` tường minh nếu có. Chưa áp dụng `MidpointRounding` hay quy tắc làm tròn theo currency cho đến khi quy tắc nghiệp vụ được định nghĩa.
 
 Request:
@@ -488,7 +490,28 @@ Errors: `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`.
 
 **Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse. Staff chỉ đọc invoice do chính mình tạo; invoice của người khác trả `404 ERR_INVOICE_NOT_FOUND`.
 
-Staff và TenantAdmin được in invoice đã đọc trên thiết bị client. App dựng bản in từ invoice snapshot và `ReceiptTemplate` trong `/settings/effective`, rồi gửi tới máy in local/Bluetooth; in không thay đổi invoice và không có server-side print endpoint. Nếu in lỗi, mobile dùng `ERR_PRINT_FAILED`; invoice không rollback.
+Staff và TenantAdmin được in invoice có quyền đọc, không phải nháp, khi `EnableWifiPrint=true` đã được xác nhận. App dựng A4 từ invoice snapshot, `StoreProfile` và `ReceiptTemplate`, gửi PNG qua HTTPS pin chứng chỉ tới bridge Windows trong LAN; bridge dùng driver Canon LBP 2900. Không có backend print endpoint hay transport Bluetooth. Lỗi in không rollback invoice. Retry cùng tài liệu dùng UUID đã lưu; `submitted` chỉ xác nhận Windows queue, `uncertain` không tự in lại. Chi tiết [bridge](../../tools/windows-print-bridge/README.md).
+
+### `GET /invoices/operations/{operationId}`
+
+**Role:** tenant user; receipt chỉ được đọc trong tenant và actor phù hợp. Trả envelope với `data.status` (`Completed`, `Rejected`, hoặc `Queued` nếu đã có receipt đang xử lý), `data.result` là Invoice khi Completed, `data.errorCode` khi Rejected. Không tìm thấy trả 404; client giữ nguyên operation và kiểm tra lại hoặc resend nguyên payload, không đổi UUID.
+
+### Phí dịch vụ invoice payloadVersion 2
+
+V1 tiếp tục không phí. V2 thêm vào invoice:
+
+```json
+{
+  "serviceCharges": [
+    { "serviceId": "delivery", "labelSnapshot": "Giao hàng", "amount": 5000 }
+  ],
+  "serviceTotal": 5000
+}
+```
+
+Tối đa 10 ID duy nhất, ID tối đa 80 ký tự, nhãn tối đa 120, amount không âm/decimal(19,4). `serviceTotal` phải bằng tổng snapshot amounts, không suy diễn từ tổng invoice hoặc tự sửa số tiền client. Sale mới đối chiếu định nghĩa Service trong ReceiptTemplate của tenant; dữ liệu cấu hình stale không được âm thầm đổi nhãn. Total = subtotal − discountAmount + taxAmount (0) + roundingAmount + serviceTotal. Giữ snapshot dù mẫu đổi sau bán.
+
+Correction nhận thêm `payloadVersion` (mặc định 1), serviceCharges/serviceTotal. V1 correction bị từ chối nếu hóa đơn gốc có bất kỳ snapshot phí nào, kể cả phí 0; không âm thầm xóa phí. V2 giữ ID/nhãn gốc dù mẫu đổi, dịch vụ mới phải khớp định nghĩa đang bật. Reverse negate phí gốc và giữ nhãn/ID mà không lookup mẫu mới. Response invoice, realtime/pull và operation result đều mang snapshots; client cũ thiếu field xem như không có phí lịch sử, không tự tính lại số tiền server.
 
 ### `POST /invoices/{id}/reverse`
 
@@ -549,6 +572,7 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
     "RequireCustomerPhone": true,
     "EnableInventory": false,
     "EnableBluetoothPrint": true,
+    "EnableWifiPrint": false,
     "AutoRoundMoney": true,
     "storeProfile": {
       "storeName": "Panxii Store",
@@ -575,7 +599,8 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
       "ReceiptTemplate": 0,
       "ProductDisplay": 3,
       "AutoRoundMoney": 1,
-      "EnableBluetoothPrint": 0
+      "EnableBluetoothPrint": 0,
+      "EnableWifiPrint": 0
     }
   }
 }
@@ -585,17 +610,21 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
 
 **Role:** TenantAdmin với tenant setting. Giá trị phải validate theo schema của key. Các key cấu hình cửa hàng gồm:
 
-- `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null }`.
+- `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null, "bankTransfer": { "bin": "970436", "accountNumber": "000123456789", "accountName": "TEST ACCOUNT" } }`. `bankTransfer` tùy chọn, bỏ cả property hoặc đặt null để xóa; nếu có object phải đủ ba field, BIN đúng 6 chữ số ASCII, tài khoản 6–34 chữ số ASCII (giữ số 0 đầu), tên không trống/tối đa 100 ký tự/không control characters. Không nhận object thiếu.
 - `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null, "layout": { ... } }`; `layout` tùy chọn, theo `ReceiptLayout` trong OpenAPI. Không có layout vẫn dùng Standard legacy.
 - `ProductDisplay`: `{ "layout": "Grid", "sortBy": "Name", "showSku": true, "showBarcode": false, "showCategory": true }`; `layout` là `Grid`/`List`, `sortBy` là `Name`/`Sku`.
 
 Request dùng `{ "value": <value theo schema>, "expectedVersion": 2 }`, lấy `expectedVersion` từ `settingVersions[key]` của tenant hiện tại; `0` khi chưa có tenant override, kể cả khi effective value đến từ global setting. `settingsVersion` là aggregate, không phải concurrency token dùng cho PUT. Sau PUT dùng version trả về cho lần ghi tiếp theo; conflict trả `409 ERR_VERSION_CONFLICT`, không tự retry ghi đè.
 
-`settingVersions` là metadata additive cho năm key `StoreProfile`, `ReceiptTemplate`, `ProductDisplay`, `AutoRoundMoney`, `EnableBluetoothPrint`; backend cũ có thể chưa trả nên mobile editor mới phải báo contract lỗi thay vì đoán version. Triển khai backend trước mobile editor.
+`settingVersions` là metadata additive cho các key `StoreProfile`, `ReceiptTemplate`, `ProductDisplay`, `AutoRoundMoney`, `EnableBluetoothPrint`, `EnableWifiPrint`. Editor không được đoán version của năm key hiện có nếu thiếu metadata. Riêng Wi-Fi bổ sung sau: API/cache cũ thiếu key thì đọc disabled/version 0; backend cũ vẫn không hỗ trợ ghi key mới. Triển khai backend trước mobile editor.
 
-Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in/làm tròn theo rule hiện có, không thay đổi quyền hoặc sửa invoice đã đồng bộ. TenantAdmin chỉ được ghi feature flags `AutoRoundMoney`, `EnableBluetoothPrint`; SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`, không sửa invoice đã đồng bộ. TenantAdmin được ghi feature flags `AutoRoundMoney`, `EnableBluetoothPrint`, `EnableWifiPrint`; Wi-Fi mặc định false, là quyền in cho tenant; Bluetooth chỉ lưu tùy chọn, chưa có transport. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
 
-#### Receipt layout version 1
+#### Receipt layout version 1 và 2
+
+Version 2 giữ contract version 1 và thêm `header: { "left": "...", "right": "..." }`, mỗi chuỗi tối đa 1000 ký tự; header chỉ hợp lệ ở v2. Khi một cột không rỗng, hai cột thay nhóm thông tin cửa hàng mặc định. Editor không có header vẫn ghi v1. Template không có layout mặc định A4 ở mobile mới; layout cũ có giấy rõ ràng được giữ nguyên. In qua PC yêu cầu A4.
+
+Bản in thật luôn có số hóa đơn + Code128, ngày tạo, dòng khách hàng để ghi tay và chữ ký, dù mẫu cũ tắt các khối này. QR nhận tiền tùy bankTransfer, chỉ VND nguyên dương tối đa 12 chữ số, không áp dụng Reverse; không tag nội dung chuyển khoản/tên người gửi, không gọi API ngân hàng và không ghi nhận thanh toán. Xem [compatibility matrix](api_compatibility_matrix.md) trước rollout: editor cũ có thể xóa bankTransfer hoặc không đọc được v2.
 
 `layout` gồm `version: 1`, `paper`, `showSku`, `showUnit`, `blocks`. `paper` gồm preset `Roll58`/`Roll80`/`A0`–`A10`/`Custom`, `widthMm`, `heightMm` (null chỉ với giấy cuộn), `marginMm`. A-series dùng kích thước ISO 216 dạng đứng; preset và kích thước phải khớp. Giới hạn rộng 25–1500 mm, cao 25–2000 mm, lề 0–10 mm; vùng in sau hai lề tối thiểu 10 mm mỗi chiều.
 

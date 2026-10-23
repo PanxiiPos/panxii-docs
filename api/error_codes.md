@@ -31,7 +31,7 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVALID_CREDENTIALS` | 401 | No | `errors.invalidCredentials` | Tenant/user/password không hợp lệ |
 | `ERR_ACCESS_DENIED` | 403 | No | `errors.accessDenied` | Không đủ quyền |
 | `ERR_NOT_FOUND` | 404 | No | `errors.notFound` | Route/resource không tồn tại |
-| `ERR_OPERATION_NOT_FOUND` | 404 | Yes (catalog status only) | `errors.ERR_OPERATION_NOT_FOUND` | Chưa có receipt catalog của actor trong tenant; kiểm tra lại hoặc gửi nguyên UUID/payload, không tạo operation mới |
+| `ERR_OPERATION_NOT_FOUND` | 404 | Yes (operation status only) | `errors.ERR_OPERATION_NOT_FOUND` | Chưa có receipt catalog/invoice của actor trong tenant; kiểm tra lại hoặc gửi nguyên UUID/payload, không tạo operation mới |
 | `ERR_CONFLICT` | 409 | No | `errors.conflict` | Request xung đột trạng thái hiện tại |
 | `ERR_TENANT_INACTIVE` | 422 | No | `errors.tenantInactive` | Tenant bị khóa |
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |
@@ -61,6 +61,8 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVOICE_NOT_FOUND` | 404 | No | `errors.invoiceNotFound` | Không thấy invoice |
 | `ERR_INVOICE_IMMUTABLE` | 422 | No | `errors.invoiceImmutable` | Invoice đã sync |
 | `ERR_INVOICE_TOTAL_INVALID` | 422 | No | `errors.invoiceTotalInvalid` | Tổng không cân bằng |
+| `ERR_INVOICE_SERVICE_INVALID` | 422 | No | `errors.ERR_INVOICE_SERVICE_INVALID` | Snapshot phí dịch vụ sai, trùng ID hoặc không tương thích payloadVersion |
+| `ERR_INVOICE_SERVICE_CONFIGURATION_INVALID` | 422 | No | `errors.ERR_INVOICE_SERVICE_CONFIGURATION_INVALID` | Sale mới có ID/nhãn dịch vụ không khớp định nghĩa Service đang bật của tenant |
 | `ERR_INVOICE_ALREADY_REVERSED` | 409 | No | `errors.invoiceAlreadyReversed` | Đã reverse |
 | `ERR_ADMIN_PIN_INVALID` | 401 | No | `errors.adminPinInvalid` | PIN sai; legacy, không dùng cho reverse invoice v1 |
 | `ERR_IDEMPOTENCY_KEY_MISMATCH` | 400 | No | `errors.idempotencyMismatch` | Header/body lệch |
@@ -103,3 +105,19 @@ Mobile Login dùng mapping tập trung `AuthErrorCode.translationKeys` để gi�
 | `client.display.read_failed` | Báo lỗi đọc preference; cho đọc lại/đặt lại | `errors.client.display.read_failed` |
 | `client.display.write_failed` | Giữ cỡ chữ đã áp dụng trước đó; cho thử lưu lại | `errors.client.display.write_failed` |
 | `client.display.value_invalid` | Báo giá trị lưu không hợp lệ; dùng cỡ chữ an toàn và cho đặt lại | `errors.client.display.value_invalid` |
+
+### Lỗi in/QR chỉ phát sinh ở mobile
+
+Các mã sau không phải response của backend. Bridge trả HTTP status + JSON lỗi đơn giản; client chuyển thành lỗi in, không log token/payload.
+
+| Code | Xử lý | i18n key |
+|---|---|---|
+| `ERR_BANK_ACCOUNT_INVALID` | Sửa đủ BIN/tài khoản/tên hoặc xóa cả ba | `errors.ERR_BANK_ACCOUNT_INVALID` |
+| `ERR_BANK_QR_AMOUNT_INVALID` | Chỉ QR cho tổng VND nguyên dương tối đa 12 chữ số | `errors.ERR_BANK_QR_AMOUNT_INVALID` |
+| `ERR_WIFI_PRINT_DISABLED` | Chủ cửa hàng bật và lưu quyền thành công | `errors.ERR_WIFI_PRINT_DISABLED` |
+| `ERR_PRINT_A4_REQUIRED` | Chọn giấy A4 trong mẫu | `errors.ERR_PRINT_A4_REQUIRED` |
+| `ERR_PRINT_DRAFT` | Chốt hóa đơn trước | `errors.ERR_PRINT_DRAFT` |
+| `ERR_PRINT_PAIRING_INVALID` | Nhập HTTPS LAN IPv4/token/pin hợp lệ từ PC | `errors.ERR_PRINT_PAIRING_INVALID` |
+| `ERR_PRINT_NOT_PAIRED` | Mở cài đặt ghép nối PC | `errors.ERR_PRINT_NOT_PAIRED` |
+| `ERR_PRINT_CERTIFICATE` | Dừng, đối chiếu pin/chứng chỉ PC; không bỏ TLS | `errors.ERR_PRINT_CERTIFICATE` |
+| `ERR_PRINT_FAILED` | Kiểm tra cùng job và Windows queue; không tự in bản mới | `errors.ERR_PRINT_FAILED` |

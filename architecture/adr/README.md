@@ -24,6 +24,7 @@ Thư mục này lưu các quyết định kiến trúc có ảnh hưởng lâu d
 | ADR-009 | Role được phép tạo customer và reverse invoice | Accepted |
 | ADR-010 | Queued POS commands và realtime entity snapshots | Accepted |
 | ADR-011 | Product gốc và các biến thể bán được | Accepted |
+| ADR-012 | In A4 qua PC Windows và QR chỉ dẫn chuyển khoản | Accepted |
 
 ## Mẫu ADR
 
