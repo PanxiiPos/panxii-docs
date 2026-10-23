@@ -31,6 +31,10 @@ API chỉ trả `202 Queued` sau publisher confirm. Worker commit entity, `sync_
 
 Mỗi outbox có `ClientOperationId` UUID, `EntityId`, `PayloadJson`, `PayloadHash`, `AttemptCount`, `NextAttemptAt`.
 
+Invoice mobile sinh operation đúng lúc chuyển Draft sang Pending; cập nhật invoice và insert outbox trong cùng SQLite transaction với điều kiện trạng thái vẫn Draft. Gọi submit lại không được thay operation đã commit. Mọi retry mạng/timeout/khởi động lại đọc UUID và payload đã lưu; chỉ thao tác gửi lại Failed có xác nhận mới tạo operation khác sau khi kiểm tra invoice chưa có trên server.
+
+Hash receipt `SyncInvoice` payload v1/v2 giữ JSON PascalCase với `JsonSerializerDefaults.General` tường minh, khác Web/camelCase dùng cho response và reverse/correction. Không đổi format của hash đã lưu chỉ vì chuẩn hóa options: sẽ gây `ERR_SYNC_PAYLOAD_MISMATCH` khi replay. Tests khóa projection cũ v1 và v2 có phí; thay đổi contract/order/ignore/default phải giữ tương thích hash hoặc có kế hoạch version/migration riêng.
+
 ### 3.1. Catalog pause/resume
 
 Mobile ghi `activate`/`deactivate` cho gốc hoặc `activateVariant`/`deactivateVariant` cho một biến thể cùng local mutation trong một transaction tenant/user-scoped. Đổi gốc cascade mọi biến thể đang có trong cache; đổi riêng một biến thể không đổi gốc hoặc sibling, kể cả default variant. Chỉ entity thực sự đổi cờ active tăng version.
