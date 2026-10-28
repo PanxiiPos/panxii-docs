@@ -12,14 +12,14 @@
 
 - `POST /products/commands`: TenantAdmin, bắt buộc `Idempotency-Key` UUID khác rỗng; trả `202` với `{operationId,status:"Queued"}`. Worker kiểm tra lại tài khoản/tenant/quyền khi thực thi.
 - Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `activate`, `activateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
-- `prices`: 1–100 `{productId,variantId?,expectedVersion,price}`. Giá tuyệt đối riêng từng target, >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Có thể gửi `price` và `data.basePrice` dưới dạng chuỗi decimal invariant để giữ chính xác. Client tính tăng/giảm số tiền cố định trước khi gửi. Không nhận cùng physical ID hai lần (product/default variant); không điều chỉnh phần trăm trong luồng mobile này.
+- `prices`: 1–100 `{productId,variantId?,expectedVersion,listedPrice,calculationQuantity}`. Cả hai số phải >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Server tính `basePrice = listedPrice × calculationQuantity`, làm tròn tới 4 chữ số thập phân (midpoint away from zero). Client gửi decimal invariant dạng chuỗi để giữ chính xác; không nhận cùng physical ID hai lần (product/default variant). Điều chỉnh tăng/giảm trên mobile áp dụng vào `listedPrice`, không sửa trực tiếp giá bán.
 - `GET /products/commands/{operationId}`: TenantAdmin, chỉ tenant hiện tại và người tạo operation. `200 data={status:"Completed"|"Rejected",errorCode?,result?}`; chưa có receipt trả `404 ERR_OPERATION_NOT_FOUND` (có thể vẫn đang chờ trong RabbitMQ). Payload mismatch giữ nguyên lỗi `ERR_SYNC_PAYLOAD_MISMATCH`; không thay payload của UUID đã gửi.
 - Result: `{clientEntityId,entityId,products:[],variants:[],deletedProductIds:[],deletedVariantIds:[]}`; `entityId` là ID server của resource vừa tạo, hoặc ID target/batch. `products`/`variants` là snapshot đầy đủ của các product bị tác động, không phải chỉ các dòng đổi giá. `deletedVariantIds` có thể null ở receipt cũ.
 - Mutation, receipt chứa result, audit, `CatalogBatch` server change và realtime outbox cùng transaction. Một version sai từ chối toàn batch; retry UUID/payload không thực thi lại. API legacy giữ nguyên để tương thích.
 - Không xóa riêng default variant; variant đã có lịch sử hóa đơn phải ngừng bán. Không xóa variant active cuối cùng của product active. Cho phép ngừng/bán lại riêng bất kỳ variant (kể cả default/cuối cùng) mà không đổi product gốc hoặc variant khác.
 - `deactivate`/`activate` đổi trạng thái product và TẤT CẢ variant trong cùng transaction, kể cả variant đã ngừng riêng. `deactivateVariant`/`activateVariant` chỉ đổi variant chỉ định. Mỗi entity chỉ tăng version khi cờ active của chính nó đổi; invoice history không đổi. Variant chỉ bán được khi cả gốc và variant active.
 - REST tương ứng: `POST /products/{id}/activate` và `POST /products/{productId}/variants/{variantId}/activate`, TenantAdmin only, body `{expectedVersion}`, trả envelope `Product`/`ProductVariant` giống deactivate; lỗi invalid request/not found/version conflict/access denied theo contract hiện có. Mobile tiếp tục dùng durable commands thay vì gọi REST trực tiếp.
-- Product/variant response bổ sung `basePriceText` invariant string; `basePrice` numeric giữ nguyên để tương thích. Client mới ưu tiên string; không dùng floating point để tính giá.
+- Product/variant response bổ sung `basePriceText`, `listedPriceText` và `calculationQuantityText` dạng invariant string; các field numeric giữ nguyên. Client mới ưu tiên string; không dùng floating point để tính giá.
 - Variant update có thể gửi lại `extraData` legacy/schema chưa hỗ trợ **không đổi** (so sánh cấu trúc JSON với dữ liệu hiện tại) để sửa tên/giá mà không mất thuộc tính. Vẫn kiểm tra tenant và `expectedVersion`. Tạo mới hoặc thay đổi schema chưa hỗ trợ vẫn bị từ chối; không phải cơ chế ghi JSON tùy ý. Mobile dùng form tên/giá trị, tự tạo schema 1, không gửi tiền đã format theo locale.
 - Pull `CatalogBatch.entity` dùng result shape trên; áp dụng snapshot/tombstone/ID mapping và sequence cùng local transaction. Client không xem `202` là sync thành công và không tự rebase conflict.
 - Deployment: cập nhật API và worker cùng phiên bản. Worker cần `JWT_SECRET_KEY` hợp lệ (cùng cấu hình API) vì product service phụ thuộc cursor codec; thiếu key sẽ retry/DLQ trước khi ghi receipt. Local compose đã truyền biến này, không lưu giá trị secret vào source.
@@ -208,6 +208,11 @@ Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong t
     "name": "Coffee",
     "unit": "cup",
     "basePrice": 25000.0000,
+    "basePriceText": "25000",
+    "listedPrice": 25000.0000,
+    "listedPriceText": "25000",
+    "calculationQuantity": 1.0000,
+    "calculationQuantityText": "1",
     "taxRate": 0,
     "isActive": true,
     "version": 4,
@@ -225,7 +230,7 @@ Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong t
 
 ### `POST /products`
 
-**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `barcode` và `categoryId` tùy chọn. Barcode tối đa 64 ký tự và duy nhất trong tenant nếu có. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `barcode` và `categoryId` tùy chọn. Có thể gửi thêm `listedPrice` và `calculationQuantity` cùng nhau; khi có, `basePrice` phải bằng tích hai giá trị sau khi làm tròn 4 chữ số. Nếu không gửi, server giữ tương thích bằng cách đặt `listedPrice = basePrice`, `calculationQuantity = 1`. Barcode tối đa 64 ký tự và duy nhất trong tenant nếu có. Giá phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1.
 
 `extraData` tùy chọn là object JSON (không phải chuỗi): `{"schemaVersion":1,"attributes":{...}}`, tối đa **16 KiB UTF-8**. Schema/giới hạn giống tạo/cập nhật variant. Worker lưu cùng attributes vào product và default variant; áp dụng cả catalog command `action: "create"`. Bỏ/null extraData không thêm property vào queued payload cũ, không thay cách tính payload hash và không tái serialize command đã xếp hàng để xác minh hash.
 
@@ -240,7 +245,7 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### `GET /products/{productId}/variants?includeInactive=`
 
-**Role:** Staff, TenantAdmin. Trả các variant của product; mặc định chỉ variant active. `includeInactive=true` chỉ dành cho TenantAdmin. Response gồm `id`, `productId`, `sku`, `barcode`, `name`, `unit`, `basePrice`, `taxRate`, `isActive`, `version`, `extraData` và `updatedAtUtc`.
+**Role:** Staff, TenantAdmin. Trả các variant của product; mặc định chỉ variant active. `includeInactive=true` chỉ dành cho TenantAdmin. Response gồm `id`, `productId`, `sku`, `barcode`, `name`, `unit`, `basePrice`, `listedPrice`, `calculationQuantity`, `taxRate`, `isActive`, `version`, `extraData` và `updatedAtUtc`.
 
 ### `GET /products/{productId}/variants/{variantId}`
 
@@ -248,13 +253,13 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### `POST /products/{productId}/variants`
 
-**Role:** TenantAdmin. Tạo variant bán được với SKU, unit, giá và tùy chọn barcode, tên, `extraData`. Barcode/SKU phải không trùng trong tenant ở kiểm tra nghiệp vụ. Giá phải lớn hơn 0; `taxRate` hiện phải bằng 0. Thành công trả `201` và Location tới variant mới.
+**Role:** TenantAdmin. Tạo variant bán được với SKU, unit, `basePrice`, `listedPrice` và `calculationQuantity`, cùng tùy chọn barcode, tên, `extraData`. `basePrice` được tính từ giá niêm yết nhân hệ số cho một đơn vị bán; nếu hai field mới bị bỏ qua thì dùng `basePrice` và hệ số 1 để tương thích client cũ. Barcode/SKU phải không trùng trong tenant ở kiểm tra nghiệp vụ. `taxRate` hiện phải bằng 0. Thành công trả `201` và Location tới variant mới.
 
 `extraData` nhận object dạng `{"schemaVersion":1,"attributes":{...}}`; giới hạn JSON 16 KiB. Dùng attributes cho đặc tính hàng hóa linh hoạt như thương hiệu, độ dày, kích thước hoặc quy cách; dữ liệu định danh/bán hàng như SKU, unit, giá phải nằm ở field riêng.
 
 ### `PATCH /products/{productId}/variants/{variantId}`
 
-**Role:** TenantAdmin. Cập nhật SKU/barcode/tên/unit/giá/thuộc tính với `expectedVersion` bắt buộc. Trả `409 ERR_VERSION_CONFLICT` nếu version cũ.
+**Role:** TenantAdmin. Cập nhật SKU/barcode/tên/unit/giá niêm yết/hệ số quy đổi/thuộc tính với `expectedVersion` bắt buộc. Giá bán được server tính lại; tích không khớp `basePrice` trả `ERR_INVALID_REQUEST`. Trả `409 ERR_VERSION_CONFLICT` nếu version cũ.
 
 ### `POST /products/{productId}/variants/{variantId}/deactivate`
 
@@ -266,7 +271,7 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 
 ### `PATCH /products/{id}`
 
-**Role:** TenantAdmin. Cho cập nhật `name`, `barcode`, `unit`, `basePrice`, `taxRate`, `categoryId` và bắt buộc `expectedVersion`. `barcode: null` dùng để xóa barcode; barcode khác null phải duy nhất trong tenant. Nếu version không khớp trả `409 ERR_VERSION_CONFLICT`; barcode trùng trả `409 ERR_DUPLICATE_BARCODE`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
+**Role:** TenantAdmin. Cho cập nhật `name`, `barcode`, `unit`, `basePrice`, `listedPrice`, `calculationQuantity`, `taxRate`, `categoryId` và bắt buộc `expectedVersion`. Giá bán được tính lại từ giá niêm yết × hệ số quy đổi; client cũ chỉ gửi `basePrice` được xử lý tương thích với hệ số 1. `barcode: null` dùng để xóa barcode; barcode khác null phải duy nhất trong tenant. Nếu version không khớp trả `409 ERR_VERSION_CONFLICT`; barcode trùng trả `409 ERR_DUPLICATE_BARCODE`. Staff không được sửa giá.
 
 ### `POST /products/{id}/deactivate`
 
@@ -986,6 +991,11 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
   "name": "Coffee",
   "unit": "cup",
   "basePrice": 25000.0000,
+  "basePriceText": "25000",
+  "listedPrice": 25000.0000,
+  "listedPriceText": "25000",
+  "calculationQuantity": 1.0000,
+  "calculationQuantityText": "1",
   "costPrice": null,
   "taxRate": 0.0000,
   "isActive": true,

@@ -101,7 +101,7 @@ ExtraDataJson  JSON         NULL
 
 `ExtraDataJson` là vùng mở rộng có cấu trúc cho thuộc tính nghiệp vụ riêng của từng cửa hàng/ngành hàng; không chỉ là chỗ chứa seed development. Mục tiêu là để client đọc/hiển thị các thuộc tính mới bằng renderer dùng chung, không cần thêm một model/UI riêng cho từng ngành.
 
-Contract áp dụng cho thuộc tính mở rộng của entity. `app_settings` vẫn là nơi lưu cấu hình điều khiển hành vi ứng dụng/feature flag; không chuyển các setting đó vào `ExtraDataJson`. Trong catalog mục tiêu, `product_variants.Unit`, `BasePrice`, `TaxRate`, SKU và barcode là nguồn dữ liệu chuẩn cho nghiệp vụ tương ứng. `ExtraDataJson` chỉ bổ sung thông tin như kích thước, chất liệu, độ dày hoặc thuộc tính tương tự.
+Contract áp dụng cho thuộc tính mở rộng của entity. `app_settings` vẫn là nơi lưu cấu hình điều khiển hành vi ứng dụng/feature flag; không chuyển các setting đó vào `ExtraDataJson`. Trong catalog mục tiêu, `product_variants.Unit`, `BasePrice`, `ListedPrice`, `CalculationQuantity`, `TaxRate`, SKU và barcode là nguồn dữ liệu chuẩn cho nghiệp vụ tương ứng. `ExtraDataJson` chỉ bổ sung thông tin như kích thước, chất liệu, độ dày hoặc thuộc tính tương tự.
 
 Giá trị root luôn là object theo phiên bản:
 
@@ -254,7 +254,7 @@ Unique `(TenantId, Code)`. Không cho `ParentId = Id`; service phải kiểm tra
 
 ### 4.5. `products`
 
-`products` là sản phẩm gốc/nhóm hàng để tổ chức danh mục và hiển thị. Một sản phẩm gốc có một hoặc nhiều biến thể bán được; không lưu SKU, barcode, đơn vị hoặc giá bán tại bảng này.
+`products` là sản phẩm gốc/nhóm hàng để tổ chức danh mục và hiển thị. Một sản phẩm gốc có một hoặc nhiều biến thể bán được; các cột SKU/barcode/unit/price trên bảng vẫn được giữ để tương thích client cũ và phải đồng bộ với default variant.
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---:|---|
@@ -263,6 +263,10 @@ Unique `(TenantId, Code)`. Không cho `ParentId = Id`; service phải kiểm tra
 | `CategoryId` | `CHAR(36)` | Có | FK category |
 | `Name` | `VARCHAR(200)` | Không | Tên gốc, ví dụ `Sắt hộp 30x60` |
 | `Description` | `VARCHAR(2000)` | Có | Mô tả chung |
+| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán đã tính trên default variant |
+| `ListedPrice` | `DECIMAL(19,4)` | Không | Giá niêm yết trên default variant |
+| `CalculationQuantity` | `DECIMAL(19,4)` | Không | Hệ số quy đổi trên default variant |
+| `Unit` | `VARCHAR(32)` | Không | Đơn vị bán của default variant |
 | `IsActive` | `TINYINT(1)` | Không | Đang bán |
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
@@ -304,16 +308,18 @@ Mỗi biến thể là một mặt hàng bán được độc lập, có mã đ�
 | `Barcode` | `VARCHAR(64)` | Có | Barcode; API kiểm tra không trùng trong tenant |
 | `Name` | `VARCHAR(200)` | Có | Tên hiển thị tùy chọn; null thì ghép tên gốc với nhãn thuộc tính |
 | `Unit` | `VARCHAR(32)` | Không | Đơn vị bán của biến thể |
-| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán hiện tại, > 0 |
+| `BasePrice` | `DECIMAL(19,4)` | Không | Giá bán đã tính, `ListedPrice × CalculationQuantity`, > 0 |
+| `ListedPrice` | `DECIMAL(19,4)` | Không | Giá niêm yết để tính giá bán, > 0 |
+| `CalculationQuantity` | `DECIMAL(19,4)` | Không | Khối lượng/số lượng quy đổi cho một đơn vị bán, > 0 |
 | `CostPrice` | `DECIMAL(19,4)` | Có | Giá vốn nếu bật kho |
 | `TaxRate` | `DECIMAL(9,4)` | Không | Giữ 0 trong v1 |
 | `IsActive` | `TINYINT(1)` | Không | Trạng thái bán của riêng biến thể |
 | `Version` | `BIGINT` | Không | Optimistic concurrency |
 | Audit + ExtraData | ... | ... | `ExtraDataJson` chứa đặc tính riêng của biến thể |
 
-Unique `(TenantId, Sku)`; index barcode `(TenantId, Barcode)` không unique để migration giữ nguyên các barcode trùng có thể tồn tại trong dữ liệu product cũ. API kiểm tra SKU/barcode trước khi ghi; cần xử lý dữ liệu trùng trước khi có thể nâng barcode index thành unique ở migration sau. Alternate key `(TenantId, ProductId, Id)` phục vụ FK cùng tenant/sản phẩm. FK `(TenantId, ProductId)` trỏ `(TenantId, Id)` của `products`. Giá bán được lưu ở variant; giá gốc legacy của product đồng bộ với default variant. Bulk-price có thể cập nhật product/base, variant cụ thể hoặc cả hai trong cùng transaction; target alias product/default variant chỉ áp dụng một lần. TenantAdmin được phép sửa giá; variant được vô hiệu hóa để giữ lịch sử.
+Unique `(TenantId, Sku)`; index barcode `(TenantId, Barcode)` không unique để migration giữ nguyên các barcode trùng có thể tồn tại trong dữ liệu product cũ. API kiểm tra SKU/barcode trước khi ghi; cần xử lý dữ liệu trùng trước khi có thể nâng barcode index thành unique ở migration sau. Alternate key `(TenantId, ProductId, Id)` phục vụ FK cùng tenant/sản phẩm. FK `(TenantId, ProductId)` trỏ `(TenantId, Id)` của `products`. Giá bán được lưu ở variant; giá gốc legacy của product đồng bộ với default variant. Bulk-price điều chỉnh `ListedPrice`, tính lại `BasePrice` theo `CalculationQuantity`; target alias product/default variant chỉ áp dụng một lần. TenantAdmin được phép sửa giá; variant được vô hiệu hóa để giữ lịch sử.
 
-Ví dụ: Product `Sắt hộp 30x60` có các ProductVariant `Sắt hộp 30x60 Hòa Phát` và `Sắt hộp 30x60 Việt Nhật`. Mỗi variant giữ SKU, barcode và `BasePrice` riêng. Brand/thickness/size là thuộc tính có thể để trong `ExtraDataJson`; nếu các chiều này được dùng trong báo cáo, tồn kho hoặc bộ lọc chính, chuẩn hóa chúng thành dữ liệu có cấu trúc thay vì truy vấn JSON tùy tiện.
+Ví dụ: Product `Sắt hộp 30x60` có các ProductVariant `Sắt hộp 30x60 Hòa Phát` và `Sắt hộp 30x60 Việt Nhật`. Mỗi variant giữ SKU, barcode, `ListedPrice`, `CalculationQuantity` và `BasePrice` riêng. Với phụ kiện bán theo cặp, hệ số có thể là 1 và `Unit` là `cặp`; với sắt tính theo khối lượng, hệ số là kg cho một đơn vị bán. Brand/thickness/size là thuộc tính có thể để trong `ExtraDataJson`; nếu các chiều này được dùng trong báo cáo, tồn kho hoặc bộ lọc chính, chuẩn hóa chúng thành dữ liệu có cấu trúc thay vì truy vấn JSON tùy tiện.
 
 ### 4.6. `customers`
 
