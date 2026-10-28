@@ -1,5 +1,9 @@
 # RELEASE MANAGEMENT
 
+Hướng triển khai nội bộ tiết kiệm chi phí và setup OTA để thực hiện sau:
+[Oracle Always Free, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
+Đây là hướng dẫn chuẩn bị, không xác nhận pipeline/cloud/OTA đã được cấu hình.
+
 ## 1. Versioning
 
 - API major breaking change dùng `/api/v2`.

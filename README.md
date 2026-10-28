@@ -116,6 +116,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [infrastructure_setup.md](infrastructure/infrastructure_setup.md) | Docker, Nginx, VPS, MySQL, RabbitMQ, CI/CD, health check |
+| [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | Setup để làm sau: Oracle Always Free, GitHub Actions, APK nội bộ, Shorebird Free và Printer Bridge; chưa triển khai |
 | [operations_runbook.md](infrastructure/operations_runbook.md) | Xử lý outbox, DLQ, MySQL, SignalR, revoke và incident |
 | [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret |
 | [slo_observability.md](infrastructure/slo_observability.md) | SLO, metrics, alert threshold, error budget và correlation |
