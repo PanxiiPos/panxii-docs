@@ -2,7 +2,10 @@
 
 Hướng triển khai nội bộ tiết kiệm chi phí và setup OTA để thực hiện sau:
 [Oracle Always Free, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
-Đây là hướng dẫn chuẩn bị, không xác nhận pipeline/cloud/OTA đã được cấu hình.
+Shorebird Android đã có release thử nội bộ `0.1.0+1` và đã cài trên thiết bị
+thử nghiệm; chưa kiểm thử patch thật. Pipeline/cloud production chưa được
+triển khai. Xem trạng thái chi tiết trong hướng dẫn, không dùng bản nội bộ
+ký debug key để phân phối production.
 
 ## 1. Versioning
 

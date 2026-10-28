@@ -1,7 +1,9 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-10-26.
-- Mục đích: lưu các bước để thực hiện sau, **không phải xác nhận đã triển khai**.
+- Cập nhật: 2026-10-28.
+- Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
+  Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
+  hạ tầng là đã triển khai.
 - Phạm vi: backend trên Oracle Cloud Always Free, APK Android nội bộ, Shorebird
   Free và Panxii Printer Bridge trên PC cửa hàng.
 - Không tự nâng gói, bật thanh toán vượt mức hoặc đăng ký dịch vụ trả phí.
@@ -15,8 +17,8 @@
 | Domain/HTTPS | Chưa cấu hình |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
 | Android | Phân phối APK nội bộ trước; cấu hình release hiện còn dùng debug key, phải thay trước khi phát hành |
-| Shorebird | Có code kiểm tra/tải OTA trong app; chưa khởi tạo app, chưa có `shorebird.yaml`/`app_id`, chưa có release hoặc patch |
-| Shorebird CLI | Đã cài trên máy phát triển hiện tại, chưa đăng nhập; máy khác cần cài riêng |
+| Shorebird | App `Panxii Internal`, `auto_update: false`; release Android `0.1.0+1` đã active và cài trên Samsung SM-A336E; chưa kiểm thử patch thật |
+| Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
@@ -180,6 +182,34 @@ App đã có UI kiểm tra/tải patch và thông báo khởi động lại; th�
 luồng người dùng xác nhận. Giữ nguyên `app_id` thật vừa sinh.
 
 ### 6.3. Ký APK release và phát hành bản nền
+
+#### Bản thử nội bộ đã chốt ngày 2026-10-28
+
+- Shorebird app: `Panxii Internal`, app_id
+  `29ffa00b-3d56-412d-867f-146daf2528ad`.
+- Android `0.1.0+1`, API `http://127.0.0.1:5099/api/v1`, chỉ dùng trên
+  điện thoại thử nghiệm có `adb reverse tcp:5099 tcp:5099` tới PC chạy API.
+  Đây không phải URL dùng độc lập qua Internet.
+- Giữ debug key hiện tại theo lựa chọn của chủ dự án để cài đè bản thử mà
+  không xóa dữ liệu. **Không phân phối bản này cho production.**
+- `auto_update: false` để tải patch qua luồng xác nhận đã có trong app.
+- Đã xác nhận release ID `931436`, Android `0.1.0+1` active, Flutter
+  `3.47.8` (revision `baf23dc375`). Chủ dự án thực hiện phát hành qua CLI.
+- Đã cài đè APK bằng `adb install -r` lên Samsung SM-A336E, đối chiếu
+  chữ ký trước khi cài và SHA-256 APK đã cài khớp artifact:
+  `EE6B094A881A37754FDA845054A6116D88E60777D0DD13FDAA3B79C291C3A46A`.
+  App khởi động, updater Shorebird khởi tạo thành công, chưa có patch active;
+  API local readiness HTTP 200. Không gỡ app hoặc xóa dữ liệu.
+- Việc tạo app_id không phải phát hành: chỉ xác nhận OTA hoạt động sau khi
+  có release nền, cài đúng APK và kiểm tra một patch thật trên thiết bị.
+- Không gỡ bản cũ hoặc xóa dữ liệu nếu chữ ký không khớp. Khi chuyển sang
+  production phải chuẩn bị release keystore, API HTTPS và kế hoạch dữ liệu.
+- Không chạy `flutter run` lên thiết bị đang kiểm thử OTA vì sẽ thay bản
+  Shorebird bằng bản debug thông thường. Sau khi quay lại phát triển debug,
+  cần cài lại APK nền Shorebird để thử OTA.
+
+Các bước ký release dưới đây áp dụng cho bản phân phối thật, không phải
+ngoại lệ debug key của bản thử nội bộ trên.
 
 1. Tạo Android release keystore riêng, sao lưu mã hóa ở nơi an toàn. Không commit
    `.jks`, `.keystore`, mật khẩu hay `android/key.properties`.
