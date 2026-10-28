@@ -1,5 +1,10 @@
 # INFRASTRUCTURE SETUP - DOCKER, NGINX, VPS
 
+Với giai đoạn nội bộ ưu tiên miễn phí, xem
+[hướng dẫn setup Oracle Always Free và Shorebird](internal_free_deployment.md).
+Các skeleton bên dưới cần hoàn thiện theo code/cấu hình thực tế, không phải
+bộ cấu hình production có thể chạy nguyên trạng.
+
 ## 1. Mục tiêu triển khai
 
 Kiến trúc production tối thiểu:
