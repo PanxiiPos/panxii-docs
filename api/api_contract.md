@@ -197,7 +197,7 @@ Màn catalog mobile dùng `GET /products/catalog?search=&cursor=&pageSize=&inclu
 
 Cả `GET /products` và `GET /products/catalog` nhận query `categoryId=<uuid>` tùy chọn: lọc **đúng** category của product gốc, kết hợp với search/status/updatedSince hiện có, không tự gồm category con hoặc product chưa phân loại. Category không thuộc tenant hoặc không tồn tại trả collection rỗng; không rò rỉ ownership. Cursor gắn cả categoryId; không dùng cursor giữa hai category hoặc giữa có/không có filter (`400 ERR_INVALID_PAGING`). Bỏ categoryId vẫn giữ list legacy để tương thích API, không có nghĩa mobile có tab “Tất cả”. Product snapshot (list, catalog, detail và sync tạo mới) trả `categoryId` nullable và `extraData` nullable.
 
-Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong tenant. Form mobile cho bỏ trống mã: trước enqueue tự tạo `MH-<UUID local không dấu gạch nối>` viết hoa, giữ mã đó trong payload bền vững qua retry/remap; mã người dùng nhập không được thay thế. Không tạo mã mới khi replay operation.
+Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong tenant. Form mobile cho bỏ trống mã: trước enqueue tự tạo `MH-` + 12 ký tự theo [ADR-014](../architecture/adr/ADR-014-short-business-codes.md), giữ mã đó trong payload bền vững qua retry/remap; mã người dùng nhập không được thay thế. Không tạo mã mới khi replay operation. Sale mới dùng `INV-` + 12 ký tự cùng thuật toán ở app/backend; reverse/correction do backend tạo cũng dùng số ngắn. UUID identity không đổi; số hóa đơn đã lưu và nháp legacy dùng UUID đầy đủ được giữ nguyên. Deploy API/worker trước mobile để số ngắn không bị ghi lại thành số dài.
 
 ```json
 {
