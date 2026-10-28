@@ -34,6 +34,11 @@ PrintJob (PC): accepted -> printing -> submitted | uncertain | failed
 - Printer timeout không rollback invoice/payment.
 - Retry/reprint dùng `PrintJobId`.
 - UI hiển thị invoice success và print failure riêng.
+- Khi màn hình in đang mở, app tự kiểm tra cùng UUID/nội dung sau mỗi 2 giây
+  nếu trạng thái là `accepted`/`printing`, tối đa 30 lần. Terminal hiển thị
+  dialog và trạng thái trên màn hình; `submitted` chỉ xác nhận gửi Windows.
+  Hết lượt hoặc lỗi mạng dừng tự kiểm tra, báo rõ và cho kiểm tra thủ công
+  cùng lệnh; đóng màn hình hủy timer, không hủy job PC hoặc tự in thêm.
 - Print payload lấy từ invoice snapshot, không đọc giá hiện tại.
 - Bridge persist UUID/hash trước khi worker claim; gửi lại cùng UUID/nội dung chỉ đọc trạng thái. Không retry tự động job đã bắt đầu spool. Crash tại printing chuyển uncertain; chỉ in thêm bản mới sau xác nhận và kiểm tra queue/giấy. Submitted không phải giấy đã in.
 - Điện thoại lưu journal theo hash tài liệu trong secure storage tenant/user trước network; cùng tài liệu giữ UUID qua restart và in tài liệu khác xen giữa. Đổi ảnh (mẫu/ngôn ngữ/cấu hình) là tài liệu mới; phải kiểm tra queue nếu đã có lần in trước.
