@@ -49,6 +49,10 @@ Migration `20261023084741_AddInvoiceServiceCharges` chỉ expand: thêm `invoice
 
 Apply schema trước khi triển khai API/Worker và mobile hỗ trợ payloadVersion 2. Sau khi có hóa đơn chứa phí, không rollback về backend cũ hoặc chạy Down migration vì sẽ mất snapshot phí. Chỉ nâng cấp schema bằng migration có kiểm soát, xác nhận target/backup trước khi apply.
 
+### 4.3. Giá niêm yết và hệ số quy đổi sản phẩm
+
+Migration `AddProductPricingInputs` thêm `ListedPrice` và `CalculationQuantity` vào `products` cùng `product_variants`. Backfill dữ liệu cũ bằng `ListedPrice = BasePrice`, `CalculationQuantity = 1`, giữ nguyên giá bán hiện tại. API và catalog command mới ghi đủ ba giá trị; `BasePrice` được tính lại từ giá niêm yết nhân hệ số và làm tròn bốn chữ số. Bản mobile cũ gửi `basePrice` được xử lý tương thích bằng hệ số 1. Không cập nhật lại giá lịch sử trên hóa đơn.
+
 ## 5. Rollback
 
 Migration rollback chỉ dùng khi đã test. Với migration dữ liệu không đảo ngược được, rollback bằng forward migration hoặc restore backup theo runbook. Không hứa rollback code là rollback data.

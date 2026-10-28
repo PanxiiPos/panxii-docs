@@ -1160,14 +1160,18 @@ components:
           description: Required for prices; unique physical IDs, validated before any mutation.
           items:
             type: object
-            required: [productId, expectedVersion, price]
+            required: [productId, expectedVersion, listedPrice, calculationQuantity]
             properties:
               productId: { type: string, format: uuid }
               variantId: { type: string, format: uuid, nullable: true }
               expectedVersion: { type: integer, format: int64, minimum: 1 }
-              price:
+              listedPrice:
                 oneOf:
                   - { type: string, pattern: '^[0-9]{1,15}(\.[0-9]{1,4})?$', example: '25200.1234' }
+                  - { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, maximum: 999999999999999.9999 }
+              calculationQuantity:
+                oneOf:
+                  - { type: string, pattern: '^[0-9]{1,15}(\.[0-9]{1,4})?$', example: '2.5' }
                   - { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, maximum: 999999999999999.9999 }
     CatalogCommandResult:
       type: object
@@ -1251,6 +1255,8 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, description: Listed unit price used to calculate basePrice with calculationQuantity. }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, description: Quantity/weight per sale unit; basePrice equals listedPrice times calculationQuantity, rounded to four decimal places. }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
         extraData: { $ref: '#/components/schemas/ProductExtraData' }
@@ -1263,6 +1269,8 @@ components:
         barcode: { type: string, maxLength: 64, nullable: true }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
         expectedVersion: { type: integer, format: int64, minimum: 1 }
@@ -1276,6 +1284,8 @@ components:
         name: { type: string, maxLength: 200, nullable: true }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
         taxRate: { type: number, format: decimal, enum: [0], default: 0 }
         extraData:
           type: object
@@ -1293,7 +1303,7 @@ components:
             expectedVersion: { type: integer, format: int64, minimum: 1 }
     ProductVariant:
       type: object
-      required: [id, productId, sku, unit, basePrice, taxRate, isActive, version, updatedAtUtc]
+      required: [id, productId, sku, unit, basePrice, listedPrice, calculationQuantity, taxRate, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
         productId: { type: string, format: uuid }
@@ -1303,6 +1313,10 @@ components:
         unit: { type: string }
         basePrice: { type: number, format: decimal }
         basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
+        listedPrice: { type: number, format: decimal }
+        listedPriceText: { type: string, description: Exact invariant decimal companion for listedPrice. }
+        calculationQuantity: { type: number, format: decimal }
+        calculationQuantityText: { type: string, description: Exact invariant decimal companion for calculationQuantity. }
         taxRate: { type: number, format: decimal }
         isActive: { type: boolean }
         version: { type: integer, format: int64 }
@@ -1376,10 +1390,10 @@ components:
       type: object
       additionalProperties: false
       required: [operation, mode, value]
-      description: Select one or both price collections. Product IDs target the legacy/base price and its default variant; variant IDs target those specific variant prices. Selecting a product and its default variant together applies one adjustment to the shared price, not two.
+      description: Select one or both price collections. Product IDs target the listed price and its default variant; variant IDs target those specific variant listed prices. The sale price is recalculated from listedPrice × calculationQuantity. Selecting a product and its default variant together applies one adjustment, not two.
       properties:
-        productIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Product/base prices to adjust. }
-        variantIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Specific variant prices to adjust. }
+        productIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Product listed prices to adjust. }
+        variantIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Specific variant listed prices to adjust. }
         operation: { type: string, enum: [Increase, Decrease], x-error-code: ERR_INVALID_ENUM }
         mode: { type: string, enum: [Percentage, FixedAmount], x-error-code: ERR_INVALID_ENUM }
         value: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE }
@@ -1673,7 +1687,7 @@ components:
               lineTotal: { type: number, format: decimal }
     Product:
       type: object
-      required: [id, sku, name, unit, basePrice, taxRate, isActive, version, updatedAtUtc]
+      required: [id, sku, name, unit, basePrice, listedPrice, calculationQuantity, taxRate, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
         categoryId: { type: string, format: uuid, nullable: true }
@@ -1684,6 +1698,10 @@ components:
         unit: { type: string }
         basePrice: { type: number, format: decimal }
         basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
+        listedPrice: { type: number, format: decimal }
+        listedPriceText: { type: string, description: Exact invariant decimal companion for listedPrice. }
+        calculationQuantity: { type: number, format: decimal }
+        calculationQuantityText: { type: string, description: Exact invariant decimal companion for calculationQuantity. }
         taxRate: { type: number, format: decimal }
         isActive: { type: boolean }
         version: { type: integer, format: int64 }
