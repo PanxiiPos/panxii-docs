@@ -116,7 +116,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [infrastructure_setup.md](infrastructure/infrastructure_setup.md) | Docker, Nginx, VPS, MySQL, RabbitMQ, CI/CD, health check |
-| [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | Hướng dẫn và trạng thái Oracle/GitHub Actions/APK/Printer Bridge; Shorebird đã có release thử nội bộ, chưa kiểm thử patch |
+| [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | Hướng dẫn và trạng thái Oracle/GitHub Actions/APK/Printer Bridge; Shorebird `0.1.3+4` đã publish, cài trên thiết bị thử nghiệm và hiện version trong Settings |
 | [operations_runbook.md](infrastructure/operations_runbook.md) | Xử lý outbox, DLQ, MySQL, SignalR, revoke và incident |
 | [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret |
 | [slo_observability.md](infrastructure/slo_observability.md) | SLO, metrics, alert threshold, error budget và correlation |

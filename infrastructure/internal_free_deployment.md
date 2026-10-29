@@ -1,6 +1,6 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-10-28.
+- Cập nhật: 2026-10-29.
 - Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
   Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
   hạ tầng là đã triển khai.
@@ -16,8 +16,9 @@
 | Oracle Cloud | Chọn thử Always Free; chưa xác nhận đã tạo VM, IP hoặc dịch vụ |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
-| Android | Phân phối APK nội bộ trước; cấu hình release hiện còn dùng debug key, phải thay trước khi phát hành |
-| Shorebird | App `Panxii Internal`, `auto_update: false`; release Android `0.1.0+1` đã active và cài trên Samsung SM-A336E; chưa kiểm thử patch thật |
+| Android | APK nội bộ `0.1.3+4` đã cài trên Samsung SM-A336E, versionCode `4`; Settings hiển thị đúng version/build; ký debug key chỉ dùng thử, không phân phối production |
+| Shorebird | App `Panxii Internal`, `auto_update: false`; `0.1.3+4` active (release ID `934536`) và đã cài; `0.1.2+3` (ID `934520`), `0.1.1+2` (ID `934441`) và `0.1.0+1` (ID `931436`) vẫn active. Không phát hành patch vì assets dịch đã đổi; APK đầy đủ bao gồm assets. Chưa thử tải APK qua HTTPS |
+| Update policy | API local trả minimum/latest `0.1.0`, `downloadUrls` rỗng; app cũ không tự được thông báo/tải `0.1.3`. Dialog native từng xác nhận với policy tạm thời `0.1.1`; chưa bật policy mới do thiếu URL HTTPS |
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
@@ -207,6 +208,28 @@ luồng người dùng xác nhận. Giữ nguyên `app_id` thật vừa sinh.
 - Không chạy `flutter run` lên thiết bị đang kiểm thử OTA vì sẽ thay bản
   Shorebird bằng bản debug thông thường. Sau khi quay lại phát triển debug,
   cần cài lại APK nền Shorebird để thử OTA.
+
+#### Thử native update ngày 2026-10-29 — thông báo chưa xác nhận
+
+- Shorebird release Android `0.1.1+2`, ID `934441`, active; Flutter `3.47.8`
+  (revision `6e5e949520159b5ceb029598be37520cd433b046`). APK thử nội bộ được ký
+  bằng debug key như lựa chọn hiện tại; SHA-256 artifact:
+  `BB8FB500DE157F2C38D94482E4F65E1BD52FB742155F436B03AE2888210E87E6`.
+- Không cài APK mới. Samsung vẫn ở `0.1.0` / versionCode `1`, giữ nguyên app
+  và dữ liệu hiện có.
+- Đã tạm đặt API local `latestNativeVersion=0.1.1` trong lúc thử rồi khôi phục
+  về `0.1.0`; không đổi `minimumNativeVersion` hay cấu hình production.
+  App không hiện dialog cập nhật; UI gặp trạng thái retry/lỗi tải cấu hình cửa
+  hàng. Vì vậy không xác nhận client đã nhận policy phiên bản mới.
+- App thử dùng API `http://127.0.0.1:5099/api/v1` qua `adb reverse`. APK có
+  `targetSdk 36`; Android manifest hiện không khai báo
+  `android:usesCleartextTraffic` hoặc `networkSecurityConfig`. HTTP cleartext
+  bị Android chặn mặc định với target mới, nên đây là nguyên nhân khả dĩ cần
+  kiểm tra; chưa có log xác nhận request cụ thể bị chặn. Không bật cleartext
+  rộng cho production. Lần thử lại cần API HTTPS mà điện thoại tin cậy, hoặc
+  một cấu hình kiểm thử chỉ giới hạn local đã được review.
+- Sau thử nghiệm, API health vẫn `ok`, policy trả minimum/latest `0.1.0`,
+  port forwarding tạm đã gỡ, và không có thay đổi mã nguồn mobile/backend.
 
 Các bước ký release dưới đây áp dụng cho bản phân phối thật, không phải
 ngoại lệ debug key của bản thử nội bộ trên.
