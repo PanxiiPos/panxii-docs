@@ -25,6 +25,59 @@ Giá trị chính thức phải được chốt theo gói SaaS; tài liệu này
 5. Đo thời gian restore.
 6. Ghi kết quả và khắc phục gap.
 
+### 3.1. Gate tự động trên môi trường cô lập
+
+Từ thư mục `backend`, chạy:
+
+```powershell
+.\scripts\test-resilience.ps1
+```
+
+Runner cần .NET 8 SDK, Docker Linux engine và Compose v2 trở lên. Runner tự
+tạo project `panxii-resilience-<UUID>`, credential giả, port loopback động,
+hai database/volume riêng và broker riêng; không nhận URL hoặc credential
+production. Nó cố ý SIGKILL service test và xóa **chỉ volume của project test**
+khi kết thúc. Không thay runner để trỏ vào stack đang sử dụng thật.
+
+Gate kiểm tra dump MySQL thực tế, nén và mã hóa AES-GCM, đọc lại artifact,
+restore sang MySQL riêng và so fingerprint toàn bộ bảng (không chỉ row count).
+API/Worker restore dùng vhost riêng; login, replay operation, sync/pull và reverse phải
+hoạt động mà không ghi dữ liệu thử vào database nguồn. Backup hỏng, sai key,
+truncated, dump không hoàn tất hoặc lệnh dump thất bại không được báo thành công.
+Key chỉ dùng trong test; đây **không phải** script backup production.
+
+Các test còn kiểm tra crash giữa hai lần SaveChanges trước commit, transaction
+rollback, retry trùng, broker/worker/API/Nginx restart, DLQ và SignalR/pull.
+Chi tiết và giới hạn bằng chứng tại
+[risk_based_testing_spec.md](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai).
+
+TRX được lưu tại `backend/artifacts/resilience/<project>/resilience.trx`.
+`manifest.json` cùng thư mục ghi commit, working tree dirty, SHA-256 source,
+thời gian chạy và cleanup; source đổi trong lúc test thì gate fail.
+Runner trả exit code khác 0 nếu test fail, skip, thiếu report, số test không đủ
+hoặc cleanup lỗi. Không retry nguyên test suite tự động để che lỗi.
+
+**Chưa được chứng minh bởi gate local:** upload/download OCI thực tế, cron
+production, retention/alert, HTTPS/certificate renewal, recovery từ mất cả VM,
+RPO/RTO của dữ liệu thật, SQLCipher trên thiết bị và Shorebird OTA. Những mục
+này vẫn là điều kiện release riêng; test local pass không tự cấp phép deploy.
+
+### 3.2. Snapshot dữ liệu development hiện có trước fault test mobile
+
+Runner `backend/scripts/test-development-mobile.ps1 -AllowDevelopmentInterruption`
+tạo backup **database development hiện có**, không phải database tổng hợp của
+mục 3.1. API/Worker dừng trong lúc snapshot; dump được nén và mã hóa AES-GCM,
+đọc lại rồi restore vào MySQL disposable. Fingerprint toàn bộ bảng phải khớp
+trước khi deploy lại API/Worker. Không restore đè database nguồn.
+
+Artifact nằm ở `backend/artifacts/development-mobile/<run>/database.backup`;
+`backup-key.dpapi` giữ key được bảo vệ bằng Windows DPAPI cho tài khoản chạy
+runner, `backup-restore.json` ghi hash artifact và số bảng được đối chiếu.
+Đây là bản sao local có thể đọc lại bằng tài khoản Windows đó và helper
+`RecoveryBackup` trong test; không phải cron/retention/off-VM backup production.
+Không coi việc copy ciphertext và DPAPI key sang VM Linux là key recovery.
+Xem [phạm vi và bằng chứng mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy).
+
 ## 4. Mất VPS
 
 1. Chặn DNS/traffic nếu cần.

@@ -53,3 +53,19 @@ PrintJob (PC): accepted -> printing -> submitted | uncertain | failed
 - Reopen sau corruption.
 - Printer offline/timeout/mất giữa job.
 - Retry print không tạo invoice thứ hai.
+
+### 4.1. Runner Android development
+
+`backend/scripts/test-development-mobile.ps1 -AllowDevelopmentInterruption`
+chạy SQLCipher thật trên emulator, kiểm tra rollback khi outbox insert lỗi,
+invoice/outbox offline, immutable submit và frozen UUID/payload. Host force-stop
+app tại durable Uploading, xác nhận PID cũ đã mất và pha resume dùng PID mới;
+SQLCipher reopen phải reset Uploading về Pending mà không đổi UUID/payload.
+Cuối run kiểm tra `integrity_check`, `foreign_key_check` và local/server convergence.
+
+Runner có backup/restore dữ liệu development trước deploy, tạm ngắt các service
+development và cài lại app debug thường sau test, không clear dữ liệu app.
+Chỉ chạy khi có đồng ý của người vận hành. Xem
+[gate mobile development](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy).
+Chưa chứng minh kill tại mọi điểm của transaction, mất điện/WAL/disk full,
+corruption/key recovery hoặc máy in thật.
