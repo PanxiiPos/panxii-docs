@@ -133,6 +133,13 @@ API does not wait for command processing. It returns `202` only after RabbitMQ
 confirms the persistent command. If RabbitMQ is unavailable before confirmation,
 the API returns `503 ERR_SERVICE_UNAVAILABLE` and does not claim acceptance.
 
+Command/outbox publisher giới hạn connection attempt 2 giây và protocol
+operation/publisher confirm 5 giây. Publisher tự tạo lại connection/channel sau
+lỗi, không dùng automatic recovery để tránh race với disposal của cùng owner;
+consumer/SignalR relay vẫn dùng recovery của kết nối consume. Request đã bị hủy
+không được bắt đầu publish sau khi chờ lock. Gate resilience kiểm tra broker
+down/restart và retry cùng operation với HTTP timeout 15 giây.
+
 ## 7. Transactional outbox publisher
 
 1. Worker commits entity, `sync_operations`, `server_changes`, and

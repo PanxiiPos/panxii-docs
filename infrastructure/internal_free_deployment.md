@@ -16,6 +16,8 @@
 | Oracle Cloud | Chọn thử Always Free; chưa xác nhận đã tạo VM, IP hoặc dịch vụ |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
+| Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh OCI backup, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
+| Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh OCI/off-VM backup, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
 | Android | APK nội bộ `0.1.3+4` đã cài trên Samsung SM-A336E, versionCode `4`; Settings hiển thị đúng version/build; ký debug key chỉ dùng thử, không phân phối production |
 | Shorebird | App `Panxii Internal`, `auto_update: false`; `0.1.3+4` active (release ID `934536`) và đã cài; `0.1.2+3` (ID `934520`), `0.1.1+2` (ID `934441`) và `0.1.0+1` (ID `931436`) vẫn active. Không phát hành patch vì assets dịch đã đổi; APK đầy đủ bao gồm assets. Chưa thử tải APK qua HTTPS |
 | Update policy | API local trả minimum/latest `0.1.0`, `downloadUrls` rỗng; app cũ không tự được thông báo/tải `0.1.3`. Dialog native từng xác nhận với policy tạm thời `0.1.1`; chưa bật policy mới do thiếu URL HTTPS |
@@ -305,6 +307,7 @@ Không mở các cổng này trên VPS/router Internet.
 Trước khi sử dụng thật:
 
 - [ ] Backup MySQL ngoài VM và thử restore vào môi trường tách biệt.
+- [ ] Chạy gate resilience trên stack cô lập; kiểm tra TRX/manifest và bằng chứng Flutter/SQLCipher, OCI backup, TLS, Shorebird riêng. Không chạy chaos trên VM production.
 - [ ] Xác nhận toàn bộ tài nguyên cloud/CI/storage còn trong mức chi phí chấp nhận.
 - [ ] HTTPS và gia hạn chứng chỉ hoạt động; không công khai DB/broker.
 - [ ] Đăng nhập, offline → online, sync/retry và tenant isolation đạt.

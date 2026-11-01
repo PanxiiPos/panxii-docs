@@ -109,7 +109,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 |---|---|
 | [testing_strategy.md](testing/testing_strategy.md) | Unit, integration, API contract, offline E2E, RabbitMQ chaos và k6 |
 | [role_based_test_cases.md](testing/role_based_test_cases.md) | Test case chức năng theo role, boundary, validation và tenant isolation |
-| [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, lệch giờ/sai thứ tự sync, SQLite/printer failure và API breaking change |
+| [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, ordering, SQLite/printer failure, API breaking change, gate Docker resilience 22 test và gate mobile development opt-in |
 
 ### 2.8. Infrastructure và release
 
@@ -118,7 +118,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [infrastructure_setup.md](infrastructure/infrastructure_setup.md) | Docker, Nginx, VPS, MySQL, RabbitMQ, CI/CD, health check |
 | [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | Hướng dẫn và trạng thái Oracle/GitHub Actions/APK/Printer Bridge; Shorebird `0.1.3+4` đã publish, cài trên thiết bị thử nghiệm và hiện version trong Settings |
 | [operations_runbook.md](infrastructure/operations_runbook.md) | Xử lý outbox, DLQ, MySQL, SignalR, revoke và incident |
-| [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret |
+| [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret, runner dump/restore cô lập và snapshot development trước test mobile; không thay thế backup production |
 | [slo_observability.md](infrastructure/slo_observability.md) | SLO, metrics, alert threshold, error budget và correlation |
 | [release_management.md](release/release_management.md) | Versioning, rollout, migration gate, mobile compatibility và rollback |
 
@@ -127,7 +127,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [payment_specification.md](payment/payment_specification.md) | Payment model, cash/non-cash, capture/refund và reconciliation |
-| [sqlite_print_recovery_spec.md](sync/sqlite_print_recovery_spec.md) | SQLite/SQLCipher recovery và print out-of-band |
+| [sqlite_print_recovery_spec.md](sync/sqlite_print_recovery_spec.md) | SQLite/SQLCipher recovery, Android force-stop/restart runner và print out-of-band |
 
 ---
 
