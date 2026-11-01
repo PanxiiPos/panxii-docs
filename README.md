@@ -121,6 +121,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret, runner dump/restore cô lập và snapshot development trước test mobile; không thay thế backup production |
 | [slo_observability.md](infrastructure/slo_observability.md) | SLO, metrics, alert threshold, error budget và correlation |
 | [release_management.md](release/release_management.md) | Versioning, rollout, migration gate, mobile compatibility và rollback |
+| [production_readiness_plan.md](release/production_readiness_plan.md) | Kế hoạch 6 công việc trước production: hạ tầng, backup, HTTPS, APK/OTA, CI/monitoring và capacity/pilot; prerequisite và gate GO/NO-GO |
 
 ### 2.9. Module nghiệp vụ mở rộng
 

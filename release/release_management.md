@@ -1,5 +1,9 @@
 # RELEASE MANAGEMENT
 
+Kế hoạch triển khai trước go-live:
+[6 công việc production readiness](production_readiness_plan.md).
+Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
+
 Hướng triển khai nội bộ tiết kiệm chi phí và setup OTA để thực hiện sau:
 [Oracle Always Free, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
 Shorebird Android `0.1.3+4`, release ID `934536`, đã publish và cài trên
