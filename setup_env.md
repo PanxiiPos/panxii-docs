@@ -5,13 +5,14 @@
 > Dự án đã có source; không chạy lại các lệnh tạo project bên dưới lên repository
 > hiện tại. Với triển khai nội bộ tiết kiệm chi phí, làm theo
 > [hướng dẫn VPS thuê và Shorebird Free](infrastructure/internal_free_deployment.md).
-> Hướng dẫn đó ghi rõ bước nào chưa thực hiện; hiện chưa cần đăng nhập hay deploy.
+> Hướng dẫn đó phân biệt bằng chứng đã triển khai và gate còn thiếu; không chạy
+> lại bootstrap/seed lên database VPS đã có dữ liệu pilot.
 
 ---
 
 ## 1. YÊU CẦU CÔNG CỤ (PREREQUISITES)
 *   **IDE:** Cursor, Windsurf, hoặc VS Code.
-*   **Backend:** .NET 8.0 SDK, Entity Framework Core CLI (`dotnet tool install --global dotnet-ef`).
+*   **Backend:** .NET SDK 10.0.403 theo `backend/global.json`; EF CLI phải tương thích EF Core 8.0.33 hiện tại (`dotnet tool install --global dotnet-ef --version 8.0.33`). Runtime 10 LTS không kéo dài lifecycle EF 8; xem [readiness](release/production_readiness_plan.md).
 *   **Mobile:** Flutter SDK (bản Stable mới nhất).
 *   **DevOps:** Docker Desktop (cho Local), Git.
 *   **OTA Tool:** Shorebird CLI (Cài đặt qua `shorebird.dev`).

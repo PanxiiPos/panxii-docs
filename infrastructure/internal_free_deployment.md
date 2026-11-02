@@ -19,13 +19,14 @@
 | Secrets VPS | Secrets production được lưu ngoài repository và giới hạn quyền truy cập. Không công bố vị trí hoặc cấu hình lưu trữ chi tiết. |
 | Backup | Backup được mã hóa và có bước xác minh; quy trình, lịch và thông tin khôi phục chỉ lưu trong hồ sơ vận hành riêng. |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
-| Monitoring | Monitor trên host mỗi 5 phút kiểm tra TLS/health/services/disk/backup age; OnFailure backup/TLS/monitor gửi Discord. Inject lỗi và owner xác nhận nhận cảnh báo. Chưa có availability monitor độc lập ngoài VPS hoặc toàn bộ metrics queue/outbox/latency |
-| CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
+| Monitoring/admin | Host monitor 5 phút, Discord OnFailure đã thử. Private Swagger và Dozzle 11.4.0 qua SSH tunnel; socket proxy read-only nội bộ, tắt shell/actions/analytics/image checks/auto-update. UI thấy 7 containers/log API; fake mutation/exec trả 403. URL workstation `http://localhost:18081/swagger`, `http://localhost:19999`; Dozzle dùng SSH key, không dùng account ứng dụng. Owner xác nhận SuperAdmin login Swagger. Chưa có UI SuperAdmin mobile hoặc independent outage monitor |
+| CI/CD | [CI 41450422464](https://github.com/PanxiiPos/panxii-backend/actions/runs/41450422464) tại `67d00b7` xanh build-test/resilience; run `41452714399` cho SHA mới `02623e1` đang chờ/chạy khi ghi nhận. Có script backup-first deploy/failure rollback và isolated runtime rollback .NET 10 -> image VPS .NET 8 -> .NET 10 cùng DB; 22/22 pass. Chưa xác nhận required merge checks; không auto-deploy production |
 | Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh backup ngoài VM, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
 | Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
-| Android | APK nội bộ `0.1.3+4` đã cài trên Samsung SM-A336E, versionCode `4`; Settings hiển thị đúng version/build; ký debug key chỉ dùng thử, không phân phối production |
-| Shorebird | App `Panxii Internal`, `auto_update: false`; `0.1.3+4` active (release ID `934536`) và đã cài; `0.1.2+3` (ID `934520`), `0.1.1+2` (ID `934441`) và `0.1.0+1` (ID `931436`) vẫn active. Không phát hành patch vì assets dịch đã đổi; APK đầy đủ bao gồm assets. Chưa thử tải APK qua HTTPS |
-| Update policy | API local trả minimum/latest `0.1.0`, `downloadUrls` rỗng; app cũ không tự được thông báo/tải `0.1.3`. Dialog native từng xác nhận với policy tạm thời `0.1.1`; chưa bật policy mới do thiếu URL HTTPS |
+| Android | Production-signed `0.1.4+5` cài/chạy trên một Samsung SM-A336E, package `.production`, song song app debug không xóa dữ liệu. [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk) hash đã khớp; khóa/recovery ngoài repo, owner giữ mật khẩu. Chưa nghiệm thu đầy đủ TenantAdmin physical pilot |
+| Shorebird | `auto_update: false`; production `0.1.4+5` patch 1 tải/verify/apply/restart pass; rollback thực tế về native base pass. Roll forward đã bật server-side nhưng chưa xác nhận thiết bị reapply. OTA bắt buộc ngày đầu; xem [release evidence](../release/release_management.md) |
+| Update policy | Production minimum `0.1.0`, latest `0.1.4`, Android HTTPS URL thật. Policy local/development độc lập, không tự ép native update production |
+| Capacity/pilot | 5 synthetic HTTPS clients từ VPS, 200 hóa đơn/ngày, backlog 100, 2000 variants; backlog+replay 18,84 giây, read/pull p95 234,72/287,73 ms. Soak restart sau sửa cursor lúc 20:18:57 ngày 02/11 UTC+7, có mẫu mới; đủ 24 giờ từ 20:18:57 ngày 03/11 rồi cần final audit. Không phải 5 điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu theo owner |
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
@@ -37,9 +38,10 @@ Quy trình lặp lại và cấu hình hiện có tại
 Các ví dụ dưới đây là thao tác cần làm sau; không dán nguyên ví dụ có placeholder
 vào production. Không gửi mật khẩu, private key, keystore hoặc token vào chat/Git.
 
-**Review trước GO:** .NET 8 EOL ngày 2026-11-10 theo
+**Review trước GO:** runtime đã lên .NET 10 LTS (EOL 2028-11-14), nhưng
+EF Core 8.0.33/Pomelo 8.0.3 tạm giữ theo owner; EF 8 EOL ngày 2026-11-10 theo
 [Microsoft release metadata](https://raw.githubusercontent.com/dotnet/core/main/release-notes/releases-index.json).
-Cần chốt nâng runtime/framework, review lifecycle MySQL/RabbitMQ và kiểm thử
+Cần chốt provider strategy, review lifecycle MySQL/RabbitMQ và kiểm thử
 tương thích; image đã pin không đồng nghĩa còn được hỗ trợ. Không tự nâng major
 database trên volume hiện có hoặc coi cập nhật OS là đã xử lý dependency này.
 

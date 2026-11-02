@@ -25,20 +25,20 @@ Chỉ Nginx mở public. MySQL, RabbitMQ và internal API nằm trong private Do
 
 Các service đề nghị:
 
-- `api`: ASP.NET Core 8 Web API.
+- `api`: ASP.NET Core 10 LTS Web API.
 - `worker`: durable command consumer and transactional outbox publisher.
 - `mysql`: MySQL 8 volume persistent.
 - `rabbitmq`: RabbitMQ management chỉ bind localhost hoặc private admin network.
 - `nginx`: reverse proxy và TLS.
 - `backup`: cronjob/container hoặc host cron chạy backup.
-- `dozzle`: chỉ mở qua VPN/basic auth, không public mặc định.
+- `dozzle`: deployment hiện tại chỉ qua SSH tunnel, bind loopback; Docker socket qua proxy read-only nội bộ, tắt shell/actions/analytics.
 
 Không build production bằng image `latest`; pin version và publish digest khi có thể.
 
 ## 3. Dockerfile API mẫu
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 EXPOSE 8080
 USER $APP_UID
