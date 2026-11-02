@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **kế hoạch, chưa triển khai các công việc bên dưới**.
+- Trạng thái: **đã triển khai nền tảng VPS/HTTPS/backup/monitoring; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -17,11 +17,44 @@ Xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md).
 Ngày 2026-11-02 đã dựng VPS private: API/Worker Production, MySQL/RabbitMQ,
 17 migrations và duy nhất một SuperAdmin; health, login/platform/logout,
 bootstrap chống ghi đè và restart API/Worker đã pass. Các bảng nghiệp vụ trống.
-Secrets chỉ trên VPS `.env` quyền 600; SSH key-only, API chỉ loopback.
-Chưa có domain/HTTPS, backup ngoài máy, pipeline deploy, signing release
-hoặc Shorebird patch/rollback; **chưa GO production**. Oracle Always Free đã
+Secrets chỉ trên VPS `.env` quyền 600; SSH key-only, origin API chỉ loopback.
+Sau đó đã triển khai Nginx public cho `https://panxii.duckdns.org`, backup mã hóa
+Google Drive và monitoring/Discord như bảng dưới. Pipeline deploy, signing release
+và Shorebird patch/rollback chưa nghiệm thu; **chưa GO production**. Oracle Always Free đã
 bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồng nghĩa
 đã merge. Xem [trạng thái VPS](../infrastructure/internal_free_deployment.md).
+
+### Bằng chứng triển khai ngày 2026-11-02
+
+Source/image VPS: `3f171a2181b5cc27ef587581f5386a4047455b54`, branch
+`feature/production-vps`; API runtime `8.0.33`. Kiểm tra cuối sau reboot/deploy:
+0 gói OS chờ update, không có systemd unit failed, 18 bảng vẫn chỉ có một
+admin cùng metadata/default settings, không có dữ liệu nghiệp vụ/session/audit.
+Probe query-token không xuất hiện trong cả log Nginx/API; runtime containers
+không nhận OAuth/crypt/webhook hoặc root/bootstrap secrets. Giữ image API/Worker
+trước để rollback; chưa nghiệm thu diễn tập rollback staging.
+
+| Công việc | Đã kiểm chứng | Còn thiếu để nghiệm thu toàn gate |
+|---|---|---|
+| 1. Hạ tầng | API/Worker/MySQL/RabbitMQ/Nginx x64; secrets VPS-only, origin private; cập nhật 326 gói OS và 17 gói mới, boot kernel `5.15.0-202-generic`, SSH/HTTPS trở lại | Review lifecycle/patch các runtime/image, smoke nghiệp vụ và hồ sơ quota/capacity |
+| 2. Backup | Rclone crypt lên Google Drive; lịch 06/12/21 UTC+7; giữ 6 bản scheduled đã xác minh, xóa vĩnh viễn bản cũ sau thành công; manual riêng; upload/download/decrypt pass; restore MySQL `network none` khớp fingerprint dữ liệu 18 bảng (~33 giây); khóa khôi phục xuất thành file mã hóa ngoài VPS, owner xác nhận giữ mật khẩu | Hai lịch tự động liên tiếp thực sự, restore bằng file recovery trên môi trường thay thế, API/login/sync/pull/reverse và RTO đầy đủ; thời gian ~33 giây không phải RTO cam kết |
+| 3. HTTPS | DuckDNS trỏ đúng VPS, chứng chỉ Let's Encrypt đúng hostname đến 2027-01-31; HTTP 308; renewal dry-run pass; chỉ mở 22/80/443; trusted proxy một hop, chống giả IP vượt auth rate limit, Swagger/dependency readiness không public; Nginx hỗ trợ WebSocket/DNS recreate | Login/sync/pull/SignalR có xác thực trên thiết bị cửa hàng; kiểm tra giới hạn batch thực tế |
+| 4. APK/OTA | Chưa thay release/signing; APK debug cũ không được coi là production | Toàn bộ gate release signing, phân phối HTTPS và OTA theo phạm vi đã chốt |
+| 5. Vận hành | Host monitor 5 phút: health, services, disk, tuổi backup, hạn TLS; OnFailure backup/TLS/monitor gửi Discord, inject lỗi và owner xác nhận nhận; runbook/rollback private có sẵn | Monitor độc lập ngoài VPS, queue/outbox/latency/RAM, CI gates, deploy/rollback staging và người vận hành nghiệm thu |
+| 6. Capacity/pilot | Không tạo dữ liệu demo/cửa hàng trên database mới; chưa chạy stress vào VPS | Chốt workload, load/soak, thiết bị pilot, Canon nếu dùng ngày đầu và quyết định GO |
+
+Kiểm thử thay đổi: 27 proxy/authorization tests .NET pass; API Release build
+0 warning/error. Test project còn warning EF Relational đã tồn tại từ trước.
+14 test Python backup pass, gồm dump rỗng/truncated/lỗi, upload/download/marker
+lỗi không prune, chống clock rollback và giữ đúng 6 bản, xóa không qua Drive Trash.
+Các test retention dùng storage giả; không tạo/xóa dữ liệu thử trong Drive thật.
+
+**Blocker lifecycle:** metadata chính thức của Microsoft ghi .NET 8 EOL
+**2026-11-10**; cần kế hoạch nâng runtime/framework và nghiệm thu tương thích
+trước vận hành lâu dài, không coi pin image là còn được hỗ trợ.
+Xem [release metadata](https://raw.githubusercontent.com/dotnet/core/main/release-notes/releases-index.json).
+Lifecycle MySQL/RabbitMQ cũng phải được đối chiếu vendor trước GO; chưa tự
+nâng major database/broker trên volume hiện có trong đợt cấu hình này.
 
 Chuẩn bị script/config trên development. Dựng VM dự kiến production nhưng
 **chưa nhận giao dịch thật**, dùng tenant test riêng để nghiệm thu. Chỉ chuyển
@@ -209,11 +242,11 @@ Không đặt ngày go-live cố định trước khi xác nhận VPS/hostname/s
 
 ## 4. Những quyết định cần chủ cửa hàng chốt
 
-1. Nhà cung cấp VPS và nơi lưu backup **đã chốt**: thuevpsgiare.vn gói VPS SSD C4; Google Drive qua Rclone. Còn phải chốt hostname/DDNS.
+1. Nhà cung cấp VPS, backup và hostname **đã chốt**: thuevpsgiare.vn gói VPS SSD C4; Google Drive qua Rclone; `panxii.duckdns.org`.
 2. RPO/retention **đã chốt** (3 lượt/ngày, giữ 6 bản mới nhất, chấp nhận mất tới ~9 giờ). Còn phải chốt RTO sau drill và người giữ recovery key.
 3. Số thiết bị/tải/backlog cần nghiệm thu; ngưỡng latency và soak duration.
 4. OTA và in Canon có bắt buộc ngày đầu không; thiết bị pilot/kênh tải APK.
-5. Kênh nhận cảnh báo và người quyết định rollback/GO.
+5. Kênh cảnh báo **đã chốt Discord**, owner đã xác nhận nhận alert thử; còn người quyết định rollback/GO.
 
 Chỉ hỏi khi đến công việc liên quan; không yêu cầu người dùng gửi credentials
 vào chat. Tạo secrets qua nơi lưu phù hợp và giữ mọi tài nguyên trong quota.

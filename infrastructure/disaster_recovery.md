@@ -17,6 +17,28 @@ Giá trị chính thức phải được chốt theo gói SaaS; tài liệu này
 - Lưu cấu hình deployment, migration metadata và secret recovery procedure riêng.
 - RabbitMQ event không thay thế backup MySQL.
 
+### 2.1. Triển khai VPS ngày 2026-11-02
+
+- Script production tại [backend deploy](../../backend/deploy/README.md):
+  MySQL transactional dump + gzip, Rclone crypt mã hóa tên/nội dung trước
+  Google Drive, download/decrypt compare và marker readback trước retention.
+- Systemd timer dùng Asia/Ho_Chi_Minh đúng 06/12/21; giữ 6 bản scheduled đã
+  xác minh, xóa vĩnh viễn bản cũ thay vì đưa vào Drive Trash. Manual trước
+  deploy/OS update nằm riêng, không bị scheduled retention xóa.
+- `.env` root:root 600 giữ OAuth/crypt settings. File khôi phục chỉ chứa crypt
+  settings được xuất ngoài VPS với scrypt/AES-GCM; mật khẩu do owner nhập kín,
+  không phụ thuộc Windows DPAPI. Giữ file và mật khẩu độc lập với VPS.
+- Manual backup và service-triggered smoke đã thành công. Tải bản từ Drive,
+  restore MySQL disposable `--network none`, inventory và data fingerprint
+  của cả 18 bảng khớp; khoảng 33 giây chỉ là thời gian drill nhỏ, không phải
+  RTO đầy đủ hay cam kết workload thật.
+- Chưa có hai lịch tự động liên tiếp thực sự; chưa diễn tập mất VPS, recovery
+  từ file/passphrase trên môi trường mới hoặc login/sync/pull/reverse bằng
+  dữ liệu restore. Không đánh dấu toàn gate backup/DR đã đạt.
+- Backup failure gửi cảnh báo Discord; fault injection đã được owner xác nhận
+  nhận. Host monitor cảnh báo bản scheduled quá 10 giờ; đây không phải
+  availability monitor bên ngoài hoặc thay đổi RPO ~9 giờ.
+
 ## 3. Restore drill
 
 Ít nhất định kỳ:

@@ -19,6 +19,7 @@
 | Secrets VPS | Secrets production được lưu ngoài repository và giới hạn quyền truy cập. Không công bố vị trí hoặc cấu hình lưu trữ chi tiết. |
 | Backup | Backup được mã hóa và có bước xác minh; quy trình, lịch và thông tin khôi phục chỉ lưu trong hồ sơ vận hành riêng. |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
+| Monitoring | Monitor trên host mỗi 5 phút kiểm tra TLS/health/services/disk/backup age; OnFailure backup/TLS/monitor gửi Discord. Inject lỗi và owner xác nhận nhận cảnh báo. Chưa có availability monitor độc lập ngoài VPS hoặc toàn bộ metrics queue/outbox/latency |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
 | Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh backup ngoài VM, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
 | Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
@@ -29,12 +30,18 @@
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
-Stack private VPS nêu trên đã được kiểm chứng riêng, không suy ra HTTPS,
-backup ngoài VM, tenant pilot hoặc public production đã đạt.
+HTTPS và backup ngoài VM đã có smoke/restore evidence riêng như bảng trên;
+không suy ra tenant pilot, hai lịch backup tự động hay toàn bộ public production đã đạt.
 Quy trình lặp lại và cấu hình hiện có tại
 [backend deploy](../../backend/deploy/README.md).
 Các ví dụ dưới đây là thao tác cần làm sau; không dán nguyên ví dụ có placeholder
 vào production. Không gửi mật khẩu, private key, keystore hoặc token vào chat/Git.
+
+**Review trước GO:** .NET 8 EOL ngày 2026-11-10 theo
+[Microsoft release metadata](https://raw.githubusercontent.com/dotnet/core/main/release-notes/releases-index.json).
+Cần chốt nâng runtime/framework, review lifecycle MySQL/RabbitMQ và kiểm thử
+tương thích; image đã pin không đồng nghĩa còn được hỗ trợ. Không tự nâng major
+database trên volume hiện có hoặc coi cập nhật OS là đã xử lý dependency này.
 
 ## 2. Chi phí và giới hạn miễn phí
 
