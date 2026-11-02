@@ -34,6 +34,17 @@ Probe query-token không xuất hiện trong cả log Nginx/API; runtime contain
 không nhận OAuth/crypt/webhook hoặc root/bootstrap secrets. Giữ image API/Worker
 trước để rollback; chưa nghiệm thu diễn tập rollback staging.
 
+Đối chiếu production env ngày 2026-11-02: file thật ở `/opt/panxii/.env`
+trên VPS, root:root 600; đủ 35 biến cấu hình không-bootstrap trong
+[template backend](../../backend/deploy/production.env.example). Đã khai báo
+và apply vào API/Worker thời hạn access token 15 phút, refresh token 30 ngày;
+policy minimum/latest app giữ `0.1.0`. Kiểm tra giá trị runtime, HTTPS
+`/api/v1/config/version`, dependency readiness và monitor đều pass sau recreate.
+Không đổi credentials, image ứng dụng hoặc database; backup mã hóa trước
+thay đổi đã xác minh. File template không chứa secret và không thay thế `.env`
+development. URL APK/patch chưa có là gate release còn thiếu, không tự điền
+URL giả hoặc ép nâng phiên bản chưa được ký/nghiệm thu.
+
 | Công việc | Đã kiểm chứng | Còn thiếu để nghiệm thu toàn gate |
 |---|---|---|
 | 1. Hạ tầng | API/Worker/MySQL/RabbitMQ/Nginx x64; secrets VPS-only, origin private; cập nhật 326 gói OS và 17 gói mới, boot kernel `5.15.0-202-generic`, SSH/HTTPS trở lại | Review lifecycle/patch các runtime/image, smoke nghiệp vụ và hồ sơ quota/capacity |
