@@ -13,12 +13,13 @@
 
 | Hạng mục | Trạng thái khi viết hướng dẫn |
 |---|---|
-| Backend | Ngày 2026-11-02 đã dựng stack private trên VPS từ source `3026ccde7d4173d531946584786f45ba7ede2740`: API/Worker Production, MySQL/RabbitMQ không publish port, API chỉ `127.0.0.1:8080`. Ba health endpoint pass, RabbitMQ có consumer, restart API/Worker phục hồi healthy. Không đổi stack/volume development local. Chưa phải GO production |
-| Máy chủ | Đã thuê **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, cổng mạng 100 Mbps, không giới hạn băng thông. VPS Ubuntu 22.04 x64 tại `103.245.236.133`; đã cài Docker/Compose, timezone Asia/Ho_Chi_Minh, UFW chỉ mở SSH. SSH host key đã xác minh qua console; chỉ cho SSH key, không nhận password. Oracle Always Free đã loại |
+| Backend | Source/image hiện tại `3f171a2181b5cc27ef587581f5386a4047455b54` trên nhánh `feature/production-vps`. API/Worker Production, MySQL/RabbitMQ không publish port, origin API chỉ `127.0.0.1:8080`; Nginx là ingress public. Health/restart/external smoke pass, runtime không nhận root/backup/webhook secrets, giữ image trước để rollback. Khởi tạo private ban đầu từ `3026ccde7d4173d531946584786f45ba7ede2740`; không đổi development local. Chưa phải GO production |
+| Máy chủ | **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, 100 Mbps, không giới hạn băng thông. Ubuntu 22.04 x64 tại `103.245.236.133`, Docker/Compose, timezone Asia/Ho_Chi_Minh; UFW mở 22/80/443. Đã cập nhật 326 gói OS + 17 gói mới và reboot kernel `5.15.0-202-generic`; SSH/HTTPS phục hồi. Host key xác minh, SSH key-only. Oracle Always Free đã loại |
 | Database VPS | Database mới áp dụng đủ 17 migrations; đúng 1 PlatformAdmin (SuperAdmin), không có tenant/user cửa hàng/category/product/customer/invoice/outbox. Có schema metadata và global settings mặc định do migrations. Bootstrap đọc `.env` trên VPS, BCrypt hash; thử lại bị từ chối, không ghi đè admin. Login/quyền platform/logout pass, đã xóa session smoke-test và mật khẩu bootstrap khỏi `.env` |
 | Secrets VPS | `/opt/panxii/.env` thuộc root, quyền `600`, không vào Git/image. Mật khẩu DB/broker và JWT sinh trên VPS. Runtime DB user chỉ SELECT/INSERT/UPDATE/DELETE; maintenance dùng connection riêng. Không ghi credentials admin/SSH vào tài liệu |
-| Backup | Đã chốt phương án: dump MySQL mã hóa, upload Google Drive bằng Rclone lúc 06:00, 12:00 và 21:00 (UTC+7); chỉ giữ 6 bản mới nhất, bản cũ hơn tự xóa. Chưa triển khai script/cron, chưa cấu hình Rclone |
-| Domain/HTTPS | Chưa có domain; chưa mở 80/443 hoặc API ra Internet. Từ ngoài chỉ SSH reachable; 8080/3306/5672/15672 không reachable. Cần hostname kiểm soát được, Nginx/TLS/trusted proxy và nghiệm thu trước GO |
+| Backup | Rclone `1.75.2`/Google Drive crypt đã cấu hình bằng VPS `.env`; timer 06:00/12:00/21:00 UTC+7; giữ 6 bản scheduled verified, xóa vĩnh viễn bản cũ sau xác minh bản mới, manual riêng. Manual và service smoke đã upload/download/decrypt pass; restore DB cô lập khớp 18 bảng (~33 giây). File recovery mã hóa ngoài VPS và mật khẩu do owner giữ. Chưa đủ hai lịch tự động thật hoặc lost-VPS/API restore drill |
+| Domain/HTTPS | `https://panxii.duckdns.org` trỏ `103.245.236.133`; Nginx/Let's Encrypt đến 2027-01-31; renewal dry-run pass; HTTP 308, WebSocket/service DNS, trusted proxy giới hạn IP/một hop. Cổng 8080/3306/5672/15672 không reachable; production Swagger/dependency readiness không public. Còn nghiệm thu app/SignalR thiết bị thật |
+| Monitoring | Monitor trên host mỗi 5 phút kiểm tra TLS/health/services/disk/backup age; OnFailure backup/TLS/monitor gửi Discord. Inject lỗi và owner xác nhận nhận cảnh báo. Chưa có availability monitor độc lập ngoài VPS hoặc toàn bộ metrics queue/outbox/latency |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
 | Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh backup ngoài VM, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
 | Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
@@ -29,12 +30,18 @@
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
-Stack private VPS nêu trên đã được kiểm chứng riêng, không suy ra HTTPS,
-backup ngoài VM, tenant pilot hoặc public production đã đạt.
+HTTPS và backup ngoài VM đã có smoke/restore evidence riêng như bảng trên;
+không suy ra tenant pilot, hai lịch backup tự động hay toàn bộ public production đã đạt.
 Quy trình lặp lại và cấu hình hiện có tại
 [backend deploy](../../backend/deploy/README.md).
 Các ví dụ dưới đây là thao tác cần làm sau; không dán nguyên ví dụ có placeholder
 vào production. Không gửi mật khẩu, private key, keystore hoặc token vào chat/Git.
+
+**Review trước GO:** .NET 8 EOL ngày 2026-11-10 theo
+[Microsoft release metadata](https://raw.githubusercontent.com/dotnet/core/main/release-notes/releases-index.json).
+Cần chốt nâng runtime/framework, review lifecycle MySQL/RabbitMQ và kiểm thử
+tương thích; image đã pin không đồng nghĩa còn được hỗ trợ. Không tự nâng major
+database trên volume hiện có hoặc coi cập nhật OS là đã xử lý dependency này.
 
 ## 2. Chi phí và giới hạn miễn phí
 
