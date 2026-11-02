@@ -13,10 +13,12 @@
 
 | Hạng mục | Trạng thái khi viết hướng dẫn |
 |---|---|
-| Backend | Đang chạy local; có Dockerfile API/Worker, chưa có cấu hình Compose production hoàn chỉnh. Ngày 2026-10-29 đã áp dụng 17 EF migrations và nạp `seed-development.sql`; app đăng nhập và tải lại Home thành công. Volume MySQL được tạo ngày 2026-10-28 và khởi tạo DB mới; hiện không thấy volume cũ trong Docker hoặc backup trong workspace, chưa xác định được thao tác thay volume |
-| Máy chủ | Đã chốt nhà cung cấp **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, cổng mạng 100 Mbps, không giới hạn băng thông. Chưa thuê, chưa có VM/IP. Oracle Always Free bị loại ngày 2026-11-02 do đăng ký tài khoản không thành công |
+| Backend | Ngày 2026-11-02 đã dựng stack private trên VPS từ source `3026ccde7d4173d531946584786f45ba7ede2740`: API/Worker Production, MySQL/RabbitMQ không publish port, API chỉ `127.0.0.1:8080`. Ba health endpoint pass, RabbitMQ có consumer, restart API/Worker phục hồi healthy. Không đổi stack/volume development local. Chưa phải GO production |
+| Máy chủ | Đã thuê **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, cổng mạng 100 Mbps, không giới hạn băng thông. VPS Ubuntu 22.04 x64 tại `103.245.236.133`; đã cài Docker/Compose, timezone Asia/Ho_Chi_Minh, UFW chỉ mở SSH. SSH host key đã xác minh qua console; chỉ cho SSH key, không nhận password. Oracle Always Free đã loại |
+| Database VPS | Database mới áp dụng đủ 17 migrations; đúng 1 PlatformAdmin (SuperAdmin), không có tenant/user cửa hàng/category/product/customer/invoice/outbox. Có schema metadata và global settings mặc định do migrations. Bootstrap đọc `.env` trên VPS, BCrypt hash; thử lại bị từ chối, không ghi đè admin. Login/quyền platform/logout pass, đã xóa session smoke-test và mật khẩu bootstrap khỏi `.env` |
+| Secrets VPS | `/opt/panxii/.env` thuộc root, quyền `600`, không vào Git/image. Mật khẩu DB/broker và JWT sinh trên VPS. Runtime DB user chỉ SELECT/INSERT/UPDATE/DELETE; maintenance dùng connection riêng. Không ghi credentials admin/SSH vào tài liệu |
 | Backup | Đã chốt phương án: dump MySQL mã hóa, upload Google Drive bằng Rclone lúc 06:00, 12:00 và 21:00 (UTC+7); chỉ giữ 6 bản mới nhất, bản cũ hơn tự xóa. Chưa triển khai script/cron, chưa cấu hình Rclone |
-| Domain/HTTPS | Chưa cấu hình |
+| Domain/HTTPS | Chưa có domain; chưa mở 80/443 hoặc API ra Internet. Từ ngoài chỉ SSH reachable; 8080/3306/5672/15672 không reachable. Cần hostname kiểm soát được, Nginx/TLS/trusted proxy và nghiệm thu trước GO |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
 | Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh backup ngoài VM, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
 | Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
@@ -27,6 +29,10 @@
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
+Stack private VPS nêu trên đã được kiểm chứng riêng, không suy ra HTTPS,
+backup ngoài VM, tenant pilot hoặc public production đã đạt.
+Quy trình lặp lại và cấu hình hiện có tại
+[backend deploy](../../backend/deploy/README.md).
 Các ví dụ dưới đây là thao tác cần làm sau; không dán nguyên ví dụ có placeholder
 vào production. Không gửi mật khẩu, private key, keystore hoặc token vào chat/Git.
 
