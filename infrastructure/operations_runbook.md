@@ -50,3 +50,23 @@ Admin revoke device; mobile nhận `401 ERR_DEVICE_REVOKED`, dừng worker, xóa
 | P2 | Sync lỗi diện rộng/DLQ tăng | Giảm rollout, xử lý worker/broker |
 | P3 | Một feature lỗi | Tạo hotfix/rollback có kiểm soát |
 | P4 | UI/metric nhỏ | Đưa vào backlog |
+
+## 9. Dọn dung lượng VPS an toàn
+
+- Đo `df -hT /`, `docker system df`, `journalctl --disk-usage` trước;
+  phân biệt dung lượng đĩa với RAM/cache Linux.
+- Khi không có build/deploy hoặc cài package đang chạy, có thể dùng
+  `docker builder prune --all --force` để xóa build cache không dùng và
+  `apt-get clean` để xóa gói đã tải. Build sau có thể chậm hơn vì mất cache.
+- Không dùng `docker system prune --all --volumes`; không xóa trực tiếp
+  thư mục Docker/containerd, DB/broker volumes, backup, `.env`, TLS/key,
+  release source hoặc image rollback. Không truncate log/evidence pilot để
+  giải phóng dung lượng khi đang nghiệm thu.
+- Sau dọn, đối chiếu image IDs, volume names và container IDs trước/sau;
+  chạy host monitor, xác minh PID và mẫu mới của soak. Không cần restart app.
+
+Ngày 2026-11-02: dọn build cache và APT cache, thu hồi thực tế **6,72 GiB**;
+đĩa từ **34% xuống 20%**, còn **37,66 GiB** khả dụng. Giữ nguyên 23 images
+(bao gồm rollback), 7 containers đang chạy và 3 volumes; soak giữ PID/mẫu mới,
+host monitor pass. Evidence root-only trên VPS: `/opt/panxii/cleanup-20261102.json`.
+Không cài lịch tự động prune hoặc thay đổi chính sách backup.
