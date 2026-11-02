@@ -14,10 +14,14 @@ development 3+8 checkpoint; 8 invoice không trùng; backup development restore
 khớp 18 bảng. Đây không phải bằng chứng hạ tầng production đang hoạt động.
 Xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md).
 
-Chưa xác nhận VPS, HTTPS, backup ngoài máy, pipeline deploy, signing release
-hoặc Shorebird patch/rollback. Oracle Always Free đã bị loại ngày 2026-11-02 vì
-không đăng ký được tài khoản; phương án máy chủ là thuê VPS trả phí.
-Source đang ở branch feature; push không đồng nghĩa merge hoặc deploy.
+Ngày 2026-11-02 đã dựng VPS private: API/Worker Production, MySQL/RabbitMQ,
+17 migrations và duy nhất một SuperAdmin; health, login/platform/logout,
+bootstrap chống ghi đè và restart API/Worker đã pass. Các bảng nghiệp vụ trống.
+Secrets chỉ trên VPS `.env` quyền 600; SSH key-only, API chỉ loopback.
+Chưa có domain/HTTPS, backup ngoài máy, pipeline deploy, signing release
+hoặc Shorebird patch/rollback; **chưa GO production**. Oracle Always Free đã
+bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồng nghĩa
+đã merge. Xem [trạng thái VPS](../infrastructure/internal_free_deployment.md).
 
 Chuẩn bị script/config trên development. Dựng VM dự kiến production nhưng
 **chưa nhận giao dịch thật**, dùng tenant test riêng để nghiệm thu. Chỉ chuyển

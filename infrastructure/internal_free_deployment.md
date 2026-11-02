@@ -15,6 +15,8 @@
 |---|---|
 | Backend | API và Worker chạy sau reverse proxy; database và message broker chỉ truy cập qua mạng nội bộ. Chi tiết source/deploy identifier và cấu hình host được lưu trong hồ sơ vận hành riêng. |
 | Máy chủ | Production chạy trên VPS Linux x64. Truy cập quản trị và firewall được giới hạn; không công bố nhà cung cấp, địa chỉ máy chủ hoặc cấu hình truy cập cụ thể. |
+| Database VPS | Có dữ liệu pilot/test. Chi tiết tenant, số liệu giao dịch và lịch sử bảo trì được lưu trong evidence nội bộ, không công bố trong tài liệu public. |
+| Secrets VPS | Secrets production được lưu ngoài repository và giới hạn quyền truy cập. Không công bố vị trí hoặc cấu hình lưu trữ chi tiết. |
 | Backup | Backup được mã hóa và có bước xác minh; quy trình, lịch và thông tin khôi phục chỉ lưu trong hồ sơ vận hành riêng. |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
@@ -27,6 +29,10 @@
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
+Stack private VPS nêu trên đã được kiểm chứng riêng, không suy ra HTTPS,
+backup ngoài VM, tenant pilot hoặc public production đã đạt.
+Quy trình lặp lại và cấu hình hiện có tại
+[backend deploy](../../backend/deploy/README.md).
 Các ví dụ dưới đây là thao tác cần làm sau; không dán nguyên ví dụ có placeholder
 vào production. Không gửi mật khẩu, private key, keystore hoặc token vào chat/Git.
 
