@@ -4,7 +4,7 @@
 
 > Dự án đã có source; không chạy lại các lệnh tạo project bên dưới lên repository
 > hiện tại. Với triển khai nội bộ tiết kiệm chi phí, làm theo
-> [hướng dẫn Oracle Always Free và Shorebird Free](infrastructure/internal_free_deployment.md).
+> [hướng dẫn VPS thuê và Shorebird Free](infrastructure/internal_free_deployment.md).
 > Hướng dẫn đó ghi rõ bước nào chưa thực hiện; hiện chưa cần đăng nhập hay deploy.
 
 ---

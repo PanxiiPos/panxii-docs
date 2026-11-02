@@ -80,8 +80,8 @@ paths:
     patch:
       operationId: updateMyProfile
       tags: [User Profile]
-      description: TenantAdmin and Staff only. Updates the authenticated user's username and profile fields with optimistic concurrency. Does not update credentials.
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_INVALID_EMAIL, ERR_DUPLICATE_USERNAME, ERR_VERSION_CONFLICT]
+      description: TenantAdmin and Staff only. Updates the authenticated user's profile fields with optimistic concurrency. The username is immutable through this endpoint; the request must echo the current username, otherwise the server rejects with ERR_INVALID_FIELD. Does not update credentials.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_INVALID_FIELD, ERR_INVALID_EMAIL, ERR_VERSION_CONFLICT]
       requestBody:
         required: true
         content:
@@ -1437,7 +1437,7 @@ components:
       additionalProperties: false
       required: [username, displayName, email, phone, expectedVersion]
       properties:
-        username: { type: string, minLength: 1, maxLength: 120 }
+        username: { type: string, minLength: 1, maxLength: 120, description: 'Must equal the current username; the username cannot be changed through this endpoint.' }
         displayName: { type: string, minLength: 1, maxLength: 160 }
         email: { type: string, format: email, maxLength: 254, nullable: true }
         phone: { type: string, maxLength: 32, nullable: true }

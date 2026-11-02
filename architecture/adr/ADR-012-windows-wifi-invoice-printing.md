@@ -1,6 +1,8 @@
-# ADR-012: In A4 qua PC Windows và QR chỉ dẫn chuyển khoản
+# ADR-012: In A4/A5 qua PC Windows và QR chỉ dẫn chuyển khoản
 
 - Status: Accepted
+- Cập nhật 2026-11-02: mở rộng in thực tế từ A4 sang A4/A5 theo yêu cầu mới;
+  UI chỉ hiện hai khổ này, ẩn nhập kích thước/lề và ngân hàng, giữ dữ liệu cũ.
 
 ## Context
 
@@ -11,7 +13,7 @@ nhưng không mở module Customer hoặc nghiệp vụ thu tiền/đối soát.
 
 ## Decision
 
-- Mobile render preview và PNG A4 cùng canvas, gửi trực tiếp qua HTTPS trong LAN
+- Mobile render preview và PNG A4/A5 cùng canvas, gửi trực tiếp qua HTTPS trong LAN
   tới script Windows; PC dùng driver đã cài. Không qua backend/Docker hoặc ESC-POS.
 - HTTPS ghép nối token và SHA-256 pin; secure storage tenant/user trên điện thoại,
   ACL tài khoản Windows cho state PC. Bridge không kiểm tra JWT/role tenant; chỉ

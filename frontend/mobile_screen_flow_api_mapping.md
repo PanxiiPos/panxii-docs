@@ -202,7 +202,7 @@ App tự tạo `{schemaVersion:1,attributes:{...}}`, giữ nguyên metadata chư
 | Nhận sync | `202` chỉ xác nhận command được queue; nhận `operationId, status=Queued`. Timer/resume/online kiểm tra `GET /invoices/operations/{operationId}`: Completed áp full invoice và hoàn tất outbox; Rejected giữ dữ liệu và hiện lỗi; Queued tiếp tục chờ. Nếu API cũ chưa có receipt, GET invoice xác nhận commit; chưa thấy thì gửi lại nguyên operation/payload, không tạo UUID mới. Không giả thành công từ online/202. |
 | List | `GET /invoices?search=&from=&to=&invoiceType=&cursor=&pageSize=`. Nhận summary gồm `id, invoiceNumber, invoiceType, status: InvoiceStatus, customerId, createdByUserId, clientCreatedAtUtc, syncedAtUtc, totalAmount, currencyCode, originalInvoiceId`. Staff chỉ thấy invoice mình tạo; TenantAdmin thấy tenant. |
 | Detail | `GET /invoices/{id}`; nhận invoice và detail snapshots gồm `productId, productVariantId, skuSnapshot, productNameSnapshot, variantNameSnapshot, variantExtraDataSnapshot, unitSnapshot`, quantity, giá, tổng và liên kết invoice gốc nếu là reverse/correction. Render invoice từ snapshot, không lookup giá/tên hiện tại để thay đổi lịch sử. Staff chỉ đọc invoice do mình tạo. |
-| In | Dựng A4 local từ invoice snapshot + ReceiptTemplate/StoreProfile, gửi HTTPS tới PC trong LAN; không có backend print API. Có QR chỉ dẫn chuyển khoản, không có trạng thái thanh toán. Lỗi in không đổi invoice. |
+| In | Dựng A4/A5 local từ invoice snapshot + ReceiptTemplate/StoreProfile, gửi PNG và `paper: A4/A5` qua HTTPS tới PC trong LAN; bridge đặt đúng khổ driver. Không có backend print API. Có QR chỉ dẫn chuyển khoản, không có trạng thái thanh toán. Lỗi in không đổi invoice. |
 | Sửa/xóa | Không có API edit/delete invoice. Draft local được sửa/hủy local. Invoice đã sync là immutable. |
 | Đảo | TenantAdmin gọi `POST /invoices/{id}/reverse`; gửi `{ reasonCode }`, `Idempotency-Key`, `X-Device-Id`; nhận `201` operation result. Chỉ reverse một lần. |
 | Điều chỉnh | TenantAdmin gọi `POST /invoices/{id}/correction`; gửi `{ reasonCode, roundingAmount?, details[] }`, `Idempotency-Key`, `X-Device-Id`; rounding mặc định `0`, total = subtotal - discount + rounding; server reverse invoice cũ và tạo correction mới atomically. |
@@ -244,12 +244,12 @@ Không gửi `invoiceType: Reverse/Correction` qua `/invoices/sync`; client ch�
 |---|---|
 | Nạp metadata cửa hàng | `GET /tenant/profile`; TenantAdmin/Staff nhận `id, code, name, status, timeZone, currencyCode, version, createdAtUtc, updatedAtUtc` từ tenant trong JWT; không truyền tenant ID. |
 | Nạp cấu hình | `GET /settings/effective`; nhận `storeProfile`, `receiptTemplate`, `productDisplay`, feature flags, `settingsVersion` và `settingVersions` cho từng key có thể sửa. |
-| Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode?, bankTransfer? }, expectedVersion }`; bankTransfer gồm BIN 6 chữ số, số tài khoản 6–34 chữ số, tên chủ tài khoản tối đa 100 ký tự. Xóa cả ba field để bỏ property. |
+| Sửa thông tin cửa hàng | `PUT /settings/StoreProfile`; body `{ value: { storeName, address?, phone?, taxCode?, bankTransfer? }, expectedVersion }`; bankTransfer gồm BIN 6 chữ số, số tài khoản 6–34 chữ số, tên chủ tài khoản tối đa 100 ký tự. Xóa cả ba field để bỏ property. UI mobile đã ẩn ba ô nhập ngân hàng; khi lưu, app gửi lại nguyên `bankTransfer` đã lưu nên QR chuyển khoản trên hóa đơn vẫn hoạt động với dữ liệu cũ. |
 | Sửa mẫu in | `PUT /settings/ReceiptTemplate`; body `{ value: { templateId, showStoreAddress, showTaxBreakdown, footerText?, layout? }, expectedVersion }`; `templateId` là `Standard`, layout version 1/2 ở mục 4.7.1. |
 | Cho phép in Wi-Fi | TenantAdmin `PUT /settings/EnableWifiPrint`, body `{ value: true/false, expectedVersion }`; mặc định false. Staff không được ghi. |
 | Lưu tùy chọn hiển thị sản phẩm | `PUT /settings/ProductDisplay`; body `{ value: { layout, sortBy, showSku, showBarcode, showCategory }, expectedVersion }`. |
 
-**Đã triển khai:** Editor tenant chỉ hiện cho TenantAdmin; Cubit và backend chặn Staff ghi. Lưu riêng StoreProfile, ReceiptTemplate (Standard), ProductDisplay và ba switch `AutoRoundMoney`/`EnableBluetoothPrint`/`EnableWifiPrint`; cache/draft tenant-scope trong SQLite/SQLCipher. Bluetooth có nhãn chưa triển khai. Không cho sửa `RequireCustomerPhone` hoặc global flags. StoreProfile không đổi metadata tên/mã tenant. Menu ghép nối PC hiện cho cả Staff/TenantAdmin; token/pin chỉ lưu secure storage tenant/user trên thiết bị, không gửi settings API.
+**Đã triển khai:** Editor tenant chỉ hiện cho TenantAdmin; Cubit và backend chặn Staff ghi. Lưu riêng StoreProfile, ReceiptTemplate (Standard), ProductDisplay và ba switch `AutoRoundMoney`/`EnableBluetoothPrint`/`EnableWifiPrint`; cache/draft tenant-scope trong SQLite/SQLCipher. Bluetooth có nhãn chưa triển khai. Không cho sửa `RequireCustomerPhone` hoặc global flags. StoreProfile không đổi metadata tên/mã tenant. Ba ô nhập chuyển khoản ngân hàng đã ẩn khỏi form Thông tin cửa hàng; giá trị `bankTransfer` đã lưu vẫn được gửi lại khi lưu và QR trên hóa đơn giữ nguyên. Menu ghép nối PC hiện cho cả Staff/TenantAdmin; token/pin chỉ lưu secure storage tenant/user trên thiết bị, không gửi settings API.
 
 Mỗi PUT gửi `expectedVersion = settingVersions[key]`, dùng `0` khi tenant chưa có override; **không dùng aggregate `settingsVersion`** hoặc version của global setting. Response cập nhật value/version của đúng key, giữ nội dung chưa lưu ở nhóm khác. Backend thiếu metadata thì editor báo lỗi rõ, không đoán version. Deploy backend bổ sung metadata trước khi bật mobile editor.
 
@@ -278,7 +278,16 @@ Nút **Kiểm tra lại cùng lệnh in** vẫn bật ở trạng thái `submitt
 - TenantAdmin mở **Cấu hình cửa hàng > Thiết kế & xem trước hóa đơn**. Dùng chung SettingsCubit/repository và version của `ReceiptTemplate`; không thêm endpoint.
 - Bật/tắt tên/địa chỉ/điện thoại cửa hàng, mã số thuế, mã hóa đơn, ngày giờ, nhân viên, khách hàng, chiết khấu, chi tiết thuế và lời nhắn cuối. SKU và đơn vị tính là tùy chọn trong danh sách sản phẩm. Danh sách sản phẩm và tổng tiền không được ẩn/xóa.
 - Thêm/xóa khối chữ thuần (không HTML/script), căn trái/giữa/phải; thêm/xóa khối dịch vụ với tên và tùy chọn ẩn khi số tiền bằng 0 (mặc định bật). Kéo tay nắm hoặc dùng nút Lên/Xuống để đặt khối trước/sau khối khác. ID của khối không thay đổi khi sửa tên hoặc đổi vị trí. Tối đa 40 khối, gồm tối đa 10 dịch vụ; chữ tối đa 1000 ký tự, tên dịch vụ tối đa 120.
-- Khổ cuộn 58/80 mm tự tăng chiều dài; giấy A0–A10 theo ISO 216 dạng đứng; Custom nhập rộng/cao mm. Rộng 25–1500 mm, cao 25–2000 mm, lề mỗi cạnh 0–10 mm, vùng in tối thiểu 10 mm mỗi chiều. Giấy có chiều cao cố định tự chia trang, kể cả khối chữ dài; giữ đúng tỷ lệ vật lý của giấy khi thu phóng.
+- UI khổ giấy chỉ hiển thị hai lựa chọn **A4 và A5**; các preset khác
+  (Roll58/Roll80, A0–A3, A6–A10, Custom), ô nhập rộng/cao của Custom và ô lề
+  đã ẩn khỏi editor. Contract/validation giữ nguyên: template đã lưu với khổ
+  khác vẫn hợp lệ và giữ nguyên khi lưu nếu không chọn lại khổ; chọn A4/A5 sẽ
+  thay khổ, lề giữ giá trị hiện có (mặc định 3 mm). Giới hạn kỹ thuật khi
+  render không đổi: khổ cuộn 58/80 mm tự tăng chiều dài; giấy A0–A10 theo ISO
+  216 dạng đứng; Custom rộng/cao mm. Rộng 25–1500 mm, cao 25–2000 mm, lề mỗi
+  cạnh 0–10 mm, vùng in tối thiểu 10 mm mỗi chiều. Giấy có chiều cao cố định
+  tự chia trang, kể cả khối chữ dài; giữ đúng tỷ lệ vật lý của giấy khi thu
+  phóng.
 - Preview cập nhật theo nội dung chưa lưu, dùng tên/thông tin cửa hàng đang chỉnh và hóa đơn mẫu (không lấy hóa đơn/PII thật). Nêu rõ đây là bản mẫu và tiền tệ của tenant; số tiền dịch vụ mẫu là 0. Không sinh invoice, không ghi phí hoặc giá trị preview vào database.
 - Controls tôn trọng cỡ chữ hệ thống/app; nội dung giấy in dùng kích thước chữ vật lý riêng và thu phóng để không làm thay đổi bố cục in khi đổi accessibility scaling. Giấy trắng/chữ đen là mô phỏng bản in kể cả app dark mode. Có semantic nội dung và nút thay thế kéo thả.
 - Căn trái/giữa/phải của khối chữ áp dụng trên toàn chiều rộng vùng in sau khi trừ lề, kể cả từng dòng xuống hàng; không căn theo độ rộng nội tại của chữ. Kiểm thử vị trí pixel của chữ khi render preview, không chỉ kiểm tra giá trị `align` được lưu.
@@ -297,11 +306,11 @@ Nút **Kiểm tra lại cùng lệnh in** vẫn bật ở trạng thái `submitt
 | Hành động | API và dữ liệu gửi/nhận |
 |---|---|
 | Xem | `GET /me`; nhận `id, tenantId, username, displayName, email, phone, role, status, version, createdAtUtc, updatedAtUtc`. |
-| Cập nhật | `PATCH /me`; gửi `{ username, displayName, email, phone, expectedVersion }`; email/phone nullable để xóa giá trị. Nhận UserProfile mới. Username trùng trả `ERR_DUPLICATE_USERNAME`; version cũ trả `ERR_VERSION_CONFLICT`. |
+| Cập nhật | `PATCH /me`; gửi `{ username, displayName, email, phone, expectedVersion }`; email/phone nullable để xóa giá trị. Nhận UserProfile mới. `username` bất biến: phải gửi lại đúng giá trị hiện tại, giá trị khác trả `ERR_INVALID_FIELD`; version cũ trả `ERR_VERSION_CONFLICT`. |
 
 Password change không thuộc hồ sơ trong contract hiện tại; cần API riêng nếu bổ sung chức năng đổi mật khẩu.
 
-**Đã triển khai:** Sửa/lưu username, tên hiển thị, email và điện thoại; role/status chỉ đọc. Validate bắt buộc/độ dài/email, giữ dữ liệu khi API lỗi và khi conflict; tải lại/rời form cần xác nhận bỏ thay đổi. Lưu thành công cập nhật tên trên Cài đặt và lời chào Home.
+**Đã triển khai:** Username chỉ đọc trên form, không cho cập nhật từ trang hồ sơ; backend cũng chặn đổi username qua `PATCH /me` (trả `ERR_INVALID_FIELD`), client gửi lại username hiện tại; sửa/lưu tên hiển thị, email và điện thoại; role/status chỉ đọc. Validate bắt buộc/độ dài/email, giữ dữ liệu khi API lỗi và khi conflict; tải lại/rời form cần xác nhận bỏ thay đổi. Lưu thành công cập nhật tên trên Cài đặt và lời chào Home.
 
 ### 4.8.1 Cài đặt chung và đăng xuất
 

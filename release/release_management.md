@@ -5,7 +5,7 @@ Kế hoạch triển khai trước go-live:
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
 Hướng triển khai nội bộ tiết kiệm chi phí và setup OTA để thực hiện sau:
-[Oracle Always Free, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
+[VPS thuê, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
 Shorebird Android `0.1.3+4`, release ID `934536`, đã publish và cài trên
 Samsung SM-A336E. Settings hiển thị version/build hiện tại, ví dụ
 `0.1.3+4`. APK nội bộ ký bằng debug key, chỉ dùng thử; không phân phối

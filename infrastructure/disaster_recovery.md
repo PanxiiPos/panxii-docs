@@ -9,8 +9,11 @@ Giá trị chính thức phải được chốt theo gói SaaS; tài liệu này
 
 ## 2. Backup
 
-- MySQL backup hằng ngày hoặc theo RPO.
-- Backup mã hóa, lưu ngoài VPS và có retention nhiều phiên bản.
+- Chính sách nội bộ đã chốt ngày 2026-11-02: dump MySQL mã hóa, upload Google
+  Drive bằng Rclone lúc 06:00, 12:00 và 21:00 (UTC+7); giữ 6 bản mới nhất, bản
+  cũ chỉ xóa sau khi bản mới đã xác minh. RPO thực tế tối đa ~9 giờ; chi tiết
+  và giới hạn tại [hướng dẫn triển khai](internal_free_deployment.md#31-backup-mysql-lên-google-drive-bằng-rclone).
+- Backup mã hóa, lưu ngoài VPS và có retention nhiều phiên bản theo chính sách trên.
 - Lưu cấu hình deployment, migration metadata và secret recovery procedure riêng.
 - RabbitMQ event không thay thế backup MySQL.
 
@@ -57,7 +60,8 @@ thời gian chạy và cleanup; source đổi trong lúc test thì gate fail.
 Runner trả exit code khác 0 nếu test fail, skip, thiếu report, số test không đủ
 hoặc cleanup lỗi. Không retry nguyên test suite tự động để che lỗi.
 
-**Chưa được chứng minh bởi gate local:** upload/download OCI thực tế, cron
+**Chưa được chứng minh bởi gate local:** upload/download tới storage ngoài VM
+thực tế, cron
 production, retention/alert, HTTPS/certificate renewal, recovery từ mất cả VM,
 RPO/RTO của dữ liệu thật, SQLCipher trên thiết bị và Shorebird OTA. Những mục
 này vẫn là điều kiện release riêng; test local pass không tự cấp phép deploy.
