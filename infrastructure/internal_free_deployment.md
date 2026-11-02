@@ -1,23 +1,25 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-10-29.
+- Cập nhật: 2026-11-02.
 - Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
   Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
   hạ tầng là đã triển khai.
-- Phạm vi: backend trên Oracle Cloud Always Free, APK Android nội bộ, Shorebird
+- Phạm vi: backend trên VPS thuê, APK Android nội bộ, Shorebird
   Free và Panxii Printer Bridge trên PC cửa hàng.
-- Không tự nâng gói, bật thanh toán vượt mức hoặc đăng ký dịch vụ trả phí.
+- Ngoài khoản thuê VPS đã được chủ dự án duyệt, không tự nâng gói, bật thanh
+  toán vượt mức hoặc đăng ký thêm dịch vụ trả phí.
 
 ## 1. Trạng thái và lựa chọn đã chốt
 
 | Hạng mục | Trạng thái khi viết hướng dẫn |
 |---|---|
 | Backend | API và Worker chạy sau reverse proxy; database và message broker chỉ truy cập qua mạng nội bộ. Chi tiết source/deploy identifier và cấu hình host được lưu trong hồ sơ vận hành riêng. |
-| Oracle Cloud | Chọn thử Always Free; chưa xác nhận đã tạo VM, IP hoặc dịch vụ |
+| Máy chủ | Production chạy trên VPS Linux x64. Truy cập quản trị và firewall được giới hạn; không công bố nhà cung cấp, địa chỉ máy chủ hoặc cấu hình truy cập cụ thể. |
+| Backup | Backup được mã hóa và có bước xác minh; quy trình, lịch và thông tin khôi phục chỉ lưu trong hồ sơ vận hành riêng. |
 | Domain/HTTPS | API production được phục vụ qua HTTPS; endpoint quản trị và dependency không public. Địa chỉ host và chi tiết mạng nội bộ không công bố tại đây. |
 | CI/CD | Chưa tạo pipeline deploy production; mục tiêu là tự deploy backend khi merge `main` sau khi các bước kiểm tra đạt |
-| Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh OCI backup, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
-| Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh OCI/off-VM backup, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
+| Resilience gate | Ngày 2026-11-01 runner `backend/scripts/test-resilience.ps1` đã pass 22/22 test local Docker, không skip; có TRX/source manifest. Đã sửa publisher RabbitMQ phục hồi sau broker outage. Không chứng minh backup ngoài VM, HTTPS, SQLCipher trên thiết bị hoặc Shorebird OTA production; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
+| Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
 | Android | APK nội bộ `0.1.3+4` đã cài trên Samsung SM-A336E, versionCode `4`; Settings hiển thị đúng version/build; ký debug key chỉ dùng thử, không phân phối production |
 | Shorebird | App `Panxii Internal`, `auto_update: false`; `0.1.3+4` active (release ID `934536`) và đã cài; `0.1.2+3` (ID `934520`), `0.1.1+2` (ID `934441`) và `0.1.0+1` (ID `931436`) vẫn active. Không phát hành patch vì assets dịch đã đổi; APK đầy đủ bao gồm assets. Chưa thử tải APK qua HTTPS |
 | Update policy | API local trả minimum/latest `0.1.0`, `downloadUrls` rỗng; app cũ không tự được thông báo/tải `0.1.3`. Dialog native từng xác nhận với policy tạm thời `0.1.1`; chưa bật policy mới do thiếu URL HTTPS |
@@ -41,34 +43,61 @@ vào production. Không gửi mật khẩu, private key, keystore hoặc token v
 | Backup | Backup được mã hóa và có bước xác minh; quy trình, lịch và thông tin khôi phục chỉ lưu trong hồ sơ vận hành riêng. |
 | In | Printer Bridge trên PC hiện có | Không đưa bridge hay cổng in lên VPS/Internet |
 
-Đây không phải cam kết tổng chi phí luôn bằng 0. Kiểm tra hạn mức, điều khoản và
-giá tại thời điểm thực hiện. Theo dõi sử dụng; cảnh báo ngân sách không phải cơ
-chế tự chặn mọi khoản phí. Không nâng Oracle lên Pay As You Go chỉ để vượt lỗi
-thiếu tài nguyên nếu chưa chấp nhận rủi ro chi phí.
+Đây không phải cam kết tổng chi phí bằng 0: VPS là chi phí định kỳ đã được chấp
+nhận. Kiểm tra hạn mức, điều khoản và giá tại thời điểm thực hiện. Theo dõi sử
+dụng; cảnh báo ngân sách không phải cơ chế tự chặn mọi khoản phí. Không tự nâng
+cấu hình/gói VPS hoặc mua thêm dịch vụ nếu chưa được chủ dự án duyệt.
 
-## 3. Chuẩn bị Oracle Always Free
+## 3. Chuẩn bị VPS thuê
 
-1. Tạo tài khoản tại trang Oracle chính thức, kiểm tra yêu cầu xác minh và chọn
-   **home region** phù hợp ngay từ đầu. Xác nhận các tài nguyên mang nhãn Always
-   Free, không nhầm với credit dùng thử có thời hạn.
-2. Kiểm tra hạn mức Compute/Block Volume hiện tại trong Console. Nếu A1 báo
-   thiếu tài nguyên, thử lại sau hoặc region/availability domain được hỗ trợ;
-   không tự đổi sang shape trả phí.
-3. Tạo VM Ubuntu LTS còn được hỗ trợ, ví dụ Ubuntu 24.04. A1 là **ARM64**, không
-   phải x64; chọn image OS đúng kiến trúc.
-4. Chỉ cấp CPU/RAM/boot volume trong tổng hạn mức miễn phí của tài khoản.
-   Không dùng số liệu từ bài hướng dẫn cũ làm cam kết cấp phát.
-5. Đăng nhập SSH bằng key, tạo tài khoản quản trị/deploy phù hợp, cập nhật OS.
+> Oracle Cloud Always Free đã bị loại ngày 2026-11-02 vì không đăng ký được
+> tài khoản. Phương án hiện tại là thuê VPS trả phí.
+
+1. Chọn nhà cung cấp và gói VPS phù hợp với ngân sách, yêu cầu bảo mật,
+   backup và chính sách lưu trữ; chi tiết lựa chọn production được giữ nội bộ.
+2. Đánh giá cấu hình tổng thể cho API/Worker/MySQL/RabbitMQ/Nginx trên môi
+   trường phù hợp; đo tải trước khi quyết định điều chỉnh tài nguyên.
+3. Tạo VM Ubuntu LTS còn được hỗ trợ, ví dụ Ubuntu 24.04, image đúng kiến trúc
+   CPU của gói VPS (thường x64/amd64).
+4. Đăng nhập SSH bằng key, tạo tài khoản quản trị/deploy phù hợp, cập nhật OS.
    Chặn đăng nhập SSH bằng mật khẩu/root sau khi đã thử tài khoản thay thế.
-6. Cấu hình cả OCI Security List/NSG và firewall OS: public `80/443`; `22` chỉ
-   từ nguồn quản trị được kiểm soát. Không mở `3306`, `5672`, `15672`, `8080`.
-7. Cài Docker Engine và Compose plugin theo tài liệu Docker cho Ubuntu.
+5. Cấu hình firewall của nhà cung cấp (nếu có) và firewall OS: public `80/443`;
+   `22` chỉ từ nguồn quản trị được kiểm soát. Không mở `3306`, `5672`, `15672`,
+   `8080`.
+6. Cài Docker Engine và Compose plugin theo tài liệu Docker cho Ubuntu.
    Quyền truy cập Docker tương đương quyền quản trị máy; không cấp rộng rãi.
-8. Cấu hình đồng bộ giờ, log rotation, giám sát đĩa/RAM và dung lượng Docker.
-   Không tạo tải giả để tránh chính sách thu hồi VM nhàn rỗi.
+7. Cấu hình đồng bộ giờ, log rotation, giám sát đĩa/RAM và dung lượng Docker.
+8. Lên lịch nhắc gia hạn thanh toán; VPS trễ hạn có thể bị khóa hoặc xóa dữ
+   liệu, nên backup ngoài VM là bắt buộc trước khi nhận dữ liệu thật.
 
-**Điều kiện tiếp tục:** VM còn trong hạn mức Free, SSH hoạt động, đã có nơi
-backup ngoài VM và đã kiểm tra phương án khi Oracle thu hồi/mất máy.
+**Điều kiện tiếp tục:** VPS đã thuê trong ngân sách được duyệt, SSH hoạt động,
+đã có nơi backup ngoài VM và đã kiểm tra phương án khi mất VM hoặc nhà cung cấp
+gặp sự cố.
+
+### 3.1. Backup MySQL lên Google Drive bằng Rclone
+
+Chính sách đã chốt ngày 2026-11-02, **chưa triển khai**:
+
+- Lịch: 06:00, 12:00 và 21:00 giờ Việt Nam (UTC+7). Nếu cron của VM chạy theo
+  UTC, tương ứng `23:00` (ngày hôm trước), `05:00` và `14:00` UTC; xác nhận
+  timezone thực tế của VM trước khi đặt lịch.
+- Luồng mỗi lượt: dump MySQL nhất quán → nén → **mã hóa** (AES-GCM hoặc remote
+  `crypt` của Rclone) → upload Google Drive qua Rclone → xác minh artifact tồn
+  tại, đúng hash và tải về đọc lại được.
+- Retention: chỉ giữ **6 bản mới nhất** trên Drive (khoảng 2 ngày lịch sử);
+  bản cũ hơn tự xóa để tiết kiệm dung lượng. Chỉ xóa bản cũ **sau khi** bản mới
+  đã upload và xác minh thành công; lượt backup lỗi không được xóa gì.
+- Backup thủ công trước deploy/migration lưu ở thư mục riêng, không thuộc chu
+  kỳ tự xóa này.
+- Token/credential Rclone và key giải mã lưu ngoài Git, có bản sao phục hồi
+  độc lập với VM; mất VM không được đồng nghĩa mất khả năng giải mã backup.
+- Giới hạn đã chấp nhận: khoảng cách lớn nhất giữa hai lượt là 9 giờ
+  (21:00 → 06:00 hôm sau và 12:00 → 21:00) nên có thể mất tới ~9 giờ dữ liệu
+  server; giữ 6 bản nghĩa là lịch sử khoảng 2 ngày, hỏng ngầm phát hiện muộn
+  hơn 2 ngày có thể không còn bản tốt. Chủ dự án chấp nhận giới hạn này.
+- Tham chiếu yêu cầu nghiệm thu backup/restore tại
+  [kế hoạch production](../release/production_readiness_plan.md) và
+  [disaster recovery](disaster_recovery.md).
 
 ## 4. Backend, DNS và HTTPS
 
@@ -90,9 +119,9 @@ backup ngoài VM và đã kiểm tra phương án khi Oracle thu hồi/mất má
    `_FILE` nếu ứng dụng chưa có logic đọc secret file tương ứng.
 5. API, MySQL và RabbitMQ chỉ trong Docker network riêng; chỉ Nginx public.
    Bảo đảm container vẫn có outbound cần thiết cho DNS/dịch vụ ngoài.
-6. Build image API/Worker hỗ trợ `linux/arm64` cho A1; kiểm tra manifest của
-   image MySQL/RabbitMQ/Nginx theo đúng tag được chọn. Không giả định image
-   build trên Windows x64 sẽ chạy trên ARM64.
+6. Build image API/Worker đúng kiến trúc CPU của VPS (thường `linux/amd64`);
+   kiểm tra manifest của image MySQL/RabbitMQ/Nginx theo đúng tag được chọn.
+   Nếu VPS là ARM64, phải build và kiểm tra lại toàn bộ image theo kiến trúc đó.
 7. Pin image ứng dụng theo Git SHA, pin phiên bản image hạ tầng; không deploy
    `latest`. Registry phải có quyền pull phù hợp nếu image private.
 8. Review migration, backup trước khi áp dụng và dùng tài khoản migration
@@ -134,7 +163,8 @@ registry trước khi chọn. Không đưa credential vào image, artifact hoặ
 
 1. PR: restore, build, unit/integration/contract tests và scan phụ thuộc.
 2. Push vào `main` sau merge: lặp lại các gate bắt buộc; fail thì không deploy.
-3. Build/push image API/Worker theo SHA với ARM64; cấu hình timeout và retention
+3. Build/push image API/Worker theo SHA đúng kiến trúc CPU của VPS; cấu hình
+   timeout và retention
    ngắn cho artifact. Pin action bên thứ ba vào commit đã review.
 4. Serialize lượt deploy production; không hủy tiến trình đang migration để
    nhường lượt mới.
@@ -307,7 +337,7 @@ Không mở các cổng này trên VPS/router Internet.
 Trước khi sử dụng thật:
 
 - [ ] Backup MySQL ngoài VM và thử restore vào môi trường tách biệt.
-- [ ] Chạy gate resilience trên stack cô lập; kiểm tra TRX/manifest và bằng chứng Flutter/SQLCipher, OCI backup, TLS, Shorebird riêng. Không chạy chaos trên VM production.
+- [ ] Chạy gate resilience trên stack cô lập; kiểm tra TRX/manifest và bằng chứng Flutter/SQLCipher, backup ngoài VM, TLS, Shorebird riêng. Không chạy chaos trên VM production.
 - [ ] Xác nhận toàn bộ tài nguyên cloud/CI/storage còn trong mức chi phí chấp nhận.
 - [ ] HTTPS và gia hạn chứng chỉ hoạt động; không công khai DB/broker.
 - [ ] Đăng nhập, offline → online, sync/retry và tenant isolation đạt.
@@ -323,7 +353,6 @@ Trước khi sử dụng thật:
 
 Giới hạn và lệnh có thể thay đổi; kiểm tra lại trước khi dùng:
 
-- [Oracle Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm).
 - [Docker Engine trên Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
 - [Shorebird pricing](https://shorebird.dev/pricing/).
 - [Khởi tạo Shorebird](https://docs.shorebird.dev/code-push/initialize/).

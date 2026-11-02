@@ -387,7 +387,7 @@ advance cursor sau local transaction vẫn cần test trên thiết bị.
 
 Nginx fixture chỉ HTTP loopback, không chứng minh HTTPS, forwarded-header trust,
 ẩn origin IP hay gia hạn chứng chỉ. Không chạy script chaos lên production.
-OCI backup thật (upload/download, key recovery, retention/quota, alert), mất VM,
+Backup ngoài VM thật (upload/download, key recovery, retention/quota, alert), mất VM,
 backup khi workload production đang ghi, restore đầy đủ dữ liệu production, Shorebird
 patch/rollback và mobile native compatibility vẫn cần bằng chứng riêng theo
 staging/release gate. Không gộp các mục chưa test thành trạng thái PASS.
@@ -446,7 +446,7 @@ của SQLite transaction hoặc giả lập mất điện/disk full/corruption/k
 Pull này kiểm tra API và identity sau missed event, không chứng nhận toàn bộ
 mobile pull-coordinator/cursor transaction hay multi-device conflict.
 Không thao tác MySQL crash/Nginx trên stack development; các boundary đó thuộc
-gate cô lập mục 10. Không test giấy in, OCI, TLS hoặc Shorebird OTA. Bản debug
+gate cô lập mục 10. Không test giấy in, backup ngoài VM, TLS hoặc Shorebird OTA. Bản debug
 thường không phải APK nền Shorebird; cần cài lại bản nền trước thử patch.
 
 ### 11.1. Bằng chứng development ngày 2026-11-01

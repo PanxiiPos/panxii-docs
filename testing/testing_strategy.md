@@ -165,7 +165,7 @@ injection và dump/restore thật, lưu TRX và fail nếu có test skip hoặc 
 chứng. Không chạy chaos lên production. Xem
 [ma trận resilience](risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai)
 và [restore gate](../infrastructure/disaster_recovery.md#31-gate-tự-động-trên-môi-trường-cô-lập).
-Local gate không thay thế Flutter/SQLCipher E2E, OCI backup hoặc Shorebird OTA.
+Local gate không thay thế Flutter/SQLCipher E2E, backup ngoài VM hoặc Shorebird OTA.
 
 Gate bổ sung trên Android emulator và stack development hiện có:
 `backend/scripts/test-development-mobile.ps1 -AllowDevelopmentInterruption`.

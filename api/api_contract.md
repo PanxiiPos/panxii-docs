@@ -165,7 +165,7 @@ Response `200` trả `UserProfile`: `id`, `tenantId`, `username`, `displayName`,
 
 ### `PATCH /me`
 
-**Role:** TenantAdmin, Staff. Chỉ cập nhật hồ sơ của chính user từ JWT. Request bắt buộc có `username`, `displayName`, `email`, `phone`, `expectedVersion`; `email` và `phone` có thể là `null` để xóa giá trị. Username duy nhất trong tenant. Version cũ trả `409 ERR_VERSION_CONFLICT`; username trùng trả `409 ERR_DUPLICATE_USERNAME`.
+**Role:** TenantAdmin, Staff. Chỉ cập nhật hồ sơ của chính user từ JWT. Request bắt buộc có `username`, `displayName`, `email`, `phone`, `expectedVersion`; `email` và `phone` có thể là `null` để xóa giá trị. `username` là bất biến qua endpoint này: client phải gửi lại đúng username hiện tại; giá trị khác trả `400 ERR_INVALID_FIELD` với `args.field = "username"`. Version cũ trả `409 ERR_VERSION_CONFLICT`.
 
 ```json
 {
@@ -495,7 +495,7 @@ Errors: `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`.
 
 **Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse. Staff chỉ đọc invoice do chính mình tạo; invoice của người khác trả `404 ERR_INVOICE_NOT_FOUND`.
 
-Staff và TenantAdmin được in invoice có quyền đọc, không phải nháp, khi `EnableWifiPrint=true` đã được xác nhận. App dựng A4 từ invoice snapshot, `StoreProfile` và `ReceiptTemplate`, gửi PNG qua HTTPS pin chứng chỉ tới bridge Windows trong LAN; bridge dùng driver Canon LBP 2900. Không có backend print endpoint hay transport Bluetooth. Lỗi in không rollback invoice. Retry cùng tài liệu dùng UUID đã lưu; `submitted` chỉ xác nhận Windows queue, `uncertain` không tự in lại. Chi tiết [bridge](../../tools/windows-print-bridge/README.md).
+Staff và TenantAdmin được in invoice có quyền đọc, không phải nháp, khi `EnableWifiPrint=true` đã được xác nhận. App dựng A4/A5 từ invoice snapshot, `StoreProfile` và `ReceiptTemplate`, gửi PNG cùng `paper: A4/A5` qua HTTPS pin chứng chỉ tới bridge Windows trong LAN; bridge dùng driver Canon LBP 2900 theo đúng khổ. Không có backend print endpoint hay transport Bluetooth. Lỗi in không rollback invoice. Retry cùng tài liệu dùng UUID đã lưu; `submitted` chỉ xác nhận Windows queue, `uncertain` không tự in lại. Chi tiết [bridge](../../tools/windows-print-bridge/README.md).
 
 ### `GET /invoices/operations/{operationId}`
 

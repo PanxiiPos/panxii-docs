@@ -14,9 +14,10 @@ development 3+8 checkpoint; 8 invoice không trùng; backup development restore
 khớp 18 bảng. Đây không phải bằng chứng hạ tầng production đang hoạt động.
 Xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md).
 
-Chưa xác nhận VM OCI, HTTPS, backup ngoài máy, pipeline deploy, signing release
-hoặc Shorebird patch/rollback. Source đang ở branch feature; push không đồng
-nghĩa merge hoặc deploy.
+Chưa xác nhận VPS, HTTPS, backup ngoài máy, pipeline deploy, signing release
+hoặc Shorebird patch/rollback. Oracle Always Free đã bị loại ngày 2026-11-02 vì
+không đăng ký được tài khoản; phương án máy chủ là thuê VPS trả phí.
+Source đang ở branch feature; push không đồng nghĩa merge hoặc deploy.
 
 Chuẩn bị script/config trên development. Dựng VM dự kiến production nhưng
 **chưa nhận giao dịch thật**, dùng tenant test riêng để nghiệm thu. Chỉ chuyển
@@ -34,14 +35,16 @@ của [documentation hub](../README.md); không tự đổi business rule.
 
 **Nơi làm:** development rồi VM chưa khai thác.
 
-- Xác nhận tài khoản/region/shape/storage OCI nằm trong Always Free và có
-  tài nguyên; nếu thiếu thì dừng, không tự nâng Pay As You Go.
+- Xác nhận đã thuê VPS đúng cấu hình và trong ngân sách được chủ dự án duyệt;
+  không tự nâng gói/cấu hình khi chưa được duyệt.
 - Tạo Compose production riêng: API, Worker, MySQL, RabbitMQ, Nginx.
   API/Worker dùng Production, credentials riêng, volumes bền vững và restart
   policy; giới hạn tài nguyên/log theo capacity đo được.
-- Build API/Worker đúng kiến trúc VM; kiểm tra image hạ tầng có ARM64 nếu dùng
-  A1. Pin image ứng dụng theo SHA và hạ tầng theo version/digest.
-- Thiết lập SSH key/host verification, đồng bộ giờ, OS firewall và OCI NSG.
+- Build API/Worker đúng kiến trúc VM (VPS thường là x64; nếu ARM64 thì kiểm tra
+  image hạ tầng có hỗ trợ). Pin image ứng dụng theo SHA và hạ tầng theo
+  version/digest.
+- Thiết lập SSH key/host verification, đồng bộ giờ, OS firewall và firewall của
+  nhà cung cấp VPS (nếu có).
   Chỉ cho phép cổng quản trị từ nguồn kiểm soát; không publish DB/broker/API.
 - Review migrations, provisioning tenant/admin ban đầu và quyền migration
   riêng; không chạy seed demo, dùng mật khẩu mặc định hay migration phá hủy
@@ -61,7 +64,8 @@ Chỉ diễn tập restart trước khi có giao dịch thật.
 **Phụ thuộc:** công việc 1 để nghiệm thu trên VM; script có thể viết trước.
 
 - Chốt nơi lưu ngoài VM, dung lượng/retention và kênh cảnh báo trong quota
-  miễn phí hiện có. Không coi Docker volume hoặc bản sao cùng VM là backup.
+  hiện có. Không coi Docker volume hoặc bản sao cùng VM là backup.
+  **Đã chốt 2026-11-02:** lưu Google Drive qua Rclone; xem lịch/retention bên dưới.
 - Viết job dump nhất quán, nén, mã hóa xác thực; fail-closed nếu dump thiếu,
   upload lỗi hoặc hết quota. Chống hai job chạy chồng nhau.
 - Chọn cách giữ và phục hồi key độc lập; không phụ thuộc duy nhất tài khoản
@@ -72,10 +76,14 @@ Chỉ diễn tập restart trước khi có giao dịch thật.
   Đối chiếu integrity/fingerprint và login/sync/pull/reverse/idempotency.
 - Đo RPO/RTO và diễn tập mất VM bằng môi trường mới; không restore đè nguồn.
 
-**Đề xuất để chủ cửa hàng duyệt, chưa phải SLA:** backup mỗi ngày, giữ ít nhất
-7 bản ngày; bổ sung backup trước deploy/migration. Chấp nhận mất tối đa 24 giờ
-dữ liệu server chỉ khi được xác nhận rõ; offline-first không tự bảo đảm mọi
-dữ liệu server có thể lấy lại từ điện thoại. RTO chốt sau drill thực tế.
+**Đã chốt ngày 2026-11-02, chưa phải SLA:** backup 3 lần/ngày lúc 06:00, 12:00
+và 21:00 (UTC+7) lên Google Drive qua Rclone; chỉ giữ 6 bản mới nhất (khoảng
+2 ngày lịch sử), bản cũ hơn tự xóa, và chỉ xóa sau khi bản mới đã xác minh.
+Bổ sung backup thủ công trước deploy/migration, lưu riêng ngoài chu kỳ tự xóa.
+Khoảng cách lớn nhất giữa hai lượt là 9 giờ nên RPO thực tế có thể mất tới
+~9 giờ dữ liệu server — giới hạn do chủ dự án chấp nhận. Offline-first không
+tự bảo đảm mọi dữ liệu server có thể lấy lại từ điện thoại. RTO chốt sau drill
+thực tế.
 
 **Đạt khi:** ít nhất hai lịch tự động liên tiếp thành công; lỗi dump/upload
 tạo cảnh báo đã nhận được; restore từ storage/key độc lập pass và ghi RPO/RTO.
@@ -90,7 +98,7 @@ tạo cảnh báo đã nhận được; restore từ storage/key độc lập pa
   SignalR. HTTPS dùng certificate hợp lệ; không bỏ xác minh TLS trên mobile.
 - Wire forwarded headers đúng trusted proxy; kiểm tra HTTPS redirection không
   loop, địa chỉ client dùng cho rate limit và hạn mức request.
-- Chặn origin services bằng Docker/OS/OCI firewall, không chỉ đổi URL.
+- Chặn origin services bằng Docker/OS/firewall nhà cung cấp, không chỉ đổi URL.
   Nginx che topology/service port, **không bảo đảm giấu IP máy chủ hoặc đường
   API khỏi người dùng app**. Auth và authorization vẫn bắt buộc.
 - Kiểm tra public Swagger/health theo policy vận hành, redaction token query
@@ -193,12 +201,12 @@ VM chưa khai thác: 1 -> [2 + 3] -> [4 + 5] -> 6 -> GO
 
 Nghiệm thu 5 cần 2 và 3; nghiệm thu 4 cần 3. Pilot của 6 cần tất cả gate bảo
 vệ dữ liệu trước đó. Không dùng thứ tự song song để bỏ prerequisite.
-Không đặt ngày go-live cố định trước khi xác nhận tài nguyên OCI/hostname/storage.
+Không đặt ngày go-live cố định trước khi xác nhận VPS/hostname/storage.
 
 ## 4. Những quyết định cần chủ cửa hàng chốt
 
-1. OCI region/shape/quota, hostname/DDNS và nơi lưu backup ngoài VM.
-2. RPO chấp nhận mất dữ liệu, retention, RTO sau drill và người giữ recovery key.
+1. Nhà cung cấp VPS và nơi lưu backup **đã chốt**: thuevpsgiare.vn gói VPS SSD C4; Google Drive qua Rclone. Còn phải chốt hostname/DDNS.
+2. RPO/retention **đã chốt** (3 lượt/ngày, giữ 6 bản mới nhất, chấp nhận mất tới ~9 giờ). Còn phải chốt RTO sau drill và người giữ recovery key.
 3. Số thiết bị/tải/backlog cần nghiệm thu; ngưỡng latency và soak duration.
 4. OTA và in Canon có bắt buộc ngày đầu không; thiết bị pilot/kênh tải APK.
 5. Kênh nhận cảnh báo và người quyết định rollback/GO.
