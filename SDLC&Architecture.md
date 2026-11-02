@@ -4,8 +4,8 @@
 ---
 
 ## 1. TECH STACK CHÍNH
-*   **Backend:** ASP.NET Core 8 Web API, Clean Architecture.
-*   **Database:** MySQL 8.0, Entity Framework Core 8 (Code-First).
+*   **Backend:** ASP.NET Core 10 LTS Web API, Clean Architecture.
+*   **Database:** MySQL 8.0, Entity Framework Core 8.0.33/Pomelo 8.0.3 (Code-First), tạm thời giữ provider theo quyết định owner ngày 2026-11-02. EF 8 EOL 2026-11-10; chưa coi toàn stack được hỗ trợ LTS. Xem [gate lifecycle](release/production_readiness_plan.md).
 *   **Mobile:** Flutter, BLoC Architecture, `easy_localization` (Đa ngôn ngữ).
 *   **Local Storage:** SQLite (Mã hóa bằng `sqflite_sqlcipher`).
 *   **Real-time:** SignalR (Đồng bộ real-time giữa các client).

@@ -4,6 +4,43 @@ Kế hoạch triển khai trước go-live:
 [6 công việc production readiness](production_readiness_plan.md).
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
+## Bằng chứng release production ngày 2026-11-02 — chưa GO
+
+- Backend live application `720fb2a5719a01c2228685ffa145bbe176fe2d69`,
+  deploy configuration `02623e1`, pilot fix `04325ee`; feature branch chưa merge.
+  .NET 10.0.14 đã deploy bằng quy trình backup-first, không migration/seed/reset
+  volume; EF 8/Pomelo 8 tạm thời còn blocker lifecycle.
+- Build warning-free, 196 regression pass/4 opt-in skip, NuGet advisory audit
+  sạch tại thời điểm kiểm tra; Docker resilience 22/22 và rollback runtime cô lập
+  bằng image .NET 8 VPS trước, xác nhận cùng DB/invoice/replay không trùng.
+  [CI run 41450422464](https://github.com/PanxiiPos/panxii-backend/actions/runs/41450422464)
+  tại `67d00b7` xanh build-test/resilience. Required merge checks chưa xác nhận;
+  chưa có auto-deploy production. Run `41452714399` cho SHA mới `02623e1`
+  đang chờ/chạy khi ghi nhận, chưa báo xanh cho SHA mới.
+- Native Android `0.1.4+5`, Shorebird Flutter `3.47.8`, arm64, ký private
+  production key; thiếu signing config sẽ fail release, không fallback debug key.
+  Package `com.panxiipos.panxii_mobile.production`, label **Panxii Production**;
+  cài song song trên Samsung SM-A336E, không di chuyển/xóa dữ liệu app debug.
+  [Tải APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk).
+  SHA-256 `A7BC51DCD3009994E8D502C2A3AE0A86C30FF31F977DEAAA88CA6AD61FEAA65A`;
+  certificate SHA-256 `3D604285F3F0F18AB02EC1C1A3EA71832088F85FED4D13DA5E40C03A540F9EA7`.
+  Khóa và file recovery mã hóa ngoài repo; owner xác nhận giữ mật khẩu.
+  Production policy minimum `0.1.0`, latest `0.1.4`, có Android download URL thật.
+- Shorebird patch 1 (`770453`) đã tải, verify signature, apply, full process
+  restart và xác minh `current_patch_number=1`. Remote rollback + restart thực
+  tế về base (`None`) pass, không clear app data. Patch đã roll forward server-side;
+  chưa xác minh reapply trên thiết bị nên không coi roll-forward E2E đạt.
+  `auto_update: false`, người dùng xác nhận tải rồi khởi động lại.
+- Owner xác nhận SuperAdmin login Swagger được. Chưa có UI SuperAdmin mobile;
+  nghiệm thu quản trị qua API/Swagger, không yêu cầu một màn hình chưa triển khai.
+  TenantAdmin physical-device offline/sync/restart/SignalR pilot còn pending.
+- Soak 24 giờ bắt đầu 20:18:57 ngày 02/11 UTC+7, có mẫu mới; chỉ đủ thời gian
+  từ 20:18:57 ngày 03/11. Lượt đầu lỗi script cursor đã giữ evidence, không tính
+  là pass. Thresholds, initial load và DB audit tại
+  [readiness](production_readiness_plan.md). Chưa GO đến khi đóng các gate còn lại.
+
+## Lịch sử release debug nội bộ (không phải bản production hiện tại)
+
 Hướng triển khai nội bộ tiết kiệm chi phí và setup OTA để thực hiện sau:
 [VPS thuê, APK nội bộ và Shorebird Free](../infrastructure/internal_free_deployment.md).
 Shorebird Android `0.1.3+4`, release ID `934536`, đã publish và cài trên

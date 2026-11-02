@@ -100,7 +100,7 @@ Backend trả error code ổn định. Flutter dùng `easy_localization` để h
 ```mermaid
 flowchart LR
     Mobile[Panxii Flutter App\nBLoC + SQLite/SQLCipher] -->|HTTPS| Nginx[Nginx TLS]
-    Nginx --> Api[ASP.NET Core 8 API]
+    Nginx --> Api[ASP.NET Core 10 API]
     Api --> Application[Application Use Cases]
     Application --> Domain[Domain Rules]
     Application --> MySQL[(MySQL 8)]
@@ -115,10 +115,10 @@ flowchart LR
 
 | Thành phần | Công nghệ |
 |---|---|
-| Backend | ASP.NET Core 8 Web API |
+| Backend | ASP.NET Core 10 LTS Web API |
 | Architecture | Clean Architecture |
 | Database server | MySQL 8.0 |
-| ORM | Entity Framework Core 8 |
+| ORM | EF Core 8.0.33/Pomelo 8.0.3 tạm thời; lifecycle là gate trước GO |
 | Mobile | Flutter + BLoC |
 | Local storage | SQLite + `sqflite_sqlcipher` |
 | Messaging | RabbitMQ |

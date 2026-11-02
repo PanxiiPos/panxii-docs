@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **đã triển khai nền tảng VPS/HTTPS/backup/monitoring; chưa GO**.
+- Trạng thái: **.NET 10/APK production/private admin đã triển khai; soak đang chạy; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -14,7 +14,7 @@ development 3+8 checkpoint; 8 invoice không trùng; backup development restore
 khớp 18 bảng. Đây không phải bằng chứng hạ tầng production đang hoạt động.
 Xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md).
 
-Ngày 2026-11-02 đã dựng VPS private: API/Worker Production, MySQL/RabbitMQ,
+Giai đoạn đầu ngày 2026-11-02 đã dựng VPS private: API/Worker Production, MySQL/RabbitMQ,
 17 migrations và duy nhất một SuperAdmin; health, login/platform/logout,
 bootstrap chống ghi đè và restart API/Worker đã pass. Các bảng nghiệp vụ trống.
 Secrets chỉ trên VPS `.env` quyền 600; SSH key-only, origin API chỉ loopback.
@@ -24,7 +24,86 @@ và Shorebird patch/rollback chưa nghiệm thu; **chưa GO production**. Oracle
 bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồng nghĩa
 đã merge. Xem [trạng thái VPS](../infrastructure/internal_free_deployment.md).
 
-### Bằng chứng triển khai ngày 2026-11-02
+### Bằng chứng hiện tại ngày 2026-11-02 (thay thế trạng thái giai đoạn đầu bên dưới)
+
+- Live application source/image `720fb2a5719a01c2228685ffa145bbe176fe2d69`;
+  deploy configuration `02623e1a1ef05bdc84ee171be26cb894e6227645`;
+  sửa pilot cursor/preflight trên branch tại `04325ee`.
+- Bảy project target `net10.0`, SDK `10.0.403`; API/Worker runtime `10.0.14`.
+  EF `8.0.33`/Pomelo `8.0.3` tạm giữ theo owner; MySqlConnector `2.6.2`.
+  .NET 10 LTS EOL 2028-11-14, nhưng EF 8 EOL 2026-11-10 vẫn là blocker.
+  Chưa xác minh stable provider EF 10 phù hợp; cần chốt strategy và review
+  lifecycle MySQL/RabbitMQ trước GO, không tự nâng major trên volume.
+- Release build 0 warning/error; regression 196 pass/4 opt-in integration skip;
+  NuGet transitive audit không có known advisory. Python backup 14 pass,
+  pilot 6 pass Windows/Linux. Docker resilience 22/22 pass sau diễn tập
+  .NET 10 -> đúng image VPS .NET 8 trước -> .NET 10, cùng DB, invoice read/replay
+  không trùng, không migration. Đây là rollback runtime cô lập, không phải
+  diễn tập restore hoặc rollback schema production.
+- [Backend CI run 41450422464](https://github.com/PanxiiPos/panxii-backend/actions/runs/41450422464)
+  tại `67d00b7` xanh cả `build-test` và `resilience`; không tự deploy.
+  Required branch checks/merge gate chưa xác nhận; branch feature chưa merge.
+  Run mới `41452714399` cho `02623e1` đang chờ/chạy khi ghi nhận; không suy
+  trạng thái xanh của `67d00b7` sang SHA mới.
+- Swagger chỉ listener loopback 8081, JSON có 46 paths; public Swagger/readiness
+  trả 404 kể cả spoof forwarded headers. Dozzle 11.4.0 qua socket proxy read-only,
+  không public, không shell/actions/analytics. Tunnel workstation đã HTTP 200:
+  `http://localhost:18081/swagger`, `http://localhost:19999`.
+  UI Dozzle đã thấy đủ 7 containers và log API; proxy GET container list pass,
+  fake mutation/exec endpoints trả 403. Tắt registry image checks/auto-update
+  thay vì mở rộng quyền proxy. Dozzle dùng quyền SSH key, không dùng tài khoản ứng dụng. Owner xác nhận
+  đăng nhập SuperAdmin trên Swagger thành công; **chưa có UI SuperAdmin mobile**,
+  không dùng màn hình quản trị mobile làm gate nghiệm thu.
+- APK ký production `0.1.4+5`, package `com.panxiipos.panxii_mobile.production`,
+  cài/chạy trên một Samsung SM-A336E, song song app debug không xóa dữ liệu.
+  [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk)
+  đã đối chiếu hash; minimum native `0.1.0`, latest `0.1.4`.
+  Shorebird patch 1 đã tải/verify/apply và khởi động được; rollback thực tế về
+  native base cũng pass. Đã roll forward patch trên server, nhưng chưa xác nhận
+  thiết bị nhận lại patch; không báo roll-forward end-to-end pass.
+  File khôi phục khóa ký mã hóa ngoài repo; owner xác nhận giữ mật khẩu.
+
+#### Capacity/pilot được duyệt và tiến độ
+
+Owner duyệt 5 clients, 200 hóa đơn/ngày, backlog 100, 2000 biến thể;
+tenant synthetic `PILOT-READINESS`, không tạo dữ liệu cửa hàng thật.
+**Database hiện không còn trống nghiệp vụ**: test tenant/2000 products và
+2000 variants được giữ để audit; không seed lại/xóa lịch sử invoice.
+
+| Phép đo prepare | Kết quả | Ngưỡng |
+|---|---|---|
+| 100 invoice commit + replay + snapshot/receipt | 18,84 giây | <= 60 giây |
+| Read p50/p95/p99 (421 samples) | 111,71 / 234,72 / 432,76 ms | p95 <= 500 ms |
+| Pull p50/p95/p99 (55 samples) | 192,88 / 287,73 / 386,10 ms | p95 <= 1500 ms |
+| POST acceptance p95 (200 samples) | 251,68 ms | Không thay cho durable completion |
+
+Lượt soak đầu dừng trước mẫu đầu vì script search thiếu `cursor=`, HTTP 400;
+không phải 24 giờ pass. Đã sửa và test, giữ evidence lượt lỗi, audit DB theo
+UUID commands: 101 invoice/details/completed receipts/server changes/published
+DataCreated outbox khớp, 0 operation trùng, 0 sai tổng tiền. Invoice 101 đã
+commit trước lỗi; restart dùng lại đúng operation/invoice IDs, không thêm bản sao.
+Không scope audit theo tiền tố số hóa đơn client vì server chuẩn hóa số.
+
+Lượt mới `panxii-pilot-soak.service` đã xác minh PID sống và có mẫu mới:
+bắt đầu **20:18:57 ngày 02/11/2026 UTC+7**, dự kiến đủ 86400 giây lúc
+**20:18:57 ngày 03/11/2026 UTC+7**. Mẫu 20:21:09 có 101 invoice,
+read p95 307,79 ms, pull p95 302,42 ms, observed sync p95 254,10 ms;
+queue ready/unacked và DLQ đều 0. Read/pull kiểm tra từng cửa sổ khoảng một
+phút; observed sync p95 tích lũy, ngưỡng 1500 ms. Bằng chứng đầu run không
+thay cho đủ 24 giờ, invoice mới sau refresh token và final DB/outbox/DLQ audit.
+Systemd oneshot ở `activating/start` trong khi chạy là dự kiến, không phải lỗi.
+
+Năm clients HTTPS chạy từ VPS, **không phải năm điện thoại hoặc mạng ngoài**.
+Còn gate thiết bị thật TenantAdmin: catalog, invoice/offline/restart,
+sync/pull/SignalR. In Canon thật được owner loại khỏi gate bắt buộc ngày đầu.
+OTA vẫn bắt buộc ngày đầu.
+
+**NO-GO còn lại:** đủ soak và audit cuối; mobile pilot nghiệp vụ; hai lịch
+backup tự động thật; independent replacement-VPS/key/API restore và RTO;
+availability monitor ngoài VPS; provider/image lifecycle; CI merge gates;
+owner nghiệm thu/GO và rotation credentials từng lộ trong chat.
+
+### Lịch sử giai đoạn đầu ngày 2026-11-02 (không phải trạng thái hiện tại)
 
 Source/image VPS: `3f171a2181b5cc27ef587581f5386a4047455b54`, branch
 `feature/production-vps`; API runtime `8.0.33`. Kiểm tra cuối sau reboot/deploy:
