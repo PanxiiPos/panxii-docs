@@ -6,17 +6,18 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-03 — chưa GO
 
-- Backend live application `d2dc5244f8cfccc1c94e49a2cc1d69508e69b5c9`,
+- Backend live application `848d8be0127890746269957873314f54b6971cbe`,
   deploy configuration `02623e1`, pilot runner `d24ed97`; feature branch chưa merge.
   .NET 10.0.14 đã deploy bằng quy trình backup-first, không migration/seed/reset
   volume; EF 8/Pomelo 8 tạm thời còn blocker lifecycle.
-- Build warning-free, 196 regression pass/4 opt-in skip, NuGet advisory audit
-  sạch tại thời điểm kiểm tra; Docker resilience 22/22 và rollback runtime cô lập
-  bằng image .NET 8 VPS trước, xác nhận cùng DB/invoice/replay không trùng.
-  [CI run 41450422464](https://github.com/PanxiiPos/panxii-backend/actions/runs/41450422464)
-  tại `67d00b7` xanh build-test/resilience. Required merge checks chưa xác nhận;
-  chưa có auto-deploy production. Run `41452714399` cho SHA mới `02623e1`
-  đang chờ/chạy khi ghi nhận, chưa báo xanh cho SHA mới.
+- `848d8be` Release build warning-free, 198 regression pass/4 opt-in skip;
+  Docker resilience 23/23, cold local 1023,49/661,77/539,26 ms.
+  [CI 41645651110](https://github.com/PanxiiPos/panxii-backend/actions/runs/41645651110)
+  xanh build-test/resilience cho đúng SHA. Khởi tạo EF tracking trong bộ nhớ
+  rồi clear, không SaveChanges; generated invoice API JSON giữ exact bytes/hash.
+  Backup verified `manual/20261103T134454Z-c1942c4e6c30`, deploy chỉ API/Worker,
+  giữ dependency IDs/mounts/volumes và rollback images. Required merge checks
+  chưa xác nhận; chưa có auto-deploy production.
 - Native Android `0.1.4+5`, Shorebird Flutter `3.47.8`, arm64, ký private
   production key; thiếu signing config sẽ fail release, không fallback debug key.
   Package `com.panxiipos.panxii_mobile.production`, label **Panxii Production**;
@@ -47,8 +48,13 @@ Kế hoạch triển khai trước go-live:
   `d2dc524` CI/local pass và đã deploy chỉ API/Worker, nhưng cold VPS 1755,38 ms
   vẫn vượt 1500 ms. Follow-up `6099f7a` chưa deploy vì cloud resilience cold
   gate fail (2052,85/1833,21/1771,00 ms), dù local 23/23 pass và regression
-  198 pass/4 opt-in skip. Soak vẫn dừng, chưa chốt cold-start fix.
-  Audit 104 invoice/receipt/change/published outbox khớp, không duplicate.
+  198 pass/4 opt-in skip. Đây là lịch sử trước bản mới `848d8be`.
+  Bản mới đã deploy sau CI pass; soak `20261103-135041` bắt đầu 20:50:49
+  ngày 03/11 UTC+7, dùng ngay first invoice cold làm sample: **827,05 ms**.
+  Không warm-up/discard sample; preserve failed state/mẫu cũ.
+  Audit 13:54:54Z: 105 invoice/receipt/change/published outbox khớp, không
+  duplicate/sai line values, command/retry/DLQ rỗng. Soak đang chạy, chưa đủ
+  24 giờ; dự kiến khoảng 20:50 ngày 04/11 nếu không lỗi.
   Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 

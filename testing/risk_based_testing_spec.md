@@ -375,6 +375,12 @@ thay đổi trigger và xóa volume **trong project test tự sinh**.
 - `scripts/test-resilience.ps1 -ColdStartOnly` chỉ chạy cold-start gate riêng,
   ghi ba mẫu trong `cold-start.json` và API/Worker logs có timestamp. Pass một
   test này không thay cho full gate, đo trên VPS đích hoặc soak đủ 24 giờ.
+- Cold gate kiểm tra startup không tăng business/auth row counts và tracker
+  rỗng sau khởi tạo delegates trong bộ nhớ; không SaveChanges/publish warm-up.
+  Thêm `-PersistenceDiagnostics` chỉ để phân rã EF/publisher timing và đo
+  hóa đơn mới thứ hai sau mỗi cold sample. So sánh này không thay thế/bỏ
+  cold sample hoặc đổi ngưỡng; Debug logging ảnh hưởng latency, không dùng
+  diagnostic pass làm production acceptance.
 - Manifest ghi commit/working tree và SHA-256 source trước test; source thay đổi
   trong quá trình chạy thì gate fail thay vì chứng nhận nhầm build.
 - Test hạ tầng được skip trong `dotnet test` thông thường nếu chưa chạy runner;

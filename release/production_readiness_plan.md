@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **.NET 10/APK production/private admin đã triển khai; soak thất bại, đang chờ chạy lại; chưa GO**.
+- Trạng thái: **cold-start fix đã deploy; soak mới đang chạy từ 20:50:49 ngày 03/11/2026 UTC+7; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -24,7 +24,49 @@ và Shorebird patch/rollback chưa nghiệm thu; **chưa GO production**. Oracle
 bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồng nghĩa
 đã merge. Xem [trạng thái VPS](../infrastructure/internal_free_deployment.md).
 
-### Bằng chứng hiện tại ngày 2026-11-02 (thay thế trạng thái giai đoạn đầu bên dưới)
+### Trạng thái hiện tại sau deploy ngày 2026-11-03
+
+- Live application source/image **`848d8be0127890746269957873314f54b6971cbe`**;
+  deploy configuration `02623e1`, pilot runner `d24ed97`.
+  Khởi tạo thêm EF tracking/snapshot delegates bằng entity tạm trong bộ nhớ,
+  DetectChanges rồi clear tracker; không SaveChanges, publish command hoặc tạo
+  invoice trong DB. API invoice request/payload/queued envelope dùng generated
+  JSON; test giữ nguyên bytes/hash v1/v2 và wire contract.
+- Source commit sạch được full local **23/23**; cold **1023,49 / 661,77 /
+  539,26 ms**. Release build 0 warning/error, regression **198 pass/4 opt-in
+  skip**. [CI 41645651110](https://github.com/PanxiiPos/panxii-backend/actions/runs/41645651110)
+  cho đúng `848d8be` đã success cả build-test và resilience; không retry/bỏ
+  mẫu hoặc nâng ngưỡng 1500 ms.
+- Image IDs đúng artifact local đã test, source/images transfer SHA-256 verified.
+  Backup encrypted verified `manual/20261103T134454Z-c1942c4e6c30`.
+  Đã activate chỉ API/Worker, giữ dependency container IDs/mounts/volumes,
+  không migration/seed; giữ `d2dc524` và các image cũ để rollback.
+  Attempt đầu tự rollback do probe nhầm public `/health/ready` (cố ý 404);
+  đã dùng đúng private readiness như monitor và activate lại thành công.
+  Không mở public readiness hoặc sửa Nginx để vượt probe.
+- **Soak `20261103-135041` đang chạy** từ **20:50:49 ngày 03/11 UTC+7**
+  (13:50:49Z), dự kiến đủ 24 giờ khoảng **20:50 ngày 04/11** nếu không lỗi.
+  Dùng ngay hóa đơn đầu của run làm cold sample: **827,05 ms < 1500 ms**;
+  không có warm-up invoice hoặc discarded sample. Preserve state/mẫu cũ,
+  giữ 100 backlog invoice baseline và cấp UUID mới cho 100 invoice của lượt
+  soak này, không dùng replay của hóa đơn cũ làm mẫu mới.
+- Audit 13:54:54Z: **105 invoice/detail/completed receipt/change/published
+  outbox** toàn tenant khớp; zero duplicate operations/sai line values;
+  command/retry/DLQ đều rỗng. Cohort run mới ghi 101 (100 baseline + 1 mới),
+  khác tổng lịch sử 105. Host monitor pass.
+  Service `Type=oneshot` có `ActiveState=activating`, `SubState=start` và
+  MainPID sống trong khi đang chạy 24 giờ; không coi nhãn này là lỗi.
+- Đây mới là first sample pass và soak đang tiến hành, **chưa có 24h pass**.
+  Vẫn phải audit cuối, UAT thiết bị thật và các gate GO/NO-GO bên dưới.
+
+Evidence root-only: `coldstart-848d8be-prepared.json`,
+`coldstart-848d8be-deployed.json`, `coldstart-848d8be-first-soak-sample.json`,
+`coldstart-848d8be-database-audit.json`, `pilot-state.json`, `pilot-samples.jsonl`;
+archives state/mẫu trước run có tên `*.before-848d8be-20261103-135041.*`.
+Local full run: `panxii-resilience-b6d6237bb7f44f45a94b737b3d7cdd69`.
+Transfer archives đã xóa; source/images/evidence và rollback giữ nguyên.
+
+### Lịch sử bằng chứng ngày 2026-11-02 và điều tra trước deploy mới
 
 - Live application source/image `720fb2a5719a01c2228685ffa145bbe176fe2d69`;
   deploy configuration `02623e1a1ef05bdc84ee171be26cb894e6227645`;
@@ -129,7 +171,7 @@ Evidence root-only trên VPS: `env-recreate-result-20261103.json`,
 `pilot-account-maintenance-20261103.json`, `pilot-latency-diagnostic-20261103.json`,
 `pilot-state.failed-latency-20261102.json` và `pilot-samples.jsonl`.
 
-#### Lượt mới và cold-start ngày 2026-11-03 — vẫn dừng
+#### Lịch sử lượt lỗi và cold-start trước deploy `848d8be`
 
 - Pilot runner `d24ed97` đã deploy: HTTPS keep-alive có TLS verification,
   pin đúng authorized user ID, lưu committed sample trước kiểm tra threshold,
@@ -168,6 +210,42 @@ Evidence root-only bổ sung: `coldstart-deploy-before-20261103.json`,
 `coldstart-database-audit-20261103.json`. Còn phải profiling phần first-write/
 first-result materialization, xác minh ngưỡng trên VPS và CI trước khi chốt fix
 hoặc bắt đầu lại một lượt soak mới.
+
+#### Phân rã latency trên stack cô lập, 2026-11-03
+
+- Không restart/deploy production hoặc chạy lại soak. Kiểm tra VPS chỉ đọc
+  không thấy quota CPU throttling ở API/Worker; RAM available khoảng 2,3 GiB.
+  Đây là snapshot hiện tại, không chứng minh host không bị contention lúc lỗi.
+- Diagnostic run `panxii-resilience-752bb31398a54314ab9f2755e4171e27`:
+  cold **2625,96 / 1859,79 / 1627,73 ms**; hóa đơn mới thứ hai cùng process
+  **375,6 / 314,4 / 343,6 ms**. POST cold 505–1394 ms, so với 37–72 ms
+  ở hóa đơn thứ hai. Mỗi cold sample vẫn bị kiểm ngưỡng 1500 ms; không bỏ mẫu.
+- Không có EF query compilation sau lúc submit. Tổng SQL Worker quan sát
+  khoảng 19–21 ms mỗi cold sample (có cả outbox polling xen kẽ), trong khi
+  lần SaveChanges đầu mất 178–233 ms so với 6–11 ms khi process đã nóng.
+  DetectChanges đầu 113–143 ms so với dưới 1 ms; đây là phần nằm trong
+  SaveChanges, **không cộng hai số thành tổng**. Log còn chỉ ra chi phí
+  materialization/tracking thực tế khi query lần đầu trả dữ liệu.
+  Startup probe tenant ngẫu nhiên trả rỗng chỉ khởi tạo query shape,
+  không chạy hết đường materialization/tracking/ghi đầu tiên.
+- Đo riêng publisher trong run
+  `panxii-resilience-418ff2dc8eee4abbb956b847d8d23182`:
+  cold **1340,72 / 1523,98 / 1617,09 ms**; hóa đơn mới thứ hai
+  **294,32 / 428,77 / 294,68 ms**. Mở connection/channel/confirm mode
+  chỉ 6–8 ms; serialize queued command khoảng 1,5–1,7 ms.
+  Topology 11–80 ms, publish/confirm 11–75 ms; một confirm ở hóa đơn thứ hai
+  còn mất 123 ms. Vì vậy không quy toàn bộ POST chậm cho lazy RabbitMQ setup.
+- Kết luận đã xác minh: chi phí first-use còn ở API và EF khi có dữ liệu/ghi,
+  không chỉ SQL hoặc query translation. Chưa có CPU/JIT trace để phân bổ hết
+  phần API/framework còn lại; không khẳng định chính xác bao nhiêu ms là JIT.
+  Receipt wait có cả polling 200 ms và HTTP, không phải pure Worker CPU.
+  Debug logging ảnh hưởng số đo; các lượt này chỉ phục vụ diagnosis,
+  không thay thế CI/VPS acceptance. Live vẫn `d2dc524`, soak vẫn dừng.
+- Kiểm tra lại logging mặc định bằng `-ColdStartOnly` trên source diagnostic
+  chưa commit: run `panxii-resilience-32d4bced0eb54df2884c77910fedc844`,
+  1/1 test pass, ba cold sample **1249,46 / 1350,36 / 1388,38 ms**,
+  không có comparison/warm-up invoice, cleanup hoàn tất. Đây là local pass,
+  không phải fix đã được xác nhận trên CI hoặc VPS.
 
 Năm clients HTTPS chạy từ VPS, **không phải năm điện thoại hoặc mạng ngoài**.
 Còn gate thiết bị thật TenantAdmin: catalog, invoice/offline/restart,
