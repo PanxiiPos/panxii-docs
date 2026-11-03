@@ -4,10 +4,10 @@ Kế hoạch triển khai trước go-live:
 [6 công việc production readiness](production_readiness_plan.md).
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
-## Bằng chứng release production ngày 2026-11-02 — chưa GO
+## Bằng chứng release production cập nhật ngày 2026-11-03 — chưa GO
 
-- Backend live application `720fb2a5719a01c2228685ffa145bbe176fe2d69`,
-  deploy configuration `02623e1`, pilot fix `04325ee`; feature branch chưa merge.
+- Backend live application `d2dc5244f8cfccc1c94e49a2cc1d69508e69b5c9`,
+  deploy configuration `02623e1`, pilot runner `d24ed97`; feature branch chưa merge.
   .NET 10.0.14 đã deploy bằng quy trình backup-first, không migration/seed/reset
   volume; EF 8/Pomelo 8 tạm thời còn blocker lifecycle.
 - Build warning-free, 196 regression pass/4 opt-in skip, NuGet advisory audit
@@ -37,12 +37,19 @@ Kế hoạch triển khai trước go-live:
 - Soak bắt đầu 20:18:57 ngày 02/11 UTC+7 nhưng fail lúc 20:34:06 vì observed
   sync p95 1923,80 ms > 1500 ms; không có kết quả 24 giờ. Audit 102 invoice/
   receipt/change/published outbox khớp. Diagnostic chỉ replay cho thấy overhead
-  kết nối mới; chưa deploy transport fix hoặc restart soak. Ngày 03/11 backup
+  kết nối mới. Ngày 03/11 backup
   verified rồi recreate API/Worker để áp dụng refresh-token policy 300 ngày
   theo `.env` owner đã sửa, cùng image/volumes. Owner duyệt reset username/
   password pilot bằng maintenance transaction có xác thực SuperAdmin/audit;
-  login credentials mới pass, các phiên cũ thu hồi. Account hiện dành cho UAT,
-  không còn khớp synthetic username guard. Chi tiết và gate còn lại tại
+  login credentials mới pass, các phiên cũ thu hồi. Runner `d24ed97` dùng
+  verified HTTPS keep-alive và authorized-user UUID guard. Lượt mới fail ngay
+  first invoice 3038,62 ms. Owner duyệt startup reads, không warm-up invoice:
+  `d2dc524` CI/local pass và đã deploy chỉ API/Worker, nhưng cold VPS 1755,38 ms
+  vẫn vượt 1500 ms. Follow-up `6099f7a` chưa deploy vì cloud resilience cold
+  gate fail (2052,85/1833,21/1771,00 ms), dù local 23/23 pass và regression
+  198 pass/4 opt-in skip. Soak vẫn dừng, chưa chốt cold-start fix.
+  Audit 104 invoice/receipt/change/published outbox khớp, không duplicate.
+  Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 
 ## Lịch sử release debug nội bộ (không phải bản production hiện tại)

@@ -109,7 +109,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 |---|---|
 | [testing_strategy.md](testing/testing_strategy.md) | Unit, integration, API contract, offline E2E, RabbitMQ chaos và k6 |
 | [role_based_test_cases.md](testing/role_based_test_cases.md) | Test case chức năng theo role, boundary, validation và tenant isolation |
-| [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, ordering, SQLite/printer failure, API breaking change, gate Docker resilience 22 test và gate mobile development opt-in |
+| [risk_based_testing_spec.md](testing/risk_based_testing_spec.md) | Test spec cho cross-tenant leak, ordering, SQLite/printer failure, API breaking change, gate Docker resilience 23 test gồm cold-start và gate mobile development opt-in |
 
 ### 2.8. Infrastructure và release
 

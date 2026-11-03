@@ -100,13 +100,13 @@ sai tổng hoặc line snapshot. Raw state/mẫu/journal được giữ; state h
   GET 17 ms; DB có completed receipt và published outbox. Tổng 95 ms phía Nginx
   không bao gồm toàn bộ DNS/TLS/client scheduling; không đủ để kết luận thời
   gian quan sát end-to-end tương đương worker commit latency.
-- Script hiện dùng `urllib.request.urlopen` mở kết nối mới mỗi request.
+- Runner của lượt 02/11 dùng `urllib.request.urlopen` mở kết nối mới mỗi request.
   Probe health cho thấy DNS 100-388 ms; diagnostic replay cùng một operation
   đã commit (không tạo invoice mới), 5 mẫu original mất 679,83-2164,33 ms;
   5 mẫu với HTTPS keep-alive có TLS verification mất 57,82-178,62 ms.
   Đây là bằng chứng chi phí kết nối góp phần vào lỗi đo, **không** là nghiệm thu
-  invoice mới hoặc soak 24 giờ. Chưa deploy thay đổi transport của pilot,
-  không nới threshold hoặc đổi số đo cũ thành pass.
+  invoice mới hoặc soak 24 giờ. Tại thời điểm diagnostic chưa deploy transport;
+  phần cập nhật bên dưới ghi nhận lượt mới, không đổi số đo cũ thành pass.
 - Owner đã sửa `.env`; đối chiếu chỉ thấy API/Worker thay
   `JWT_REFRESH_TOKEN_DAYS` từ 30 sang **300 ngày**. Backup manual mã hóa đã
   upload/download verified trước khi force-recreate **chỉ API/Worker**.
@@ -122,14 +122,52 @@ sai tổng hoặc line snapshot. Raw state/mẫu/journal được giữ; state h
   ghi `TenantAdminCredentialsResetByMaintenance` audit. Login bằng đúng bộ
   credentials hiện tại của `.env` đã pass; phiên kiểm tra/SuperAdmin đã logout.
   Không ghi username/password/hash vào tài liệu hoặc audit payload.
-- Soak **không restart**. Tài khoản hiện dùng cho owner UAT, username mới không
-  còn tiền tố `pilot.readiness.` nên guard hiện tại từ chối chạy tự động.
-  Cần xử lý transport/diagnostics và provision tài khoản synthetic phù hợp trước
-  lượt mới; phải đo đủ thời gian từ đầu và audit cuối, không nối thời gian đã lỗi.
+- Sau maintenance, soak chưa restart tại thời điểm ghi nhận ban đầu. Runner mới
+  bên dưới thay username-prefix guard bằng UUID của đúng tài khoản owner duyệt.
 
 Evidence root-only trên VPS: `env-recreate-result-20261103.json`,
 `pilot-account-maintenance-20261103.json`, `pilot-latency-diagnostic-20261103.json`,
 `pilot-state.failed-latency-20261102.json` và `pilot-samples.jsonl`.
+
+#### Lượt mới và cold-start ngày 2026-11-03 — vẫn dừng
+
+- Pilot runner `d24ed97` đã deploy: HTTPS keep-alive có TLS verification,
+  pin đúng authorized user ID, lưu committed sample trước kiểm tra threshold,
+  ghi state `failed` khi lỗi. 12 test Python pass Windows/Linux.
+- Lượt `20261103-120145` bắt đầu 12:01:51Z (19:01:51 UTC+7), fail ngay hóa đơn
+  mới đầu tiên: **3038,62 ms > 1500 ms**. Receipt thực sự còn 404 gần ba giây;
+  đây không chỉ là overhead HTTPS. Không có lượt soak đủ 24 giờ.
+- Owner chọn giữ soak dừng và cho phép khởi tạo EF/query **chỉ đọc** khi startup,
+  không tạo hóa đơn warm-up hoặc bỏ mẫu. Bản `d2dc524` dùng composite ReadyToRun,
+  bỏ detail joins khi chỉ kiểm tra invoice ID và khởi tạo query trước khi Worker
+  subscribe. Full local 23/23, regression 196 pass/4 opt-in skip, cloud CI
+  [41636263529](https://github.com/PanxiiPos/panxii-backend/actions/runs/41636263529)
+  build-test/resilience pass.
+- Đã backup encrypted verified rồi activate chỉ API/Worker `d2dc524`; dependency
+  container IDs và volumes không đổi, không migration/seed. Worker startup mất
+  2041,32 ms (ghi riêng). Hóa đơn mới đầu tiên trên VPS sau startup mất
+  **1755,38 ms**, vẫn fail; không gọi đây là cold-start đã sửa xong.
+- Follow-up source `6099f7a` chia sẻ startup reads cho API/Worker, khởi tạo query
+  tenant/session và dùng generated JSON cho invoice command/hash/realtime.
+  Test so khớp exact JSON với serializer cũ, giữ hash PascalCase v1/v2 và event
+  camelCase. Regression 198 pass/4 opt-in skip; full local 23/23 pass, nhưng
+  cloud CI [41639847324](https://github.com/PanxiiPos/panxii-backend/actions/runs/41639847324)
+  có build-test pass và resilience **22 pass/1 fail**: ba mẫu cold API/Worker
+  **2052,85 / 1833,21 / 1771,00 ms**. Không retry/bỏ mẫu/nới ngưỡng để báo xanh.
+  Candidate source/images đã chuẩn bị nhưng **chưa activate**; live vẫn
+  `d2dc5244f8cfccc1c94e49a2cc1d69508e69b5c9`.
+- Audit 13:07:07Z: 104 invoice/detail/completed receipt/change/published
+  DataCreated outbox của invoice khớp, zero duplicate operation groups hoặc
+  sai line values. Có một invoice diagnostic mới ngoài cohort soak đã dừng;
+  giữ lịch sử và audit riêng, không dùng replay của nó làm mẫu cold mới.
+  Monitor pass, disk 21% (~38 GiB available), transfer archives đã xóa.
+  `panxii-pilot-soak.service` MainPID=0; state lượt trước vẫn `failed`.
+
+Evidence root-only bổ sung: `coldstart-deploy-before-20261103.json`,
+`coldstart-deploy-result-20261103.json`, `coldstart-first-invoice-20261103.json`,
+`coldstart-database-audit-20261103.json`. Còn phải profiling phần first-write/
+first-result materialization, xác minh ngưỡng trên VPS và CI trước khi chốt fix
+hoặc bắt đầu lại một lượt soak mới.
 
 Năm clients HTTPS chạy từ VPS, **không phải năm điện thoại hoặc mạng ngoài**.
 Còn gate thiết bị thật TenantAdmin: catalog, invoice/offline/restart,

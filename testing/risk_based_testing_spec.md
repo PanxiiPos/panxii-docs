@@ -345,6 +345,7 @@ thay đổi trigger và xóa volume **trong project test tự sinh**.
 |---|---|---|
 | Availability | Broker down trước confirm | HTTP 503 `ERR_SERVICE_UNAVAILABLE`; không có entity/operation/change/outbox; live vẫn 200, ready 503; retry cùng UUID thành công |
 | Durable queue | Worker dừng, broker restart sau 202 | Chưa có invoice khi worker dừng; command còn trong queue; khởi động worker tạo đúng một invoice |
+| Cold-start | Restart API/Worker ba lần; khởi tạo EF/auth/query chỉ đọc trước HTTP/subscribe | Không thêm invoice/detail/receipt/change/outbox lúc startup; mỗi hóa đơn mới đầu tiên có Completed receipt và snapshot trong 1500 ms; không hóa đơn warm-up/bỏ mẫu |
 | Crash giữa chừng | Chặn outbox insert bằng MySQL named lock sau SaveChanges thứ nhất, rồi SIGKILL worker hoặc MySQL | Chứng minh worker đã đến boundary; không đọc được partial commit; rollback sau crash; redelivery commit đúng một lần |
 | Atomicity | Trigger làm detail thứ hai hoặc outbox insert thất bại | Không còn invoice/detail/operation/change/outbox; bỏ fault rồi retry cùng operation thành công |
 | Duplicate | 16 request cùng UUID; client không đọc response rồi reset socket sau DB commit | Một invoice, đúng số detail, một Completed operation, một change, một logical DataCreated outbox sau queue drain (kể cả unacked) |
@@ -369,8 +370,11 @@ thay đổi trigger và xóa volume **trong project test tự sinh**.
   bên ngoài; không dùng clock mobile để quyết định thứ tự ghi sổ.
 - Không dùng sleep dài hoặc retry cả test để che fault. Đường phục hồi được
   quan sát tới commit/Published và drain cả delivery unacked trước khi đếm.
-- Tối thiểu 22 test phải chạy và pass, không skip. Runner mặc định có watchdog
+- Tối thiểu 23 test phải chạy và pass, không skip. Runner mặc định có watchdog
   hang 20 phút; mỗi lần chạy có TRX riêng và cleanup stack riêng.
+- `scripts/test-resilience.ps1 -ColdStartOnly` chỉ chạy cold-start gate riêng,
+  ghi ba mẫu trong `cold-start.json` và API/Worker logs có timestamp. Pass một
+  test này không thay cho full gate, đo trên VPS đích hoặc soak đủ 24 giờ.
 - Manifest ghi commit/working tree và SHA-256 source trước test; source thay đổi
   trong quá trình chạy thì gate fail thay vì chứng nhận nhầm build.
 - Test hạ tầng được skip trong `dotnet test` thông thường nếu chưa chạy runner;
