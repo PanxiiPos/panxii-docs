@@ -34,10 +34,16 @@ Kế hoạch triển khai trước go-live:
 - Owner xác nhận SuperAdmin login Swagger được. Chưa có UI SuperAdmin mobile;
   nghiệm thu quản trị qua API/Swagger, không yêu cầu một màn hình chưa triển khai.
   TenantAdmin physical-device offline/sync/restart/SignalR pilot còn pending.
-- Soak 24 giờ bắt đầu 20:18:57 ngày 02/11 UTC+7, có mẫu mới; chỉ đủ thời gian
-  từ 20:18:57 ngày 03/11. Lượt đầu lỗi script cursor đã giữ evidence, không tính
-  là pass. Thresholds, initial load và DB audit tại
-  [readiness](production_readiness_plan.md). Chưa GO đến khi đóng các gate còn lại.
+- Soak bắt đầu 20:18:57 ngày 02/11 UTC+7 nhưng fail lúc 20:34:06 vì observed
+  sync p95 1923,80 ms > 1500 ms; không có kết quả 24 giờ. Audit 102 invoice/
+  receipt/change/published outbox khớp. Diagnostic chỉ replay cho thấy overhead
+  kết nối mới; chưa deploy transport fix hoặc restart soak. Ngày 03/11 backup
+  verified rồi recreate API/Worker để áp dụng refresh-token policy 300 ngày
+  theo `.env` owner đã sửa, cùng image/volumes. Owner duyệt reset username/
+  password pilot bằng maintenance transaction có xác thực SuperAdmin/audit;
+  login credentials mới pass, các phiên cũ thu hồi. Account hiện dành cho UAT,
+  không còn khớp synthetic username guard. Chi tiết và gate còn lại tại
+  [readiness](production_readiness_plan.md); chưa GO.
 
 ## Lịch sử release debug nội bộ (không phải bản production hiện tại)
 
