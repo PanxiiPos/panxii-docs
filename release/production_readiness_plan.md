@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **.NET 10/APK production/private admin đã triển khai; soak đang chạy; chưa GO**.
+- Trạng thái: **.NET 10/APK production/private admin đã triển khai; soak thất bại, đang chờ chạy lại; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -84,14 +84,52 @@ DataCreated outbox khớp, 0 operation trùng, 0 sai tổng tiền. Invoice 101 
 commit trước lỗi; restart dùng lại đúng operation/invoice IDs, không thêm bản sao.
 Không scope audit theo tiền tố số hóa đơn client vì server chuẩn hóa số.
 
-Lượt mới `panxii-pilot-soak.service` đã xác minh PID sống và có mẫu mới:
-bắt đầu **20:18:57 ngày 02/11/2026 UTC+7**, dự kiến đủ 86400 giây lúc
-**20:18:57 ngày 03/11/2026 UTC+7**. Mẫu 20:21:09 có 101 invoice,
-read p95 307,79 ms, pull p95 302,42 ms, observed sync p95 254,10 ms;
-queue ready/unacked và DLQ đều 0. Read/pull kiểm tra từng cửa sổ khoảng một
-phút; observed sync p95 tích lũy, ngưỡng 1500 ms. Bằng chứng đầu run không
-thay cho đủ 24 giờ, invoice mới sau refresh token và final DB/outbox/DLQ audit.
-Systemd oneshot ở `activating/start` trong khi chạy là dự kiến, không phải lỗi.
+Lượt sau sửa cursor bắt đầu **20:18:57 ngày 02/11/2026 UTC+7**, nhưng
+**thất bại lúc 20:34:06 cùng ngày**, không đạt 24 giờ. Journal ghi observed
+sync completion p95 **1923,80 ms > 1500 ms** ở hóa đơn soak thứ hai.
+Mốc hoàn tất dự kiến ngày 03/11 không còn áp dụng. Có 14 cửa sổ đo hợp lệ:
+max-window read p95 373,38 ms, pull p95 330,56 ms; đây không phải p95 toàn run.
+Invoice đã commit trước khi script kiểm tra ngưỡng và lưu state nên state cũ
+chỉ ghi 101; audit ngày 03/11 xác minh **102 invoice/details/completed receipts/
+server changes/published DataCreated outbox**, không operation trùng, không
+sai tổng hoặc line snapshot. Raw state/mẫu/journal được giữ; state hiện `failed`.
+
+#### Điều tra và áp dụng cấu hình ngày 2026-11-03
+
+- Incident proxy timings: POST 202 50 ms, operation receipt GET 28 ms, snapshot
+  GET 17 ms; DB có completed receipt và published outbox. Tổng 95 ms phía Nginx
+  không bao gồm toàn bộ DNS/TLS/client scheduling; không đủ để kết luận thời
+  gian quan sát end-to-end tương đương worker commit latency.
+- Script hiện dùng `urllib.request.urlopen` mở kết nối mới mỗi request.
+  Probe health cho thấy DNS 100-388 ms; diagnostic replay cùng một operation
+  đã commit (không tạo invoice mới), 5 mẫu original mất 679,83-2164,33 ms;
+  5 mẫu với HTTPS keep-alive có TLS verification mất 57,82-178,62 ms.
+  Đây là bằng chứng chi phí kết nối góp phần vào lỗi đo, **không** là nghiệm thu
+  invoice mới hoặc soak 24 giờ. Chưa deploy thay đổi transport của pilot,
+  không nới threshold hoặc đổi số đo cũ thành pass.
+- Owner đã sửa `.env`; đối chiếu chỉ thấy API/Worker thay
+  `JWT_REFRESH_TOKEN_DAYS` từ 30 sang **300 ngày**. Backup manual mã hóa đã
+  upload/download verified trước khi force-recreate **chỉ API/Worker**.
+  Image IDs, volume mounts và các dependency container IDs giữ nguyên;
+  không migration/build/seed/reset dữ liệu. Runtime env đã xác minh 300 ngày,
+  public/private health, monitor và queue/DLQ pass. Policy này áp dụng khi cấp/
+  rotate refresh token, không tự kéo dài hạn của token đã lưu.
+- Sửa `PILOT_USERNAME/PILOT_PASSWORD` trong `.env` không thay account trong DB;
+  probe ban đầu trả 401. Owner cho phép đồng bộ cả hai. Vì API hiện chưa có
+  reset password, đã xác thực SuperAdmin qua HTTPS bằng hộp nhập riêng và
+  thực hiện maintenance transaction: đúng một active TenantAdmin trong
+  `PILOT-READINESS`, BCrypt tương thích, tăng version, thu hồi phiên cũ,
+  ghi `TenantAdminCredentialsResetByMaintenance` audit. Login bằng đúng bộ
+  credentials hiện tại của `.env` đã pass; phiên kiểm tra/SuperAdmin đã logout.
+  Không ghi username/password/hash vào tài liệu hoặc audit payload.
+- Soak **không restart**. Tài khoản hiện dùng cho owner UAT, username mới không
+  còn tiền tố `pilot.readiness.` nên guard hiện tại từ chối chạy tự động.
+  Cần xử lý transport/diagnostics và provision tài khoản synthetic phù hợp trước
+  lượt mới; phải đo đủ thời gian từ đầu và audit cuối, không nối thời gian đã lỗi.
+
+Evidence root-only trên VPS: `env-recreate-result-20261103.json`,
+`pilot-account-maintenance-20261103.json`, `pilot-latency-diagnostic-20261103.json`,
+`pilot-state.failed-latency-20261102.json` và `pilot-samples.jsonl`.
 
 Năm clients HTTPS chạy từ VPS, **không phải năm điện thoại hoặc mạng ngoài**.
 Còn gate thiết bị thật TenantAdmin: catalog, invoice/offline/restart,

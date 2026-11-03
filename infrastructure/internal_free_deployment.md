@@ -1,6 +1,6 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-11-02.
+- Cập nhật: 2026-11-03.
 - Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
   Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
   hạ tầng là đã triển khai.
@@ -15,7 +15,7 @@
 |---|---|
 | Backend | Live application source/image `720fb2a5719a01c2228685ffa145bbe176fe2d69`, deploy configuration `02623e1`, pilot fix `04325ee`, branch `feature/production-vps`. API/Worker runtime .NET `10.0.14`; origin API loopback 8080/private Swagger 8081, Nginx ingress public. Không migration/seed/reset volume trong upgrade. Giữ image .NET 8 trước để rollback; chưa GO |
 | Máy chủ | **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, 100 Mbps, không giới hạn băng thông. Ubuntu 22.04 x64 tại `103.245.236.133`, Docker/Compose, timezone Asia/Ho_Chi_Minh; UFW mở 22/80/443. Đã cập nhật 326 gói OS + 17 gói mới và reboot kernel `5.15.0-202-generic`; SSH/HTTPS phục hồi. Host key xác minh, SSH key-only. Oracle Always Free đã loại |
-| Database VPS | Đủ 17 migrations, một SuperAdmin. Ban đầu nghiệp vụ trống; hiện owner đã duyệt tenant synthetic `PILOT-READINESS`, 2000 products/variants và workload invoice. Audit 101 invoice/details/completed receipts/changes/published outbox khớp, không operation trùng/sai tổng. Không có seed cửa hàng thật; giữ test history để audit. Bootstrap secrets đã xóa |
+| Database VPS | Đủ 17 migrations, một SuperAdmin. Tenant test `PILOT-READINESS`, 2000 products/variants; audit ngày 03/11 có 102 invoice/details/completed receipts/changes/published outbox khớp, không operation trùng/sai tổng. Owner duyệt maintenance reset cùng TenantAdmin theo username/password mới trong `.env`, có xác thực SuperAdmin/BCrypt/audit/revoke sessions; login đã pass. Không có seed cửa hàng thật; giữ test history |
 | Secrets VPS | `/opt/panxii/.env` thuộc root, quyền `600`, không vào Git/image. Mật khẩu DB/broker và JWT sinh trên VPS. Runtime DB user chỉ SELECT/INSERT/UPDATE/DELETE; maintenance dùng connection riêng. Không ghi credentials admin/SSH vào tài liệu |
 | Backup | Rclone `1.75.2`/Google Drive crypt đã cấu hình bằng VPS `.env`; timer 06:00/12:00/21:00 UTC+7; giữ 6 bản scheduled verified, xóa vĩnh viễn bản cũ sau xác minh bản mới, manual riêng. Manual và service smoke đã upload/download/decrypt pass; restore DB cô lập khớp 18 bảng (~33 giây). File recovery mã hóa ngoài VPS và mật khẩu do owner giữ. Chưa đủ hai lịch tự động thật hoặc lost-VPS/API restore drill |
 | Domain/HTTPS | `https://panxii.duckdns.org` trỏ `103.245.236.133`; Nginx/Let's Encrypt đến 2027-01-31; renewal dry-run pass; HTTP 308, WebSocket/service DNS, trusted proxy giới hạn IP/một hop. Cổng 8080/3306/5672/15672 không reachable; production Swagger/dependency readiness không public. Còn nghiệm thu app/SignalR thiết bị thật |
@@ -26,11 +26,15 @@
 | Android | Production-signed `0.1.4+5` cài/chạy trên một Samsung SM-A336E, package `.production`, song song app debug không xóa dữ liệu. [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk) hash đã khớp; khóa/recovery ngoài repo, owner giữ mật khẩu. Chưa nghiệm thu đầy đủ TenantAdmin physical pilot |
 | Shorebird | `auto_update: false`; production `0.1.4+5` patch 1 tải/verify/apply/restart pass; rollback thực tế về native base pass. Roll forward đã bật server-side nhưng chưa xác nhận thiết bị reapply. OTA bắt buộc ngày đầu; xem [release evidence](../release/release_management.md) |
 | Update policy | Production minimum `0.1.0`, latest `0.1.4`, Android HTTPS URL thật. Policy local/development độc lập, không tự ép native update production |
-| Capacity/pilot | 5 synthetic HTTPS clients từ VPS, 200 hóa đơn/ngày, backlog 100, 2000 variants; backlog+replay 18,84 giây, read/pull p95 234,72/287,73 ms. Soak restart sau sửa cursor lúc 20:18:57 ngày 02/11 UTC+7, có mẫu mới; đủ 24 giờ từ 20:18:57 ngày 03/11 rồi cần final audit. Không phải 5 điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu theo owner |
+| Capacity/pilot | Backlog+replay 18,84 giây; prepare read/pull p95 234,72/287,73 ms. Soak fail 20:34:06 ngày 02/11 UTC+7 sau khoảng 15 phút vì observed sync p95 1923,80 ms >1500. Chưa restart; diagnostic replay xác định overhead fresh HTTPS đáng kể, không phải 24h pass. Account owner đổi cho UAT không còn khớp synthetic username guard; xem [điều tra](../release/production_readiness_plan.md). Không phải 5 điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu |
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
+Ngày 03/11: backup manual verified rồi force-recreate chỉ API/Worker để nhận
+`JWT_REFRESH_TOKEN_DAYS=300` theo `.env` owner đã sửa; runtime kiểm chứng.
+Không build/migrate/seed hoặc đổi image/volume/dependency containers.
+Health/monitor pass, queue/DLQ rỗng; timer monitor đã hoạt động lại.
 HTTPS và backup ngoài VM đã có smoke/restore evidence riêng như bảng trên;
 không suy ra tenant pilot, hai lịch backup tự động hay toàn bộ public production đã đạt.
 Quy trình lặp lại và cấu hình hiện có tại
