@@ -6,6 +6,33 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
+### Mobile OTA patch 2: xem trước và in hóa đơn
+
+- Đã phát hành stable patch `2` (`778305`) cho app
+  `29ffa00b-3d56-412d-867f-146daf2528ad`, release `951572` / `0.1.5+7`;
+  source mobile `cee827308f0bf86cf5c1643e91792d0513f85b14` trên nhánh
+  `fix/invoice-preview-layout`. Truy vấn độc lập sau upload xác nhận
+  channel `stable`, `is_rolled_back: false` lúc 23:39 ngày 04/11/2026.
+- Android arm64, artifact `1763610`, 583299 bytes, SHA-256
+  `25dea31e548bcb707acfd3ddc48c2ba4f1a3dcb4c2dda50014c4f80cc548288a`.
+  Build bằng Flutter Shorebird `3.47.8`, giữ API HTTPS production;
+  kiểm tra native/assets pass, không dùng override. APK native, signer,
+  version policy và dữ liệu thiết bị không thay đổi.
+- Thông tin khách hàng dùng cột trái cùng QR tra cứu, không đợi hết chiều cao
+  QR. Header dịch vụ giữ nội dung tùy chỉnh, tiêu đề 16 pt đậm và mô tả tự wrap;
+  đo dòng bằng cùng style khi render. PNG gửi in có ngày in ngay dưới ngày tạo,
+  preview không giả định thời điểm in.
+- 26 test preview/in và receipt design pass; `flutter analyze` sạch.
+  Hot reload đã thử nhưng không có app kết nối. Chưa xác minh tải/apply patch
+  trên điện thoại hoặc in giấy thực tế; phát hành active không đồng nghĩa
+  thiết bị đã cập nhật. App dùng `auto_update: false`: chấp nhận cập nhật rồi
+  khởi động lại khi không đang bán hàng.
+- Patch tích lũy gồm client catalog từ `a00ebcf`; không deploy backend hoặc
+  bật cờ làm tròn danh mục trong lần phát hành này. Chỉ dùng policy khi backend
+  tương thích đã triển khai và trả cờ tương ứng. Không sửa snapshot hóa đơn.
+- Nếu lỗi, rollback đúng patch `778305` trong Shorebird và xác minh trên
+  thiết bị sau restart; rollback code không hoàn tác dữ liệu đã ghi.
+
 ### Backend EF10 đã deploy và dọn dữ liệu test theo owner
 
 - Owner yêu cầu deploy bản đã merge và chuẩn bị database trống để nhập dữ
