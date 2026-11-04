@@ -45,6 +45,14 @@ to older pricing code must not accept catalog writes while this flag is enabled.
 Tests cover 19400/19500 boundaries, very small values, overflow, unchanged
 accessories, queued legacy submissions and default-variant/product consistency.
 
+Invoice sync still validates submitted unit prices against the current catalog.
+Changing catalog prices can therefore reject an older offline sale; it does not
+recalculate an already-synced invoice. Before enabling/repricing or moving a
+family between policies, sync pending sales and resolve drafts on every selling
+device. Server queue drainage alone does not establish that device-side work is
+clear. Deploying the additive column with all flags false is separate from
+authorizing a live repricing operation.
+
 ## Related documents
 
 - [Business rules](../../business_rule.md)

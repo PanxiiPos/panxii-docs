@@ -6,6 +6,40 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
+### Backend catalog pricing đã deploy lúc 23:52, chưa bật policy
+
+- Owner xác nhận merge PR #3 vào `feature/production-vps` và cho phép deploy
+  sau kiểm tra rủi ro. Source/image live
+  `753574fd4787d07aca918b429e74ed2044aa3b58`.
+  [CI đúng merge SHA](https://github.com/PanxiiPos/panxii-backend/actions/runs/41866709770)
+  success cả build-test, provider-compatibility và resilience. Kiểm tra local:
+  121 test pricing/catalog/category/invoice/queued pass, 1 test migration/model
+  pass; Flutter 66 test catalog/formatter/widget pass.
+- Verified encrypted manual backup
+  `20261104T165007Z-40c705067a03` trước migration, sau khi ngừng API,
+  drain queue và ngừng Worker. Chỉ thêm migration
+  `20261104153420_AddCategorySalePriceRounding`, history từ 17 lên 18.
+  So sánh toàn bộ cột cũ của 18 bảng bằng SHA-256: mọi dữ liệu ngoài dòng
+  migration mới giữ nguyên, kể cả catalog, tài khoản và hóa đơn.
+  Schema columns chỉ thêm `categories.RoundSalePriceToThousands`, toàn bộ
+  giá trị `false`; không seed/reset/đổi giá hoặc bật policy.
+- Chỉ API/Worker đổi image; dependency container IDs, images và mounts giữ
+  nguyên. Public health, private dependency readiness, Worker subscriber,
+  monitor pass; queue command/retry/DLQ rỗng. Kiểm tra độc lập image/source
+  khớp merge SHA, public tenant API không auth trả 401, backup/monitor timers
+  vẫn active. Không tạo hóa đơn synthetic trên production.
+- Hai nhận xét review không chứng minh migration tự sửa giá hoặc công thức
+  Flutter lệch server. Rủi ro thật là invoice offline chưa sync bị từ chối khi
+  giá catalog đã đổi; validation hiện kiểm tra giá hiện hành. Chưa bật policy,
+  chưa reprice/chuyển danh mục trong đợt deploy này. Trước các thao tác đó phải
+  xác nhận mọi máy bán hàng đã sync và xử lý draft; server queue rỗng chưa đủ.
+  Xem [compatibility](../api/api_compatibility_matrix.md#2-contract-rules).
+- Evidence root-only: `steel-753574f-before.json`,
+  `steel-753574f-deployed.json`. Giữ image/source cũ để rollback code; không
+  chạy migration Down hoặc rollback dữ liệu. Nếu đã bật policy sau này,
+  không cho code pricing cũ nhận catalog writes. Các gate recovery/monitor
+  ngoài VPS hoãn trước đó vẫn chưa được coi là pass.
+
 ### Mobile OTA patch 2: xem trước và in hóa đơn
 
 - Đã phát hành stable patch `2` (`778305`) cho app

@@ -11,7 +11,23 @@
 
 ## 1. Trạng thái và lựa chọn đã chốt
 
-### Cập nhật ghi đè trạng thái live lúc 21:25 ngày 04/11/2026
+### Cập nhật ghi đè trạng thái live lúc 23:52 ngày 04/11/2026
+
+- Backend source/image live `753574fd4787d07aca918b429e74ed2044aa3b58`,
+  PR #3 đã merge; CI đúng SHA xanh cả ba gate. API/Worker đã thay image,
+  dependency/volumes giữ nguyên. Backup verified trước migration;
+  history 18 dòng, chỉ thêm cột category rounding mặc định false.
+- Hash toàn bộ cột dữ liệu cũ không thay đổi; không reset/seed/reprice.
+  Policy chưa bật ở bất kỳ danh mục nào. Phải sync mọi máy và xử lý draft
+  trước khi bật/reprice/chuyển danh mục vì invoice sync kiểm tra giá hiện hành.
+- Mobile stable OTA patch 2 cho `0.1.5+7` đã active, có sửa preview/in hóa đơn
+  và client pricing; chưa xác minh apply/in giấy trên thiết bị. Health,
+  readiness, Worker subscriber, monitor và timers hiện có pass.
+  [Bằng chứng đầy đủ](../release/release_management.md#backend-catalog-pricing-đã-deploy-lúc-2352-chưa-bật-policy).
+- Các thông tin backend/database bên dưới là lịch sử trước bản này; không
+  dùng trạng thái database trống lúc 21:25 để thao tác dữ liệu thật hiện tại.
+
+### Lịch sử deploy và chuẩn bị dữ liệu lúc 21:25 ngày 04/11/2026
 
 - Owner duyệt PR #1 đã merge và yêu cầu deploy: live application/source
   `96e6ea73d17df1c0bf0a3e53325fe77c01dcd40d`, .NET 10.0.14,
