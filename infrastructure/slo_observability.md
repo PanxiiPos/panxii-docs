@@ -43,3 +43,30 @@ Mọi API request, outbox event, RabbitMQ message, audit record và mobile error
 ## 5. Error budget
 
 Khi SLO vượt error budget, dừng feature rollout và ưu tiên reliability work. Không dùng retry để che latency hoặc failure metric.
+
+## 6. Availability monitor bên ngoài VPS
+
+**Nói ngắn gọn:** backup/host alert đã tự chạy. Chỉ cần thêm một dịch vụ
+bên ngoài ping URL public và báo khi mất kết nối; không phải cài thêm
+monitoring stack trên VPS. Owner tạo tài khoản dịch vụ và chọn nơi nhận báo,
+không cần tự quản lý dashboard metrics phức tạp.
+
+Host monitor/Discord trên VPS theo dõi dependency, disk, backup và service.
+Nếu cả VPS mất điện/mạng thì chính monitor đó không thể gửi cảnh báo; cần
+thêm dịch vụ độc lập, ví dụ UptimeRobot hoặc Better Stack, do owner quản lý.
+
+1. Tạo HTTPS monitor cho `https://panxii.duckdns.org/api/v1/health`, GET,
+   yêu cầu HTTP 200 và TLS hợp lệ. Không dùng `/health/ready` private,
+   Swagger, token hoặc tài khoản ứng dụng.
+2. Chọn chu kỳ theo gói dịch vụ; đề xuất 1 phút nếu hỗ trợ, nếu gói miễn phí
+   chỉ có 5 phút thì ghi rõ độ trễ. Báo khi lỗi hai lượt liên tiếp và khi phục
+   hồi; bật cảnh báo hạn certificate nếu nhà cung cấp hỗ trợ.
+3. Owner cấu hình kênh email/Discord trong giao diện dịch vụ; không đưa
+   webhook/token vào chat/repo. Thử notification của nhà cung cấp trước,
+   rồi kiểm tra một monitor thử có endpoint lỗi; không dừng production để thử.
+4. Ghi thời gian nhận alert và recovery alert, người nhận, interval, timeout
+   và ngưỡng vào evidence release. Chưa có cấu hình/alert evidence thì gate
+   external monitoring vẫn pending.
+
+Public health chỉ là probe khả dụng HTTP/API, không thay kiểm tra
+MySQL/RabbitMQ, backup hoặc correctness trong host monitor.

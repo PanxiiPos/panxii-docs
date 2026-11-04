@@ -104,6 +104,35 @@ runner, `backup-restore.json` ghi hash artifact và số bảng được đối 
 Không coi việc copy ciphertext và DPAPI key sang VM Linux là key recovery.
 Xem [phạm vi và bằng chứng mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy).
 
+### 3.3. Diễn tập khôi phục từ Drive không phụ thuộc VPS cũ
+
+Thực hiện trên máy/VM riêng do owner kiểm soát, không restore đè production:
+
+1. Chuẩn bị source/deploy config theo release đang chạy, file recovery đã
+   mã hóa giữ ngoài VPS và quyền truy cập cùng Drive. Mật khẩu recovery nhập
+   riêng trên máy restore; không gửi vào chat hoặc ghi trong repo.
+2. Tạo `.env` mới quyền hạn chế và reauthorize Drive theo
+   [backend deploy](../../backend/deploy/README.md). Cài
+   `python3-cryptography`, chạy `python3 deploy/recover-drive-key.py <encrypted-recovery-file>`;
+   helper phục hồi crypt settings, không phục hồi JWT/database secrets.
+   Không thay crypt key đang dùng vì sẽ mất khả năng đọc backup cũ.
+3. Tải bản scheduled đã xác minh từ Drive; giải mã/xác minh hash và import
+   vào MySQL/volume riêng. Broker, API/Worker, credentials và network cũng
+   tách riêng; không nối app test vào DB/broker production. Đối chiếu table
+   fingerprints với manifest/evidence của backup, không so dữ liệu lịch sử
+   với database production đã thay đổi.
+4. Chạy integrity tenant/invoice/outbox; login, đọc hóa đơn, sync/pull/replay
+   và reverse trên bản restore. Chặn outbound production integrations/alert
+   và không cho worker thử gửi notification hoặc lệnh vào hệ thống thật.
+5. Ghi backup timestamp, release/schema, hashes, kết quả và thời gian từ lúc
+   bắt đầu tới API dùng được. Đó mới là evidence để chốt RTO; backup có mặt
+   trên Drive hoặc drill MySQL cùng VPS không thay thế bước này.
+
+`python3 deploy/restore-check.py` hiện có chỉ kiểm tra backup manual mới nhất,
+restore MySQL disposable và so với nguồn hiện tại trên VPS; không tự triển
+khai API restore độc lập và không chứng minh recovery khi mất VPS. Không chạy
+script này để thay thế toàn bộ drill ở trên.
+
 ## 4. Mất VPS
 
 1. Chặn DNS/traffic nếu cần.
