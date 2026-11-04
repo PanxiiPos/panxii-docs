@@ -10,7 +10,8 @@ Bộ tài liệu thiết kế và phát triển hệ thống POS SaaS theo đị
 - Offline-first
 - Flutter + BLoC
 - ASP.NET Core 10 LTS Clean Architecture
-- MySQL 8 + EF Core 8/Pomelo 8 tạm thời; lifecycle ORM còn là gate trước GO
+- MySQL 8 + EF Core 10.0.14/MySql.EntityFrameworkCore 10.0.12 đã deploy;
+  xem bằng chứng và giới hạn nghiệm thu trong production readiness
 - RabbitMQ + SignalR
 - i18n với `easy_localization`
 - UI dùng `flex_color_scheme`, `hugeicons`, `forui`
@@ -116,7 +117,7 @@ Không cần đọc toàn bộ tài liệu cho mọi thay đổi. Chọn nhánh 
 | File | Vai trò |
 |---|---|
 | [infrastructure_setup.md](infrastructure/infrastructure_setup.md) | Docker, Nginx, VPS, MySQL, RabbitMQ, CI/CD, health check |
-| [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | Trạng thái VPS thuê/.NET 10/private Swagger/Dozzle/CI/APK ký production `0.1.4+5`, OTA và soak 24 giờ đang nghiệm thu; chưa GO |
+| [internal_free_deployment.md](infrastructure/internal_free_deployment.md) | VPS .NET 10/EF10 đã deploy, APK production 0.1.5, database chỉ giữ SuperAdmin theo owner; backup recovery/monitor ngoài VPS còn hoãn |
 | [operations_runbook.md](infrastructure/operations_runbook.md) | Xử lý outbox, DLQ, MySQL, SignalR, revoke và incident |
 | [disaster_recovery.md](infrastructure/disaster_recovery.md) | Backup, restore, RPO/RTO, mất VPS, lộ secret, runner dump/restore cô lập và snapshot development trước test mobile; không thay thế backup production |
 | [slo_observability.md](infrastructure/slo_observability.md) | SLO, metrics, alert threshold, error budget và correlation |

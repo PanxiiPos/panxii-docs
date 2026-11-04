@@ -5,7 +5,33 @@
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
 - Trạng thái: **soak rút ngắn và final audit pass; owner chấp nhận kết quả và miễn yêu cầu đủ 24 giờ lúc 19:04 ngày 04/11/2026 UTC+7; gate soak đã đóng theo ngoại lệ được duyệt, không phải 24h pass; các gate khác còn nguyên, chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
-  thay đổi dữ liệu development/production để chuẩn bị release.
+  thay đổi dữ liệu development/production nếu chưa có duyệt rõ của owner.
+
+### Cập nhật mới nhất: deploy EF10 và dọn test ngày 04/11/2026
+
+Owner yêu cầu deploy bản đã merge và xác nhận xóa toàn bộ tenant/user/dữ liệu
+test, chỉ giữ SuperAdmin để chuẩn bị nhập dữ liệu thật; backup recovery và
+monitor ngoài VPS để sau. Đây là duyệt thao tác cụ thể, không coi các gate
+hoãn là đã đạt hoặc cho phép reset dữ liệu thật về sau.
+
+- Live backend `96e6ea73d17df1c0bf0a3e53325fe77c01dcd40d` (PR #1 merge),
+  [CI merge SHA](https://github.com/PanxiiPos/panxii-backend/actions/runs/41842870171)
+  success; bản thực chạy EF Core 10.0.14/MySql.EntityFrameworkCore 10.0.12,
+  .NET 10.0.14. Chỉ đổi API/Worker, giữ dependency IDs/mounts/volumes.
+- Verified backup trước deploy và trước xóa; DELETE/ROLLBACK rehearsal
+  pass trước COMMIT, không tắt FK, không drop/reset schema hay migration
+  history. Kiểm tra cuối **21:25:25 UTC+7**: 1 SuperAdmin giữ nguyên hash
+  toàn dòng/mật khẩu, 17 migration history giữ nguyên; cả 16 bảng khác
+  trống, không seed hoặc tạo invoice kiểm tra sau reset.
+- API health/private readiness, Worker subscribe và monitor hiện có pass;
+  queues rỗng. Pilot disable/stop và guard systemd ngăn tự chạy lại.
+  Thiết bị offline test cũ chưa được xóa từ xa; dùng tài khoản tenant mới
+  cho dữ liệu thật, không replay dữ liệu test.
+- Native policy latest 0.1.5, minimum 0.1.0, URL tải APK mới đã hoạt động.
+  Tiến độ/CI/DB ở các phần dưới là lịch sử trước lần cập nhật này khi có
+  mâu thuẫn về trạng thái live; không xóa bằng chứng failed runs.
+- Bằng chứng root-only `production-ef10-96e6ea7-final.json`; chi tiết tại
+  [release management](release_management.md#backend-ef10-đã-deploy-và-dọn-dữ-liệu-test-theo-owner).
 
 ### Quyết định owner ngày 04/11/2026 lúc 19:04 UTC+7
 
