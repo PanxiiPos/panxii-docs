@@ -389,6 +389,16 @@ Rollback template/generated config và thứ tự runner xem
     coi synthetic gate là production GO. Chưa merge/deploy EF10 lên VPS,
     còn kiểm tra deployment/backup/connection thực tế trước promotion;
     independent restore và monitor ngoài VPS bên dưới vẫn chưa hoàn tất.
+- Cập nhật mobile sau đó: owner yêu cầu phát hành production nội bộ 0.1.5.
+  Đã push source `399496a`, phát hành Shorebird native release `951495` active,
+  ký cùng production certificate và giữ package; version hiển thị 0.1.5,
+  Android build code 6. [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.5-production.apk)
+  đã tải lại đối chiếu SHA-256/signature pass. Bao gồm hai sửa UX nêu trên;
+  57 test liên quan pass và analyze sạch; loại đúng một test quantity/services
+  màn hẹp lỗi baseline, không nhận toàn suite pass. Chưa có thiết bị kết nối
+  để cài/UAT/hot reload. Policy backend vẫn latest 0.1.4, chưa tự thông báo
+  native 0.1.5; hiện phân phối link trực tiếp, không restart app server.
+  Xem [release evidence](release_management.md#mobile-production-nội-bộ-015-đã-phát-hành).
 - Owner thấy backup lên Drive đúng lịch; đây chưa chứng minh independent
   restore hoặc hai lượt scheduled đã được audit. Làm drill theo
   [quy trình độc lập](../infrastructure/disaster_recovery.md#33-diễn-tập-khôi-phục-từ-drive-không-phụ-thuộc-vps-cũ).

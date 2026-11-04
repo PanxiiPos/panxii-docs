@@ -6,6 +6,30 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
+### Mobile production nội bộ 0.1.5 đã phát hành
+
+- Source mobile `399496a`, Shorebird release `951495` active, engine Flutter
+  `3.47.8`. Phiên bản hiển thị `0.1.5`; Android versionCode `6` truyền riêng
+  khi build, `pubspec.yaml` giữ `version: 0.1.5` theo yêu cầu owner.
+- [APK production 0.1.5](https://panxii.duckdns.org/downloads/panxii-0.1.5-production.apk)
+  đã upload atomic và tải lại qua HTTPS, SHA-256
+  `631C59B127F735E0FEDFE5C6EF0EB8E66B4D25E86E8A9F987C4505663C2BD43B`.
+  Chứng chỉ production giữ nguyên
+  `3D604285F3F0F18AB02EC1C1A3EA71832088F85FED4D13DA5E40C03A540F9EA7`;
+  package `com.panxiipos.panxii_mobile.production`, label Panxii Production.
+  Cài cập nhật đè bản production 0.1.4, không clear data hoặc thay app debug.
+- Bao gồm về danh sách hóa đơn sau lưu online/offline, catalog tự tải tiếp
+  và footer không bị FAB che. 57 test liên quan pass, analyze sạch; một test
+  quantity/services màn hẹp có lỗi từ baseline được loại riêng, không coi pass.
+- Không có thiết bị ADB/app debug kết nối; hot reload đã thử nhưng không chạy
+  được, chưa xác minh cài/UAT trên điện thoại cho bản này. Native release mới
+  không phải OTA patch cho 0.1.4, không suy ra patch adoption/rollback của 0.1.5.
+- Chỉ phát hành APK/metadata Shorebird; không restart API/Worker, không deploy
+  EF10. API version policy vẫn minimum `0.1.0`, latest `0.1.4` và URL cũ:
+  tải 0.1.5 trực tiếp bằng link trên; đổi policy trong đợt cấu hình backend riêng.
+
+### Bằng chứng nền và lịch sử trước 0.1.5
+
 - Backend live application `848d8be0127890746269957873314f54b6971cbe`,
   deploy configuration nền `02623e1`, pilot runner/HTTPS keepalive overlay
   `b7ea06e`; feature branch chưa merge.
@@ -30,8 +54,9 @@ Kế hoạch triển khai trước go-live:
   Production policy minimum `0.1.0`, latest `0.1.4`, có Android download URL thật.
 - Shorebird patch 1 (`770453`) đã tải, verify signature, apply, full process
   restart và xác minh `current_patch_number=1`. Remote rollback + restart thực
-  tế về base (`None`) pass, không clear app data. Patch đã roll forward server-side;
-  chưa xác minh reapply trên thiết bị nên không coi roll-forward E2E đạt.
+  tế về base (`None`) pass, không clear app data. Ngày 04/11/2026 owner xác nhận
+  thiết bị đã cập nhật lại thành công và Shorebird hiển thị 100%; chấp nhận
+  gate reapply theo xác nhận owner, không phải một lần đo thiết bị mới.
   `auto_update: false`, người dùng xác nhận tải rồi khởi động lại.
 - Owner xác nhận SuperAdmin login Swagger được. Chưa có UI SuperAdmin mobile;
   nghiệm thu quản trị qua API/Swagger, không yêu cầu một màn hình chưa triển khai.
