@@ -70,3 +70,22 @@ Ngày 2026-11-02: dọn build cache và APT cache, thu hồi thực tế **6,72 
 (bao gồm rollback), 7 containers đang chạy và 3 volumes; soak giữ PID/mẫu mới,
 host monitor pass. Evidence root-only trên VPS: hồ sơ vận hành nội bộ.
 Không cài lịch tự động prune hoặc thay đổi chính sách backup.
+
+## 10. Sự cố hiệu năng DNS
+
+- Dùng monitoring được phê duyệt để phân biệt thời gian phân giải tên,
+  thiết lập kết nối TLS và thời gian xử lý ứng dụng.
+- Mọi thay đổi resolver hoặc DNS cache phải được owner phê duyệt, tôn trọng
+  TTL và giữ nguyên xác minh TLS. Kiểm tra cả trường hợp cache lạnh, cache ấm
+  và HTTPS trước khi kết luận.
+- Lưu cấu hình cụ thể và hướng dẫn rollback trong hồ sơ vận hành riêng.
+  Không ghim địa chỉ IP hoặc bỏ qua xác minh TLS.
+
+## 11. Keepalive HTTPS và pilot
+
+- Thay đổi keepalive proxy/client cần được phê duyệt và kiểm tra trên môi
+  trường phù hợp trước khi áp dụng. Giữ timeout client tương thích với proxy.
+- Xác minh kết nối tái sử dụng và kết nối mới; kết nối mới vẫn phải xác minh
+  TLS. Sao lưu cấu hình và giữ hướng dẫn rollback trong hồ sơ vận hành riêng.
+- Không tự replay workload đã lỗi. Ghi lại kết quả kiểm thử và giới hạn của
+  bằng chứng; không xem kiểm tra giới hạn là nghiệm thu dài hạn.

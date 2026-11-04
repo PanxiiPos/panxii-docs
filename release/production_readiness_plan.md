@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **cold-start fix đã deploy; soak rút ngắn đang chạy từ 11:20:49 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày theo owner; không phải 24h pass; chưa GO**.
+- Trạng thái: **cold-start fix đã deploy; lượt 11:20 fail read latency; đã bật cache DNS theo owner, soak mới chạy từ 12:21:36 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày; không phải 24h pass; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -27,7 +27,7 @@ bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồ
 ### Trạng thái hiện tại sau deploy ngày 2026-11-03
 
 - Live application source/image **`848d8be0127890746269957873314f54b6971cbe`**;
-  deploy configuration `02623e1`, pilot runner `1ce4b5092db90e3e4b67b28ed31eaa741df920fc`.
+  deploy configuration `02623e1`, pilot runner `ab82b1d2aa67955fe1e761b9b6ffafb849c5c85c`.
   Khởi tạo thêm EF tracking/snapshot delegates bằng entity tạm trong bộ nhớ,
   DetectChanges rồi clear tracker; không SaveChanges, publish command hoặc tạo
   invoice trong DB. API invoice request/payload/queued envelope dùng generated
@@ -95,6 +95,8 @@ Transfer archives đã xóa; source/images/evidence và rollback giữ nguyên.
   Giữ 100 baseline backlog commands, cấp UUID mới cho phần soak,
   không warm-up hoặc bỏ sample. API/Worker vẫn `848d8be`, mọi container ID,
   image/mount/start time không đổi: **chỉ cập nhật runner**, không deploy app.
+  Lượt này sau đó **fail lúc 12:12:33** vì read latency; xem incident bên dưới,
+  không dùng thời gian đã chạy để cộng vào một lượt pass.
 - First invoice run mới **177,53 ms** trên process đang nóng, **không gọi là
   cold-start sample**. Đã quan sát 3 cửa sổ và 10 idle reconnect:
   max-window read p95 **450,86 ms**, pull p95 **29,61 ms**, không GET retry
@@ -115,6 +117,55 @@ state/mẫu hiện tại và archives
 `pilot-state.failed-20261103-135041-archived-20261104-042043.json`,
 `pilot-samples.failed-20261103-135041-archived-20261104-042043.jsonl`.
 Runner cũ giữ tại `deploy/pilot.py.before-1ce4b50`; không chứa credentials.
+
+#### Incident read latency và cache DNS ngày 04/11
+
+- Run `20261104-042043` fail lúc **12:12:33 UTC+7**, sau khoảng 51 phút
+  58 giây: **read p95 1344,62 ms > 500 ms**. Có 4 invoice mới, observed
+  sync **177,53 / 470,71 / 707,71 / 501,71 ms**, đều dưới 1500 ms.
+  Không phải lỗi socket cũ. Các catalog request lúc incident đều HTTP 200,
+  Nginx request time **25-40 ms**. Probe phase timing sau đó: DNS thường
+  **260-391 ms**, TLS **8-16 ms**; chưa có phase timing của request lỗi để
+  khẳng định chính xác toàn bộ 1344,62 ms là DNS.
+- VPS trước đó dùng trực tiếp `8.8.8.8/8.8.4.4`, không cache DNS. Owner duyệt
+  bật `systemd-resolved` có sẵn, enable để tồn tại qua reboot, dùng stub
+  `127.0.0.53`, upstream `8.8.4.4/8.8.8.8`, cache tôn trọng TTL.
+  Đã kiểm chứng effective global DNS/domain và cache hits, không chỉ file
+  cấu hình. Không ghim IP, sửa `/etc/hosts`, bỏ TLS hoặc loại DNS khỏi latency.
+  [Runbook DNS/rollback](../infrastructure/operations_runbook.md#10-dns-host-chậm-trong-pilot).
+- Probe sau sửa: cold DNS **44,95-267,64 ms**, cached **0,83-1,09 ms**;
+  15 fresh TLS catalog searches **40,54-323,01 ms**; sau 70 giây idle/TTL
+  hết hạn **353,11 ms**. Không tạo invoice probe; các mẫu đều dưới 500 ms.
+  Điều này không bảo đảm DNS/mạng ngoài sẽ không chậm trong tương lai.
+- Runner `ab82b1d` lưu `latency-window-failed` chứa đầy đủ read/pull/acceptance
+  percentiles và violations trước khi raise, không mất cửa sổ lỗi khi clear
+  metrics. **23 pilot test Windows / 37 deployment Python test Linux pass**,
+  có boundary đúng 500 ms pass và 501 ms fail. Không đổi ngưỡng/retry policy.
+- Audit trước chạy lại: **111 invoice/detail/completed receipt/change/published
+  outbox** toàn tenant khớp, zero duplicate/sai line values; command/retry/DLQ
+  rỗng. Archive nguyên failed state/mẫu, không reset DB; giữ 100 baseline
+  commands và cấp UUID mới cho phần soak.
+- Run mới **`20261104-052131`** bắt đầu **12:21:36 UTC+7**, vẫn cutoff
+  **19:00 cùng ngày**, khoảng **6 giờ 38 phút**, dự kiến **28 invoice mới**
+  theo nhịp 864 giây. First invoice **189,63 ms** trên process nóng, không
+  coi là cold sample. Cửa sổ đầu read p95 **64,44 ms**, pull **13,12 ms**;
+  host monitor pass. API/Worker và cả 7 container ID/image/mount/start time
+  giữ nguyên. Chỉ host DNS và pilot runner thay đổi.
+- Check **12:23:46 UTC+7**: phase `soaking`, PID sống, **3 cửa sổ đo**,
+  max-window read p95 **361,59 ms**, pull **13,12 ms**; **10 idle reconnect,
+  0 GET retry, 0 transport fail**. Runner checksum khớp, DNS service enabled,
+  cutoff/OnFailure Discord vẫn gắn đúng. Đây chỉ là bằng chứng đang tiến triển,
+  không phải kết quả cuối.
+- Chưa có kết quả cuối hoặc 24h pass. Cutoff ngừng sinh tải, sau đó final
+  verification/logout; vẫn cần final audit và các gate GO/NO-GO.
+
+Evidence root-only: `pilot-dns-cache-20261104.json`,
+`pilot-dns-probe-20261104.jsonl`, `pilot-dns-bounded-20261104-start.json`,
+`pilot-dns-bounded-20261104-verified.json`;
+archives `pilot-state.failed-20261104-042043-archived-20261104-052131.json`,
+`pilot-samples.failed-20261104-042043-archived-20261104-052131.jsonl`.
+Runner cũ: `deploy/pilot.py.before-ab82b1d`; resolver cũ:
+`resolv.conf.before-dns-cache-20261104`. Không cộng dồn thời gian các lượt fail.
 
 ### Lịch sử bằng chứng ngày 2026-11-02 và điều tra trước deploy mới
 
