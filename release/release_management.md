@@ -103,6 +103,12 @@ Kế hoạch triển khai trước go-live:
   detail/completed receipt, zero duplicate/sai totals; queues rỗng, monitor
   pass. Bằng chứng root-only `pilot-keepalive-bounded-20261104-final-audit.json`.
   **Bounded workload + audit pass**, không phải 24h pass hoặc GO.
+  Lúc **19:04 ngày 04/11 UTC+7**, owner chấp nhận kết quả bounded + audit,
+  **miễn yêu cầu đủ 24 giờ và đóng gate synthetic soak/correctness** cho đợt
+  này. Không đổi ngưỡng, không xóa failed evidence hoặc tự chạy lại cho đủ
+  giờ; độ ổn định 24 giờ chưa được chứng minh. Hai read latency failures
+  trước sửa vẫn là vi phạm end-to-end dù API/invoice xử lý nhanh.
+  Physical-device pilot/UAT và các gate khác còn nguyên; chưa GO tổng thể.
   Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 

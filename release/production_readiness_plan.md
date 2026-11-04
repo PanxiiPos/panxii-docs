@@ -3,9 +3,26 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **soak rút ngắn 17:05:38-19:00:04 ngày 04/11/2026 UTC+7 hoàn thành thành công và final audit pass; 8/8 invoice mới, không lỗi; không phải 24h pass; chưa GO**.
+- Trạng thái: **soak rút ngắn và final audit pass; owner chấp nhận kết quả và miễn yêu cầu đủ 24 giờ lúc 19:04 ngày 04/11/2026 UTC+7; gate soak đã đóng theo ngoại lệ được duyệt, không phải 24h pass; các gate khác còn nguyên, chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
+
+### Quyết định owner ngày 04/11/2026 lúc 19:04 UTC+7
+
+Owner xác nhận không cần chạy đủ 24 giờ, chấp nhận bounded run
+`20261104-100534` và final audit để **đóng gate soak/correctness synthetic**.
+Không tự chạy thêm lượt 24 giờ. Đây là ngoại lệ về thời lượng cho đợt
+nghiệm thu hiện tại, không đổi ngưỡng read/pull/sync và không phải bằng chứng
+đã quan sát hệ thống liên tục 24 giờ.
+
+Giữ nguyên lịch sử failed runs: một lượt lỗi socket, hai lượt vi phạm read
+latency end-to-end (1344,62/1316,50 ms). API request time và invoice sync
+ở hai incident vẫn thấp; chưa có phase timing để quy toàn bộ spike cho DNS.
+Vì vậy không kết luận mọi chỉ số hiệu năng trước sửa đều không bị ảnh hưởng.
+Lượt cuối sau sửa đã đạt các ngưỡng và audit; không cộng dồn thời gian failed
+runs. Chưa nghiệm thu được độ ổn định/leak qua 24 giờ; owner chấp nhận giới
+hạn bằng chứng này. Ngoại lệ không đóng gate physical-device pilot/UAT,
+OTA, backup/restore, lifecycle, CI/merge hoặc thay thế quyết định GO tổng thể.
 
 ## 1. Điểm xuất phát và nguyên tắc
 
@@ -624,6 +641,9 @@ Auto deploy main không được bật trước nghiệm thu bootstrap/pilot.
   tải giả tránh chính sách thu hồi VM.
 - Soak có giới hạn thời gian, đề xuất 24 giờ với tải đại diện; đo baseline/end
   và xu hướng RAM, connections, logs, disk, queue. Không để tool chạy vô hạn.
+  Đợt ngày 04/11/2026: owner đã miễn thời lượng 24 giờ và chấp nhận bounded
+  run + audit theo quyết định đầu tài liệu; không còn yêu cầu chạy lại chỉ
+  để đủ 24 giờ. Các ngưỡng và gate thiết bị thật vẫn giữ nguyên.
 - Lặp resilience gate đúng build, contract/tenant tests, migration/restore
   drill và E2E thiết bị. Không tái dùng runner development để kill production.
 - Nếu in là chức năng ngày đầu: thử Canon/QR/A4, timeout/reprint không trùng
@@ -659,7 +679,8 @@ Không đặt ngày go-live cố định trước khi xác nhận VPS/hostname/s
 
 1. Nhà cung cấp VPS, backup và hostname **đã chốt**: thuevpsgiare.vn gói VPS SSD C4; Google Drive qua Rclone; `panxii.duckdns.org`.
 2. RPO/retention **đã chốt** (3 lượt/ngày, giữ 6 bản mới nhất, chấp nhận mất tới ~9 giờ). Còn phải chốt RTO sau drill và người giữ recovery key.
-3. Số thiết bị/tải/backlog cần nghiệm thu; ngưỡng latency và soak duration.
+3. Synthetic workload/ngưỡng đã chốt; owner chấp nhận bounded soak + audit và
+   miễn đủ 24 giờ ngày 04/11/2026. Physical-device pilot còn phải nghiệm thu.
 4. OTA và in Canon có bắt buộc ngày đầu không; thiết bị pilot/kênh tải APK.
 5. Kênh cảnh báo **đã chốt Discord**, owner đã xác nhận nhận alert thử; còn người quyết định rollback/GO.
 
@@ -673,7 +694,11 @@ vào chat. Tạo secrets qua nơi lưu phù hợp và giữ mọi tài nguyên t
 - [ ] HTTPS/renewal/private services/SignalR thiết bị thật pass.
 - [ ] APK release ký đúng key; đường cập nhật và OTA theo phạm vi đã chốt pass.
 - [ ] CI gates, monitoring/alert, deploy/rollback và runbook pass.
+- [x] Synthetic soak/correctness: bounded run + final audit pass; owner chấp
+  nhận và miễn thời lượng 24 giờ ngày 04/11/2026, giữ nguyên latency limits.
 - [ ] Load/soak/correctness/pilot đạt ngưỡng, in nếu trong phạm vi pass.
+  Phần synthetic soak đã đóng như trên; mục tổng hợp vẫn chờ pilot/UAT
+  thiết bị thật và các phần còn lại, không yêu cầu thêm 24 giờ.
 - [ ] Owner duyệt kết quả và release notes; không còn blocker dữ liệu/tenant.
 
 Một gate bắt buộc fail hoặc thiếu evidence => **NO-GO**. Chấp nhận downtime

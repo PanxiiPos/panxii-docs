@@ -39,6 +39,12 @@ invoice/detail/receipt/change/publishedoutbox toàn tenant khớp; cohort108
 host monitor pass. **Bounded workload + audit pass, không phải 24h/GO**.
 Các số dự kiến/trước restart trong bảng trên là lịch sử, không phải kết quả cuối.
 
+**Owner duyệt 19:04 ngày 04/11 UTC+7:** chấp nhận bounded run + final audit,
+miễn thời lượng đủ 24 giờ và đóng gate **synthetic soak/correctness** đợt này.
+Không cần chạy thêm chỉ để đủ giờ; không gọi là 24h pass hoặc sửa lịch sử hai
+read latency failures. Physical-device pilot và các gate GO khác vẫn pending;
+độ ổn định 24 giờ chưa có bằng chứng.
+
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
 Ngày 03/11: backup manual verified rồi force-recreate chỉ API/Worker để nhận
 `JWT_REFRESH_TOKEN_DAYS=300` theo `.env` owner đã sửa; runtime kiểm chứng.
