@@ -46,6 +46,25 @@ Kế hoạch triển khai trước go-live:
 
 ### Mobile production nội bộ 0.1.5 đã phát hành
 
+#### Sửa tên hiển thị thành Panxii
+
+- Theo owner, bỏ hậu tố Production khỏi launcher. Source `dbf3299`,
+  Shorebird native release `951572` active, hiển thị `0.1.5`, Android
+  versionCode `7`; không đổi `pubspec.yaml`, package hay signing certificate.
+- [Link APK hiện tại](https://panxii.duckdns.org/downloads/panxii-0.1.5-production.apk)
+  đã được thay atomic, tải lại qua HTTPS và xác minh signature/hash/manifest:
+  label chính xác `Panxii`, package `.production`, versionName `0.1.5`,
+  versionCode `7`, SHA-256
+  `56CF3BC02864FEDF65C0D1E61EACE94813B655D72B3DEF9DE6F9FD9F775DE5FE`.
+- Cài đè APK mới, không gỡ app hoặc clear data. Đổi tên native không áp dụng
+  bằng OTA Dart patch; bản đã cài build 6 cần tải/cài lại bằng link trên.
+  Version policy backend vẫn latest 0.1.5; so sánh semver không tự báo bản
+  build 7 cho thiết bị đã chạy 0.1.5. Chưa xác minh cài trên thiết bị thật.
+- APK build 6 được giữ dưới tên `panxii-0.1.5-build6-production.apk`;
+  bằng chứng phía dưới là lịch sử bản build 6, không phải hash/link hiện tại.
+
+#### Bằng chứng ban đầu của build 6
+
 - Source mobile `399496a`, Shorebird release `951495` active, engine Flutter
   `3.47.8`. Phiên bản hiển thị `0.1.5`; Android versionCode `6` truyền riêng
   khi build, `pubspec.yaml` giữ `version: 0.1.5` theo yêu cầu owner.
