@@ -7,7 +7,7 @@ Kế hoạch triển khai trước go-live:
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
 - Backend live application `848d8be0127890746269957873314f54b6971cbe`,
-  deploy configuration `02623e1`, pilot runner `1ce4b50`; feature branch chưa merge.
+  deploy configuration `02623e1`, pilot runner `ab82b1d`; feature branch chưa merge.
   .NET 10.0.14 đã deploy bằng quy trình backup-first, không migration/seed/reset
   volume; EF 8/Pomelo 8 tạm thời còn blocker lifecycle.
 - `848d8be` Release build warning-free, 198 regression pass/4 opt-in skip;
@@ -66,6 +66,21 @@ Kế hoạch triển khai trước go-live:
   Dự kiến 32 invoice mới theo nhịp cũ, **không phải 24h acceptance**.
   Audit trước run có 107 invoice/receipt/change/published outbox khớp,
   zero duplicate/sai line values, command/retry/DLQ rỗng.
+  Run này fail **12:12:33 ngày 04/11**: read p95 **1344,62 ms > 500 ms**;
+  4 invoice mới completed, sync max **707,71 ms**. Nginx catalog 25-40 ms;
+  probe sau incident cho thấy DNS lookup trực tiếp thường 260-391 ms,
+  không có phase timing để quy toàn bộ request lỗi cho DNS.
+  Owner duyệt cache TTL `systemd-resolved` trên host (không pin IP/bỏ TLS):
+  cached DNS **0,83-1,09 ms**, fresh TLS searches **40,54-323,01 ms**,
+  probe sau 70 giây idle/TTL **353,11 ms**. Runner `ab82b1d` bổ sung lưu
+  cửa sổ read/pull fail trước raise, không nới ngưỡng; **23 test Windows/
+  37 test Linux pass**.
+  Audit trước restart **111 invoice/detail/receipt/change/published outbox**
+  khớp, zero duplicate/sai line values, queues rỗng. Run mới
+  **`20261104-052131`**, **12:21:36 đến 19:00 UTC+7**, dự kiến 28 invoice
+  mới theo nhịp cũ, first **189,63 ms** trên process nóng. Cửa sổ đầu
+  read/pull p95 **64,44/13,12 ms**, host monitor pass. Không restart hay đổi
+  app containers; failed run đã archive, không cộng dồn thời gian nghiệm thu.
   Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 

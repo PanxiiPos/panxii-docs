@@ -70,3 +70,32 @@ Ngày 2026-11-02: dọn build cache và APT cache, thu hồi thực tế **6,72 
 (bao gồm rollback), 7 containers đang chạy và 3 volumes; soak giữ PID/mẫu mới,
 host monitor pass. Evidence root-only trên VPS: `/opt/panxii/cleanup-20261102.json`.
 Không cài lịch tự động prune hoặc thay đổi chính sách backup.
+
+## 10. DNS host chậm trong pilot
+
+Soak `20261104-042043` dừng lúc 12:12:33 ngày 04/11/2026 UTC+7 vì read
+p95 1344,62 ms > 500 ms. Các catalog request trong cửa sổ đó vẫn HTTP 200,
+Nginx request time 25-40 ms. Probe sau incident cho thấy DNS lookup trực tiếp
+thường 260-391 ms; không có phase timing của request lỗi để khẳng định chính
+xác toàn bộ 1344,62 ms là DNS. Không nới ngưỡng hoặc bỏ DNS/TLS khỏi phép đo.
+
+Owner duyệt dùng cache TTL của `systemd-resolved` đã có sẵn trên VPS:
+
+- `/etc/resolv.conf` trỏ tới `/run/systemd/resolve/stub-resolv.conf`.
+- `/etc/systemd/resolved.conf.d/60-panxii-cache.conf`: `[Resolve]`,
+  `DNS=8.8.4.4 8.8.8.8`, `FallbackDNS=`, `Domains=~.`, `Cache=yes`,
+  `DNSStubListener=yes`. Directory phải mode 755, file 644 để service đọc được.
+- `systemctl enable --now systemd-resolved`; kiểm tra `resolvectl status`
+  thực sự có global DNS/domain trên, không chỉ kiểm tra file đã ghi.
+- Dùng `resolvectl statistics` kiểm chứng cache hits; đo cả cold lookup sau
+  `resolvectl flush-caches`, lookup lặp lại và HTTPS sau 70 giây idle/TTL expiry.
+  Không ghi `/etc/hosts`, ghim IP, bỏ TLS verification hoặc ép TTL dài hơn DNS.
+- Không cần `netplan apply`, restart Docker hay API/Worker. Container ID/image/
+  mount/start time phải giữ nguyên. Cache host không chứng minh DNS của điện
+  thoại hoặc Docker containers đã được thay đổi/kiểm chứng.
+
+Backup resolver cũ: `/opt/panxii/resolv.conf.before-dns-cache-20261104`.
+Rollback khi cần: thay symlink `/etc/resolv.conf` bằng bản backup đó, bỏ đúng
+drop-in `60-panxii-cache.conf`, rồi disable/stop `systemd-resolved` (trạng thái
+trước thay đổi là disabled/inactive). Xác minh `getent ahosts` và HTTPS sau
+rollback; không xóa TLS, data hoặc các config không liên quan.
