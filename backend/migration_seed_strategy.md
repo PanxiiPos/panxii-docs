@@ -59,7 +59,18 @@ Migration rollback chỉ dùng khi đã test. Với migration dữ liệu không
 
 ## 6. CI gate
 
-- `dotnet ef migrations script --idempotent` phải sinh được.
+- Với EF10/provider MySQL chính thức đang đánh giá: dùng Maintenance
+  `script-idempotent <output.sql>` theo runbook deploy của backend, không dùng
+  output `dotnet ef migrations script --idempotent` lỗi cú pháp của provider.
+  SQL phải thực thi thành công **hai lần** bằng MySQL CLI trên cả database
+  rỗng và EF8 đã có dữ liệu; không `--force`, không coi sinh được SQL là pass.
+- Gate `python scripts/test-provider-compatibility.py` phải giữ nguyên fingerprint
+  18 bảng/hash JSON hóa đơn khi đổi EF8 -> EF10, so khớp schema column/index/FK,
+  kiểm tra replay không thay row/history và không để lại routine. Chạy riêng
+  trên Docker loopback với dữ liệu synthetic, không dùng endpoint production.
+- Migration SQL cần migration user có quyền routine và deploy tuần tự; DDL
+  MySQL không rollback nguyên khối. Khi lỗi phải dừng và kiểm tra/khôi phục
+  partial schema theo runbook trước khi retry, không tự bỏ history hay routine.
 - Không có destructive SQL ngoài migration được phê duyệt.
 - Test tenant filter, unique key, invoice immutability.
 - Startup không tự chạy migration production nếu chưa có policy rõ ràng.
