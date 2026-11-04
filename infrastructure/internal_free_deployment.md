@@ -30,6 +30,15 @@
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 
+**Kết quả capacity/pilot 19:03 ngày 04/11 UTC+7:** run `20261104-100534`
+hoàn thành **19:00:04**, service success/exit0; **8/8 invoice mới**,
+cohort108. 109 cửa sổ, max-window read/pull p95 **94,05/46,52 ms**, sync
+p95/max **300,57 ms**, zero reconnect/retry/transport fail. Final audit139
+invoice/detail/receipt/change/publishedoutbox toàn tenant khớp; cohort108
+đủ invoice/detail/completedreceipt, zero duplicate/sai totals, queues rỗng;
+host monitor pass. **Bounded workload + audit pass, không phải 24h/GO**.
+Các số dự kiến/trước restart trong bảng trên là lịch sử, không phải kết quả cuối.
+
 Source đã push trên nhánh feature **không có nghĩa đã merge hoặc deploy**.
 Ngày 03/11: backup manual verified rồi force-recreate chỉ API/Worker để nhận
 `JWT_REFRESH_TOKEN_DAYS=300` theo `.env` owner đã sửa; runtime kiểm chứng.
