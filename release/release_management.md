@@ -4,8 +4,18 @@ Kế hoạch triển khai trước go-live:
 [6 công việc production readiness](production_readiness_plan.md).
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
-## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
+## Bằng chứng release production cập nhật ngày 2026-11-05 — chưa GO
 
+### Cập nhật thao tác bảo trì dữ liệu production
+
+- Owner phê duyệt một lần bảo trì theo phạm vi đã xác nhận. Chi tiết nhận
+  dạng và số liệu của tenant không được công bố.
+- Backup được xác minh và giao dịch được diễn tập trước khi thực hiện. Audit
+  được giữ lại; kết quả được kiểm tra sau bảo trì. Evidence chi tiết chỉ lưu
+  trong hồ sơ vận hành nội bộ.
+- Chính sách giá được áp dụng theo phạm vi phê duyệt; dữ liệu ngoài phạm vi
+  được giữ nguyên. Thiết bị có thể còn cache cũ; đồng bộ và xử lý cache theo
+  quy trình có phạm vi. Không chạy lại thao tác bảo trì.
 ### Triển khai cập nhật backend catalog pricing
 
 - Bản backend đã vượt qua các kiểm tra build, tương thích và resilience trước
