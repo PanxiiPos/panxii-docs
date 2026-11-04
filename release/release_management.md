@@ -95,7 +95,14 @@ Kế hoạch triển khai trước go-live:
   Run mới **`20261104-100534`**, **17:05:38 đến 19:00 UTC+7**, dự kiến
   **8 invoice mới**, first **174,66 ms** nóng. Application/container IDs/
   images/mounts/start times không đổi, monitor pass. Failed run giữ nguyên
-  archive; chưa bounded pass hoặc 24h pass.
+  archive. Kết quả kiểm tra 19:03:29: **bounded run hoàn thành 19:00:04**,
+  service exit 0/success, **8/8 invoice mới**, cohort108. **109 cửa sổ**,
+  max-window read/pull p95 **94,05/46,52 ms**, sync p95/max **300,57 ms**;
+  zero reconnect/retry/transport fail. Final audit **139** invoice/detail/
+  receipt/change/published outbox toàn tenant khớp, cohort108 đủ invoice/
+  detail/completed receipt, zero duplicate/sai totals; queues rỗng, monitor
+  pass. Bằng chứng root-only `pilot-keepalive-bounded-20261104-final-audit.json`.
+  **Bounded workload + audit pass**, không phải 24h pass hoặc GO.
   Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 

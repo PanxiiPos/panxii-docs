@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **lượt 12:21 fail read latency lúc 16:58; đã đồng bộ keepalive Nginx/runner theo owner, soak mới chạy từ 17:05:38 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày; không phải 24h pass; chưa GO**.
+- Trạng thái: **soak rút ngắn 17:05:38-19:00:04 ngày 04/11/2026 UTC+7 hoàn thành thành công và final audit pass; 8/8 invoice mới, không lỗi; không phải 24h pass; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -207,13 +207,31 @@ Runner cũ: `deploy/pilot.py.before-ab82b1d`; resolver cũ:
   pull **25,58 ms**; **0 idle reconnect / 0 GET retry / 0 transport fail**.
   PID sống, phase `soaking`, runner checksum và effective Nginx timeout khớp;
   OnFailure Discord/deadline vẫn đúng. Đã xóa đúng các file test staging.
-- Đây vẫn là bounded run, chưa có final audit hoặc 24h pass. Giữ OnFailure
-  Discord và deadline cộng ba phút cho verification/logout.
+- Kết quả cuối kiểm tra **19:03:29 UTC+7**: hoàn thành lúc **19:00:04**,
+  elapsed **1 giờ 54 phút 26 giây**, đúng cutoff rồi final verification/logout.
+  Service `Result=success`, `ExecMainStatus=0`, PID 0/inactive là kết thúc
+  bình thường; phase `completed-bounded-awaiting-database-audit` là nhãn
+  runner trước audit, không phải đang chờ workload chạy tiếp.
+- **109 cửa sổ đo**, max-window read p95 **94,05 ms < 500 ms**, pull
+  **46,52 ms < 1500 ms**; observed sync p95/max **300,57 ms < 1500 ms**.
+  **8/8 invoice mới completed**, cohort **108** gồm 100 baseline; **0
+  reconnect / 0 GET retry / 0 transport fail**, không failed window/slow request.
+- Final audit: **139 invoice/detail/completed receipt/change/published outbox**
+  toàn tenant khớp; đúng **108 invoice/detail/completed receipt** theo UUID
+  cohort, zero duplicate operation/sai line values/sai invoice total.
+  Command/retry/DLQ đều 0 ready/0 unacknowledged. Host monitor pass TLS,
+  public/private health, services, disk và backup freshness; không thay thế
+  kiểm chứng backup độc lập/restore. Không restart service hoặc tự chạy lại.
+- **Bounded workload và audit đã pass**, không cộng thời gian các lượt fail,
+  **không phải 24h pass/GO production**. Các gate UAT/OTA/restore/lifecycle/
+  merge và owner GO còn nguyên. Giữ dated override tới khi owner chọn lịch
+  khác; phải bỏ/thay cutoff cũ trước lần chạy sau.
 
 Evidence root-only: `pilot-dns-1700-probe.json`,
 `pilot-keepalive-20261104-verified.json`,
 `pilot-keepalive-bounded-20261104-start.json`,
-`pilot-keepalive-bounded-20261104-final-check.json`;
+`pilot-keepalive-bounded-20261104-final-check.json`,
+`pilot-keepalive-bounded-20261104-final-audit.json`;
 archives `pilot-state.failed-20261104-052131-archived-20261104-100534.json`,
 `pilot-samples.failed-20261104-052131-archived-20261104-100534.jsonl`.
 Rollback template/generated config và thứ tự runner xem
