@@ -3,6 +3,9 @@
 - Status: Accepted
 - Cập nhật 2026-11-02: mở rộng in thực tế từ A4 sang A4/A5 theo yêu cầu mới;
   UI chỉ hiện hai khổ này, ẩn nhập kích thước/lề và ngân hàng, giữ dữ liệu cũ.
+- Cập nhật 2026-11-04: thông tin khách hàng nằm ở cột trái cùng hàng QR tra cứu,
+  tránh để trống vùng dưới số hóa đơn; dòng đầu header phải nhấn mạnh vừa phải,
+  các dòng mô tả còn lại tự xuống hàng khi dài.
 
 ## Context
 
@@ -27,6 +30,14 @@ nhưng không mở module Customer hoặc nghiệp vụ thu tiền/đối soát.
   trạng thái uncertain. Submitted chỉ là Windows queue nhận job.
 - Bản in bắt buộc số hóa đơn/barcode/ngày/dòng khách hàng/chữ ký. Header v2 và
   bankTransfer cần rollout backend trước mobile và chặn editor cũ ghi mất dữ liệu.
+- Ngày in chỉ xuất hiện trong PNG thực gửi máy in, ngay dưới ngày tạo; preview
+  không giả định thời điểm in trước khi gửi.
+- Với QR tra cứu đặt bên phải, giữ số hóa đơn, ngày và các dòng khách hàng trống
+  trong cột trái của cùng khối. Như vậy nội dung khách bắt đầu sát ngày tạo thay
+  vì đợi toàn bộ chiều cao QR; không đổi thứ tự cột/bảng hoặc khổ giấy.
+- Header dịch vụ tùy chỉnh vẫn giữ nguyên nội dung và căn giữa; dòng đầu đậm
+  16 pt, phần còn lại 13 pt và wrap theo chiều rộng cột. Tên cửa hàng/header trái
+  giữ 24 pt.
 
 ## Alternatives considered
 
