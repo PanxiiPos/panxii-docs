@@ -1,6 +1,6 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-11-03.
+- Cập nhật: 2026-11-04.
 - Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
   Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
   hạ tầng là đã triển khai.
@@ -13,7 +13,7 @@
 
 | Hạng mục | Trạng thái khi viết hướng dẫn |
 |---|---|
-| Backend | Live application source/image `848d8be0127890746269957873314f54b6971cbe`, deploy configuration `02623e1`, pilot runner `d24ed97`, branch `feature/production-vps`. API/Worker runtime .NET `10.0.14`; origin API loopback 8080/private Swagger 8081, Nginx ingress public. Startup reads + in-memory tracking initialization không SaveChanges/publish; không migration/seed/reset volume. Backup verified rồi activate chỉ API/Worker, dependency IDs/mounts không đổi; giữ rollback images; chưa GO |
+| Backend | Live application source/image `848d8be0127890746269957873314f54b6971cbe`, deploy configuration `02623e1`, pilot runner `1ce4b50`, branch `feature/production-vps`. API/Worker runtime .NET `10.0.14`; origin API loopback 8080/private Swagger 8081, Nginx ingress public. Startup reads + in-memory tracking initialization không SaveChanges/publish; không migration/seed/reset volume. Backup verified rồi activate chỉ API/Worker; ngày 04/11 chỉ sửa runner, container IDs/images/mounts/start times không đổi. Giữ rollback images; chưa GO |
 | Máy chủ | **thuevpsgiare.vn**, gói **VPS SSD C4**: 2 vCPU, 4 GB RAM, 50 GB SSD NVMe U.2, 1 IPv4 public, 100 Mbps, không giới hạn băng thông. Ubuntu 22.04 x64 tại `103.245.236.133`, Docker/Compose, timezone Asia/Ho_Chi_Minh; UFW mở 22/80/443. Đã cập nhật 326 gói OS + 17 gói mới và reboot kernel `5.15.0-202-generic`; SSH/HTTPS phục hồi. Host key xác minh, SSH key-only. Oracle Always Free đã loại |
 | Database VPS | Đủ 17 migrations, một SuperAdmin. Tenant test `PILOT-READINESS`, 2000 products/variants; audit 13:54:54Z ngày 03/11 có 105 invoice/details/completed receipts/changes/published outbox khớp, không operation trùng/sai line values. Owner duyệt maintenance reset cùng TenantAdmin theo username/password mới trong `.env`, có xác thực SuperAdmin/BCrypt/audit/revoke sessions; login đã pass. Không có seed cửa hàng thật; giữ test history |
 | Secrets VPS | `/opt/panxii/.env` thuộc root, quyền `600`, không vào Git/image. Mật khẩu DB/broker và JWT sinh trên VPS. Runtime DB user chỉ SELECT/INSERT/UPDATE/DELETE; maintenance dùng connection riêng. Không ghi credentials admin/SSH vào tài liệu |
@@ -26,7 +26,7 @@
 | Android | Production-signed `0.1.4+5` cài/chạy trên một Samsung SM-A336E, package `.production`, song song app debug không xóa dữ liệu. [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk) hash đã khớp; khóa/recovery ngoài repo, owner giữ mật khẩu. Chưa nghiệm thu đầy đủ TenantAdmin physical pilot |
 | Shorebird | `auto_update: false`; production `0.1.4+5` patch 1 tải/verify/apply/restart pass; rollback thực tế về native base pass. Roll forward đã bật server-side nhưng chưa xác nhận thiết bị reapply. OTA bắt buộc ngày đầu; xem [release evidence](../release/release_management.md) |
 | Update policy | Production minimum `0.1.0`, latest `0.1.4`, Android HTTPS URL thật. Policy local/development độc lập, không tự ép native update production |
-| Capacity/pilot | Backlog+replay 18,84 giây; prepare read/pull p95 234,72/287,73 ms. Các lượt trước fail và đã lưu history. Sau deploy `848d8be`, soak `20261103-135041` đang chạy từ 20:50:49 ngày 03/11 UTC+7; cold first sample 827,05 ms, không warm-up/discard. Cohort 101 (100 baseline + 1 mới), tổng lịch sử 105; audit khớp, zero duplicates, command/retry/DLQ rỗng. Dự kiến đủ 24 giờ khoảng 20:50 ngày 04/11 nếu không lỗi; chưa có 24h pass. Xem [readiness](../release/production_readiness_plan.md). Không phải 5 điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu |
+| Capacity/pilot | Lượt `20261103-135041` fail sau 40m48s vì HTTPS socket hết hạn, không phải latency (sync p95 827,05 ms); đã lưu history. Runner `1ce4b50` reconnect idle, retry GET tối đa một lần có log, không retry POST; 22 test pass Windows/VPS và probe idle 70 giây tái hiện/sửa thành công. Run `20261104-042043` đang chạy từ 11:20:49 ngày 04/11 đến 19:00 UTC+7 theo owner; 32 invoice mới dự kiến theo nhịp cũ, first 177,53 ms (process nóng). Audit trước run 107 invoice/receipt/change/published outbox khớp, zero duplicate/sai line values, queues rỗng. Đây là soak rút ngắn, **không phải 24h pass**. Xem [readiness](../release/production_readiness_plan.md). Không phải 5 điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu |
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |
 | Printer Bridge | Có bản EXE Windows và source trên nhánh feature; chưa xác nhận in Canon thật và tự chạy sau đăng nhập tại cửa hàng |
 

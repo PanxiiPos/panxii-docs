@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **cold-start fix đã deploy; soak mới đang chạy từ 20:50:49 ngày 03/11/2026 UTC+7; chưa GO**.
+- Trạng thái: **cold-start fix đã deploy; soak rút ngắn đang chạy từ 11:20:49 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày theo owner; không phải 24h pass; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -27,7 +27,7 @@ bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồ
 ### Trạng thái hiện tại sau deploy ngày 2026-11-03
 
 - Live application source/image **`848d8be0127890746269957873314f54b6971cbe`**;
-  deploy configuration `02623e1`, pilot runner `d24ed97`.
+  deploy configuration `02623e1`, pilot runner `1ce4b5092db90e3e4b67b28ed31eaa741df920fc`.
   Khởi tạo thêm EF tracking/snapshot delegates bằng entity tạm trong bộ nhớ,
   DetectChanges rồi clear tracker; không SaveChanges, publish command hoặc tạo
   invoice trong DB. API invoice request/payload/queued envelope dùng generated
@@ -44,8 +44,10 @@ bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồ
   Attempt đầu tự rollback do probe nhầm public `/health/ready` (cố ý 404);
   đã dùng đúng private readiness như monitor và activate lại thành công.
   Không mở public readiness hoặc sửa Nginx để vượt probe.
-- **Soak `20261103-135041` đang chạy** từ **20:50:49 ngày 03/11 UTC+7**
-  (13:50:49Z), dự kiến đủ 24 giờ khoảng **20:50 ngày 04/11** nếu không lỗi.
+- **Soak `20261103-135041` đã fail** lúc **21:31:37 ngày 03/11 UTC+7**,
+  sau khoảng 40 phút 48 giây; `RemoteDisconnected` ở GET catalog.
+  Run bắt đầu **20:50:49 ngày 03/11 UTC+7** (13:50:49Z);
+  mốc dự kiến đủ 24 giờ ngày 04/11 không còn áp dụng.
   Dùng ngay hóa đơn đầu của run làm cold sample: **827,05 ms < 1500 ms**;
   không có warm-up invoice hoặc discarded sample. Preserve state/mẫu cũ,
   giữ 100 backlog invoice baseline và cấp UUID mới cho 100 invoice của lượt
@@ -56,7 +58,7 @@ bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồ
   khác tổng lịch sử 105. Host monitor pass.
   Service `Type=oneshot` có `ActiveState=activating`, `SubState=start` và
   MainPID sống trong khi đang chạy 24 giờ; không coi nhãn này là lỗi.
-- Đây mới là first sample pass và soak đang tiến hành, **chưa có 24h pass**.
+- First cold sample đã pass nhưng lượt 24 giờ đã dừng, **chưa có 24h pass**.
   Vẫn phải audit cuối, UAT thiết bị thật và các gate GO/NO-GO bên dưới.
 
 Evidence root-only: `coldstart-848d8be-prepared.json`,
@@ -65,6 +67,54 @@ Evidence root-only: `coldstart-848d8be-prepared.json`,
 archives state/mẫu trước run có tên `*.before-848d8be-20261103-135041.*`.
 Local full run: `panxii-resilience-b6d6237bb7f44f45a94b737b3d7cdd69`.
 Transfer archives đã xóa; source/images/evidence và rollback giữ nguyên.
+
+#### Khắc phục runner và lượt rút ngắn đến 19:00 ngày 04/11
+
+- Đối chiếu incident: Nginx `keepalive_timeout 65`, runner nghỉ 60 giây cộng
+  Docker stats/xử lý nên có thể dùng lại socket server đã đóng. Không có
+  container restart/OOM hoặc API/Worker error marker trong cửa sổ lỗi.
+  Probe thật trên VPS: socket không quản lý sau 70 giây gặp đúng
+  `RemoteDisconnected`; runner sửa mở lại kết nối và search/pull thành công,
+  TLS verification bật, không tạo invoice probe.
+- Runner `1ce4b50`: chủ động reopen sau 50 giây idle; GET disconnect/reset/
+  broken pipe được retry tối đa một lần có event rõ. HTTP lỗi/timeouts vẫn
+  fail; không retry POST invoice/refresh/logout khi kết quả không rõ.
+  Latency bao gồm TLS/reconnect/retry, transport events không bị bỏ khỏi
+  evidence; log không có query/token/body. Logout lỗi không che lỗi gốc.
+  **22 pilot test pass Windows và Python 3.10 trên VPS**;
+  full deployment Python suite **36/36 pass trên Linux** (backup tests cần
+  `fcntl`, không chạy được nguyên suite trên Windows).
+- Audit trước restart: **107 invoice/detail/completed receipt/change/published
+  outbox** toàn tenant khớp; zero duplicate/sai line values; command/retry/DLQ
+  rỗng. Giữ nguyên failed state/samples của `20261103-135041`, không reset DB.
+- Owner duyệt chạy **chỉ đến 19:00 ngày 04/11 UTC+7**. Run mới
+  **`20261104-042043`** bắt đầu **11:20:49**, cutoff
+  `2026-11-04T12:00:00Z`, khoảng **7 giờ 39 phút**.
+  Giữ 5 clients, nhịp 864 giây/invoice và ngưỡng read p95 500 ms,
+  pull/sync 1500 ms; dự kiến **32 invoice mới**, không ép tải 24h vào 8h.
+  Giữ 100 baseline backlog commands, cấp UUID mới cho phần soak,
+  không warm-up hoặc bỏ sample. API/Worker vẫn `848d8be`, mọi container ID,
+  image/mount/start time không đổi: **chỉ cập nhật runner**, không deploy app.
+- First invoice run mới **177,53 ms** trên process đang nóng, **không gọi là
+  cold-start sample**. Đã quan sát 3 cửa sổ và 10 idle reconnect:
+  max-window read p95 **450,86 ms**, pull p95 **29,61 ms**, không GET retry
+  trong các cửa sổ đầu. PID sống, phase `soaking`.
+- Workload ngừng sinh lúc cutoff rồi kiểm tra cuối/logout; cleanup có thể
+  xong sau 19:00 một chút. Phase thành công dự kiến
+  `completed-bounded-awaiting-database-audit`, **không phải đạt 24 giờ**.
+  Còn final audit, UAT và các gate GO/NO-GO.
+- Systemd drop-in có ngày:
+  `/etc/systemd/system/panxii-pilot-soak.service.d/10-until-20261104.conf`
+  truyền `--until 2026-11-04T19:00:00+07:00`; TimeoutStartSec giới hạn tới
+  deadline cộng ba phút cho verification/logout. Cần bỏ/thay override này
+  trước một lịch chạy khác; không tự chạy lại hoặc nối thời gian lượt lỗi.
+
+Evidence root-only bổ sung: `pilot-idle-probe-20261104.json`/`.jsonl`,
+`pilot-bounded-20261104-start.json`, `pilot-bounded-20261104-verified.json`,
+state/mẫu hiện tại và archives
+`pilot-state.failed-20261103-135041-archived-20261104-042043.json`,
+`pilot-samples.failed-20261103-135041-archived-20261104-042043.jsonl`.
+Runner cũ giữ tại `deploy/pilot.py.before-1ce4b50`; không chứa credentials.
 
 ### Lịch sử bằng chứng ngày 2026-11-02 và điều tra trước deploy mới
 
