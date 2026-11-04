@@ -289,9 +289,113 @@ Rollback template/generated config và thứ tự runner xem
   [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk)
   đã đối chiếu hash; minimum native `0.1.0`, latest `0.1.4`.
   Shorebird patch 1 đã tải/verify/apply và khởi động được; rollback thực tế về
-  native base cũng pass. Đã roll forward patch trên server, nhưng chưa xác nhận
-  thiết bị nhận lại patch; không báo roll-forward end-to-end pass.
+  native base cũng pass. Ngày 04/11/2026 owner xác nhận thiết bị cập nhật lại
+  thành công và Shorebird hiển thị 100%; chấp nhận gate reapply theo xác nhận
+  owner, không phải một lần kiểm tra thiết bị mới của agent.
   File khôi phục khóa ký mã hóa ngoài repo; owner xác nhận giữ mật khẩu.
+
+#### Theo dõi yêu cầu sau soak ngày 04/11/2026
+
+- Mobile đã sửa luồng tạo từ Home: đóng thông báo lưu rồi mở danh sách hóa
+  đơn cho cả online/offline; composer từ danh sách giữ pop về danh sách cũ.
+  Catalog tự tải khi gần cuối, chống tải trùng, dừng hết trang và chừa footer
+  tránh nút tạo sản phẩm/system navigation. Chưa phát hành APK/OTA chứa các
+  sửa này; xác nhận OTA ở trên áp dụng bản trước đó, không thay UAT bản mới.
+- Kiểm tra local: 60 test liên quan pass (navigation bốn trạng thái,
+  phân trang/exhaustion/concurrent request và hình học footer không bị FAB
+  che), `flutter analyze --no-pub` và `git diff --check` pass. Loại riêng một
+  test màn hẹp/cỡ chữ lớn đã tái hiện fail trên commit mobile gốc không sửa;
+  không gọi toàn bộ suite là xanh. Hot reload đã thử nhưng không có app
+  debug kết nối; chưa UAT bản sửa trên thiết bị thật.
+- Owner duyệt đánh giá provider MySQL chính thức + EF10, chỉ deploy khi đủ
+  gate. Worktree/branch thử nghiệm riêng `ef10-evaluation`,
+  `experiment/ef10-official-mysql`: NuGet restore pass, model 17 entity và
+  SQL tenant filter dựng được không kết nối database với
+  `MySql.EntityFrameworkCore 10.0.12` / EF Core `10.0.14`.
+  Docker Linux được owner bật lại, đã port và kiểm chứng local:
+  - Build sạch; regression 200 pass, 5 opt-in skip được ghi riêng.
+  - 6 test provider/catalog/concurrency trên MySQL thật pass, không skip;
+    duplicate username/FK vẫn trả đúng error contract với driver chính thức.
+  - Tạo DB bằng EF8 rồi dùng EF10: fingerprint cả 18 bảng và hash JSON
+    hóa đơn lịch sử giữ nguyên; JSON search, tenant isolation, decimal,
+    timestamp microsecond và server sequence continuation pass.
+  - So schema tạo mới EF8/EF10: khớp cả 455 dòng metadata column/index/FK,
+    charset, collation, precision; giữ nguyên mọi migration ID. Không pending
+    model changes. Không reset lịch sử migration. Idempotent SQL chỉ sinh
+    được, **chưa hợp lệ để thực thi**; xem kết quả review bên dưới.
+  - Lượt resilience đầu 22/23 fail do provider làm mất microsecond; test DB
+    còn bắt được partial SaveChanges khi concurrency fail. Đã sửa bằng
+    converter UTC `datetime(6)` và bắt buộc auto transaction cho SaveChanges;
+    giữ charset/GUID collation và service ID `utf8mb4_bin`.
+  - Lượt chốt `panxii-resilience-abe4554d99354efdaed941340b8f74e7`:
+    **23/23 pass, 0 skip**, cleanup pass; dump mã hóa restore đủ bảng và
+    API/Worker riêng pass. API EF10 -> EF8 -> EF10 đọc/replay cùng DB pass,
+    không apply schema migration. Cold invoice 534,54 / 649,85 / 678,07 ms
+    dưới 1500 ms, không tạo warm-up invoice. NuGet audit không có vấn đề
+    truy vấn hoặc package vulnerable.
+  Backend chính và VPS vẫn EF8/Pomelo8; **chưa deploy EF10**, còn cần CI
+  đúng commit và kiểm tra deployment/backup/connection trước promotion.
+  Evidence local nằm trong `ef10-evaluation/artifacts/resilience/` theo run
+  trên; đây là dữ liệu synthetic, không chứng minh recovery key của backup
+  production hoặc lost-VPS drill.
+  Review bổ sung ngày 04/11/2026 sau commit `18857ec`:
+  - **Blocker migration script:** chạy SQL `--idempotent` sinh bởi provider
+    trên MySQL disposable lỗi `1064` ngay câu `IF NOT EXISTS` đầu tiên,
+    dòng 8. Provider sinh conditional SQL không hợp lệ khi chạy trực tiếp
+    bằng MySQL CLI. Test compatibility hiện chỉ assert chuỗi, không thực
+    thi/replay script; không được coi gate idempotent SQL đã pass.
+    `Database.MigrateAsync` dùng trong 23 test đã pass là đường khác, không
+    phủ lỗi script. Cần sửa chiến lược sinh/chạy SQL và test thực thi hai lần.
+  - **Cloud CI chưa chạy:** tại thời điểm review GitHub chỉ có
+    [AI Code Review 41835745682](https://github.com/PanxiiPos/panxii-backend/actions/runs/41835745682)
+    thành công trên đúng SHA; không có Backend CI build-test/resilience.
+    Nhánh experiment không nằm trong push filter của Backend CI và chưa
+    có PR từ nhánh này tại thời điểm kiểm tra. Không dùng trạng thái xanh
+    của AI review thay bằng gate CI.
+  - Bài đối chiếu EF8 -> EF10 đủ 18 bảng và 455 dòng schema metadata đã
+    chạy local nhưng helper còn ở session, chưa thành gate tái lập trong
+    repository/CI. Test provider trong repo chưa thay thế toàn bài rehearsal
+    này. Phải giữ rõ giới hạn coverage khi promote.
+
+  Sửa ba phát hiện trên trong commit thử nghiệm `4578b07`:
+  - Không thay driver migration runtime hoặc kế thừa API nội bộ của provider.
+    Maintenance có `script-idempotent <output.sql>` dùng public EF API sinh
+    từng migration, chạy trong routine có guard và history insert. Không
+    dùng SQL `--idempotent` lỗi của provider. Quyền routine chỉ cấp migration
+    user, triển khai tuần tự; khi lỗi DDL phải dừng/kiểm tra partial schema.
+  - Gate `scripts/test-provider-compatibility.py` đã đưa vào repository/CI,
+    archive đúng EF8 `b7ea06e`, chỉ dùng Docker loopback synthetic. Lượt
+    `panxii-provider-a3b9840001544d0f818af96d533ad0a0` pass: SQL thật chạy
+    hai lần trên cả DB EF8 có dữ liệu và DB rỗng (4 lượt), giữ nguyên
+    fingerprint 18 bảng/hash JSON hóa đơn, khớp 455 dòng schema metadata,
+    replay không thay row/history và không để lại routine; 6 test pass
+    không skip (4 test opt-in MySQL và 2 test model/SQL), cleanup pass.
+  - Build local 0 warning/error; regression 200 pass, 5 opt-in skip ghi riêng;
+    NuGet audit pass. Bộ test deploy Python cần Linux (`fcntl`), không chạy
+    được bằng Python Windows hoặc image Docker hiện có thiếu Python; kết
+    quả Linux lấy từ job CI build-test đã pass, không ghi pass local.
+  - Resilience local chốt
+    `panxii-resilience-aa68877716b54e0cb4abec40ddcb1f6f`: **23/23 pass,
+    0 skip**, cleanup pass; EF10 -> EF8 -> EF10 đọc/replay cùng DB pass,
+    không apply schema migration. Cold invoice 1101,58 / 610,35 / 570,92 ms,
+    dưới 1500 ms, không tạo warm-up invoice.
+  - Push filter đã bao gồm nhánh experiment. Backend CI thật hoàn tất
+    **success** lúc 20:40:50 VN ngày 04/11/2026 trên đúng
+    `4578b07ce8a5cfe9669b08a34df2f265d3ee9e0e`:
+    [run 41838971294](https://github.com/PanxiiPos/panxii-backend/actions/runs/41838971294),
+    cả **build-test, provider-compatibility và resilience đều pass**.
+    Rollback CI pin đúng EF8 `b7ea06e`, không lấy `HEAD^` đã là EF10.
+    Ba blocker review đã đóng; không dùng AI review thay CI và không
+    coi synthetic gate là production GO. Chưa merge/deploy EF10 lên VPS,
+    còn kiểm tra deployment/backup/connection thực tế trước promotion;
+    independent restore và monitor ngoài VPS bên dưới vẫn chưa hoàn tất.
+- Owner thấy backup lên Drive đúng lịch; đây chưa chứng minh independent
+  restore hoặc hai lượt scheduled đã được audit. Làm drill theo
+  [quy trình độc lập](../infrastructure/disaster_recovery.md#33-diễn-tập-khôi-phục-từ-drive-không-phụ-thuộc-vps-cũ).
+- Host monitor hiện có không phát hiện/báo được khi cả VPS mất điện/mạng.
+  Cần monitor từ bên ngoài theo
+  [hướng dẫn](../infrastructure/slo_observability.md#6-availability-monitor-bên-ngoài-vps);
+  chưa cấu hình dịch vụ ngoài hoặc coi gate này đã đạt.
 
 #### Capacity/pilot được duyệt và tiến độ
 
@@ -692,7 +796,9 @@ vào chat. Tạo secrets qua nơi lưu phù hợp và giữ mọi tài nguyên t
 - [ ] Hạ tầng Production/kiến trúc/quota/volumes/provisioning pass, không demo secret.
 - [ ] Backup tự động ngoài VM và restore bằng recovery key độc lập pass.
 - [ ] HTTPS/renewal/private services/SignalR thiết bị thật pass.
-- [ ] APK release ký đúng key; đường cập nhật và OTA theo phạm vi đã chốt pass.
+- [x] APK release ký đúng key; đường cập nhật và OTA bản hiện hành pass.
+  Owner xác nhận cập nhật lại/Shorebird 100% ngày 04/11/2026. Sửa UX sau đó
+  vẫn phải phát hành và UAT riêng, không dùng xác nhận này cho bản chưa gửi.
 - [ ] CI gates, monitoring/alert, deploy/rollback và runbook pass.
 - [x] Synthetic soak/correctness: bounded run + final audit pass; owner chấp
   nhận và miễn thời lượng 24 giờ ngày 04/11/2026, giữ nguyên latency limits.
