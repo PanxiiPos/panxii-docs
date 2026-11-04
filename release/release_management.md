@@ -4,7 +4,45 @@ Kế hoạch triển khai trước go-live:
 [6 công việc production readiness](production_readiness_plan.md).
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
-## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
+## Bằng chứng release production cập nhật ngày 2026-11-05 — chưa GO
+
+### Hùng Nga: owner duyệt xóa hóa đơn và bật làm tròn Sắt thép
+
+- Sau deploy 23:52, owner yêu cầu xóa hóa đơn và làm tròn giá, xác nhận
+  phạm vi chỉ `HUNG-NGA`, mọi máy đã sync và không còn draft/pending.
+  Đây là ngoại lệ bảo trì một lần được owner duyệt đối với hóa đơn bất biến,
+  không phải API xóa hóa đơn hoặc thay đổi quy tắc reverse cho vận hành thường.
+- Backup mã hóa verified `20261104T165910Z-4ca93d3ff36c` sau khi quiesce
+  API/Worker và drain broker. Tool tạm dùng EF/model/pricing đúng source live;
+  rehearsal thực hiện toàn transaction rồi rollback, hash đủ 18 bảng khớp
+  trước khi chạy commit. Không tắt foreign keys hoặc reset schema/volume.
+- Đã xóa 3 invoice, 3 detail, 3 service-charge cùng các snapshot đồng bộ/outbox
+  Invoice tương ứng, chỉ tenant đã duyệt. Giữ nguyên operation receipts và
+  audit; retry operation cũ không được tạo lại hóa đơn đã xóa. Ghi thêm 31
+  audit entries cho 3 invoice, 27 family và category; không xóa audit cũ.
+- Bật policy cho đúng danh mục Sắt thép, reprice 27 family/61 sellable variant;
+  59 giá thay đổi, toàn bộ 61 giá bằng công thức chính xác nearest-thousand,
+  500 lên, minimum 1000. Giữ listed price, hệ số, SKU, đơn vị, metadata và
+  trạng thái; hash sản phẩm/biến thể ngoài Sắt thép và dữ liệu ngoài tenant
+  không đổi. Phụ kiện không làm tròn. Policy áp dụng các lần ghi tiếp theo.
+- Ghi durable `CatalogBatch` mới và notification; outbox đã Published.
+  Kiểm tra độc lập lúc 00:01 ngày 05/11: tenant còn 0 invoice, policy true,
+  61/61 giá không lẻ và không dưới 1000; public health, private readiness,
+  Worker subscriber, monitor pass, command/retry/DLQ rỗng. Service IDs,
+  images và mounts giữ nguyên.
+- **Giới hạn thiết bị:** invoice repository mobile cache dạng upsert, không
+  tự xóa synced record khi bảo trì xóa trực tiếp trên server. Các hóa đơn cũ
+  có thể còn hiển thị trong cache điện thoại; chưa xóa dữ liệu app/secure
+  storage/print pairing và chưa tuyên bố UI thiết bị đã sạch. Không replay
+  operation cũ. Refresh catalog/category online trước khi bán tiếp để nhận
+  giá và policy mới. Việc dọn cache chỉ làm riêng có phạm vi, không clear data
+  khi còn dữ liệu offline.
+- Evidence root-only: `hung-nga-reset-round-20261104-before.json`,
+  `hung-nga-reset-round-20261104-rehearse.json`,
+  `hung-nga-reset-round-20261104-commit.json`,
+  `hung-nga-reset-round-20261104-verified.json`.
+  Không chạy lại tool reset; không rollback code pricing cũ khi policy đang
+  bật và vẫn nhận catalog writes.
 
 ### Backend catalog pricing đã deploy lúc 23:52, chưa bật policy
 

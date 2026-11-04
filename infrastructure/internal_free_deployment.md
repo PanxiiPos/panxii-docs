@@ -1,6 +1,6 @@
 # Hướng dẫn triển khai nội bộ tiết kiệm chi phí
 
-- Cập nhật: 2026-11-04.
+- Cập nhật: 2026-11-05.
 - Mục đích: lưu hướng dẫn và trạng thái triển khai từng thành phần.
   Chỉ các bước có xác nhận bên dưới đã được thực hiện; không coi toàn bộ
   hạ tầng là đã triển khai.
@@ -10,6 +10,21 @@
   toán vượt mức hoặc đăng ký thêm dịch vụ trả phí.
 
 ## 1. Trạng thái và lựa chọn đã chốt
+
+### Cập nhật ghi đè policy Hùng Nga lúc 00:01 ngày 05/11/2026
+
+- Owner xác nhận mọi máy đã sync/không draft và cho phép xóa invoice chỉ
+  `HUNG-NGA`. Có backup verified và full-transaction rollback rehearsal trước
+  commit: đã xóa 3 invoice cùng details/fees, giữ audit và operation receipts.
+- Đã bật làm tròn đúng danh mục Sắt thép: 27 family/61 variant, 59 giá thay
+  đổi; nearest 1000, 500 lên, minimum 1000. Phụ kiện, listed price, hệ số,
+  metadata và dữ liệu ngoài phạm vi giữ nguyên; notification đã Published.
+- Source backend vẫn `753574f`, service IDs/images/mounts không đổi,
+  health/readiness/Worker/monitor pass. Mobile cache invoice cũ chưa tự xóa;
+  chưa clear dữ liệu app. Xem giới hạn thiết bị và bằng chứng trong
+  [release management](../release/release_management.md).
+- Mô tả policy false bên dưới là trạng thái trước thao tác owner vừa duyệt,
+  không phải trạng thái live hiện tại. Không chạy lại reset.
 
 ### Cập nhật ghi đè trạng thái live lúc 23:52 ngày 04/11/2026
 
