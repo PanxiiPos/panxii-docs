@@ -99,3 +99,33 @@ Rollback khi cần: thay symlink `/etc/resolv.conf` bằng bản backup đó, b�
 drop-in `60-panxii-cache.conf`, rồi disable/stop `systemd-resolved` (trạng thái
 trước thay đổi là disabled/inactive). Xác minh `getent ahosts` và HTTPS sau
 rollback; không xóa TLS, data hoặc các config không liên quan.
+
+## 11. Keepalive HTTPS và pilot
+
+Ngày 04/11/2026, owner duyệt Nginx public HTTPS `keepalive_timeout 180s`
+và runner idle cutoff 120 giây (`b7ea06e`). Nhịp sample hơn 60 giây trước
+đó làm runner reopen mỗi phút ở cutoff 50 giây, liên tục trả DNS/TLS dù
+đã có cache TTL. Không đổi ngưỡng latency hoặc nhịp invoice/sample.
+
+Deploy theo thứ tự: backup template/generated config; cập nhật template
+`deploy/nginx/https.conf.template` giữ nguyên inode bind mount; trong Nginx
+chạy `/bin/sh /docker-entrypoint.d/20-envsubst-on-templates.sh`, `nginx -t`,
+`nginx -s reload`, xác nhận `nginx -T` có timeout 180s ở public HTTPS;
+sau đó mới deploy runner cutoff 120 giây. Không cần recreate container
+hoặc restart API/Worker. Nếu validation/reload lỗi, restore cả template lẫn
+generated config và validate/reload lại; báo lỗi rõ, không chạy runner mới.
+
+Backup root-only:
+`/opt/panxii/deploy/nginx/https.conf.template.before-keepalive-180`,
+`/opt/panxii/nginx-default.before-keepalive-180.conf`,
+`/opt/panxii/deploy/pilot.py.before-b7ea06e`.
+Rollback phải dừng runner nếu đang chạy, restore runner cutoff 50 giây
+trước khi hạ Nginx về 65 giây; không để client giữ socket lâu hơn server.
+Không tự replay/resume lượt đã fail, luôn archive state/samples.
+
+Kiểm chứng không chỉ bằng config: search+pull sau 70 giây phải dùng đúng
+socket cũ (probe 83,56 ms), forced fresh connection vẫn verify TLS và đo đủ
+DNS/TCP/TLS (probe 330,70 ms). Slow request >=500 ms có `request-timing`:
+`connectMs` gộp DNS/TCP/TLS, không phải chỉ thời gian API; `remainingMs`
+không thay total trong latency gate. Bằng chứng này không bảo đảm mạng/DNS
+không bao giờ chậm và không thay thế kiểm thử điện thoại ngoài VPS.
