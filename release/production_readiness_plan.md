@@ -28,6 +28,10 @@ hoãn là đã đạt hoặc cho phép reset dữ liệu thật về sau.
   Thiết bị offline test cũ chưa được xóa từ xa; dùng tài khoản tenant mới
   cho dữ liệu thật, không replay dữ liệu test.
 - Native policy latest 0.1.5, minimum 0.1.0, URL tải APK mới đã hoạt động.
+  Sau phản hồi owner về tên launcher, APK tại URL này đã được thay bằng
+  bản native build 7/release Shorebird `951572`, label đúng **Panxii**,
+  giữ versionName 0.1.5/package/chữ ký. HTTPS hash/signature/manifest đã
+  verify; thiết bị cài build 6 phải tải lại/cài đè, không nhận qua OTA Dart.
   Tiến độ/CI/DB ở các phần dưới là lịch sử trước lần cập nhật này khi có
   mâu thuẫn về trạng thái live; không xóa bằng chứng failed runs.
 - Bằng chứng root-only `production-ef10-96e6ea7-final.json`; chi tiết tại
