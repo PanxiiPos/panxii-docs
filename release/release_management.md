@@ -4,10 +4,10 @@ Kế hoạch triển khai trước go-live:
 [6 công việc production readiness](production_readiness_plan.md).
 Đây là kế hoạch và điều kiện nghiệm thu, không phải xác nhận đã triển khai.
 
-## Bằng chứng release production cập nhật ngày 2026-11-03 — chưa GO
+## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
 - Backend live application `848d8be0127890746269957873314f54b6971cbe`,
-  deploy configuration `02623e1`, pilot runner `d24ed97`; feature branch chưa merge.
+  deploy configuration `02623e1`, pilot runner `1ce4b50`; feature branch chưa merge.
   .NET 10.0.14 đã deploy bằng quy trình backup-first, không migration/seed/reset
   volume; EF 8/Pomelo 8 tạm thời còn blocker lifecycle.
 - `848d8be` Release build warning-free, 198 regression pass/4 opt-in skip;
@@ -53,8 +53,19 @@ Kế hoạch triển khai trước go-live:
   ngày 03/11 UTC+7, dùng ngay first invoice cold làm sample: **827,05 ms**.
   Không warm-up/discard sample; preserve failed state/mẫu cũ.
   Audit 13:54:54Z: 105 invoice/receipt/change/published outbox khớp, không
-  duplicate/sai line values, command/retry/DLQ rỗng. Soak đang chạy, chưa đủ
-  24 giờ; dự kiến khoảng 20:50 ngày 04/11 nếu không lỗi.
+  duplicate/sai line values, command/retry/DLQ rỗng. Lượt này sau đó fail
+  lúc 21:31:37 ngày 03/11 bởi `RemoteDisconnected` khi GET catalog,
+  không phải vi phạm latency; chưa có 24h pass.
+  Probe thật 70 giây idle tái hiện socket hết hạn (Nginx keepalive 65 giây).
+  Runner `1ce4b50` reopen sau 50 giây, GET-only retry tối đa một lần có log,
+  không retry ambiguous POST và vẫn tính đầy đủ reconnect latency;
+  22 test pass Windows/VPS. Chỉ cập nhật runner, không recreate app.
+  Run rút ngắn `20261104-042043` bắt đầu 11:20:49 ngày 04/11 UTC+7,
+  dừng sinh tải lúc 19:00 theo owner (cleanup sau đó); first invoice
+  177,53 ms trên process đang nóng, không coi là cold sample.
+  Dự kiến 32 invoice mới theo nhịp cũ, **không phải 24h acceptance**.
+  Audit trước run có 107 invoice/receipt/change/published outbox khớp,
+  zero duplicate/sai line values, command/retry/DLQ rỗng.
   Chi tiết và gate còn lại tại
   [readiness](production_readiness_plan.md); chưa GO.
 
