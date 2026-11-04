@@ -6,6 +6,21 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
+### Triển khai cập nhật backend catalog pricing
+
+- Bản backend đã vượt qua các kiểm tra build, tương thích và resilience trước
+  triển khai. Các bộ kiểm thử tự động và local liên quan đều đạt.
+- Backup mã hóa được xác minh trước migration. Thay đổi schema được áp dụng
+  không seed hoặc reset dữ liệu; dữ liệu hiện có được kiểm tra để phát hiện
+  thay đổi ngoài phạm vi.
+- API và Worker đã được cập nhật; health check và monitoring đạt. Pricing
+  policy chưa được bật trong đợt triển khai này.
+- Hóa đơn offline có thể bị từ chối nếu giá catalog thay đổi trước khi hóa
+  đơn được đồng bộ. Trước khi thay đổi giá, cần xác nhận thiết bị đã đồng bộ
+  và xử lý draft đang chờ; queue rỗng trên server là chưa đủ.
+- Commit, CI, backup, migration và bằng chứng triển khai chi tiết được lưu
+  trong hồ sơ release nội bộ. Không rollback dữ liệu hoặc chạy migration
+  downgrade như một hình thức rollback code.
 ### Mobile OTA patch 2: xem trước và in hóa đơn
 
 - Đã phát hành stable patch `2` (`778305`) cho app

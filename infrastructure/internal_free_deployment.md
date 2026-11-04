@@ -11,7 +11,19 @@
 
 ## 1. Trạng thái và lựa chọn đã chốt
 
-### Cập nhật ghi đè trạng thái live lúc 21:25 ngày 04/11/2026
+### Cập nhật trạng thái triển khai backend
+
+- Bản backend đã qua các gate triển khai và được áp dụng cho API/Worker.
+  Backup được xác minh trước migration; dữ liệu hiện có được kiểm tra để
+  bảo đảm migration không làm thay đổi ngoài phạm vi.
+- Các thao tác dữ liệu nghiệp vụ chưa được thực hiện trong đợt triển khai này.
+  Trước khi thay đổi catalog hoặc giá, cần đồng bộ thiết bị và xử lý dữ liệu
+  đang chờ theo quy trình đã phê duyệt.
+- Bản cập nhật mobile tương ứng đã được phát hành; một số kiểm tra thiết bị
+  thực tế vẫn còn chờ. Chi tiết source, CI, migration và bằng chứng release
+  được lưu trong hồ sơ vận hành nội bộ.
+- Thông tin bên dưới là lịch sử; không dùng làm căn cứ để thao tác dữ liệu live.
+### Lịch sử deploy và chuẩn bị dữ liệu lúc 21:25 ngày 04/11/2026
 
 - Owner duyệt PR #1 đã merge và yêu cầu deploy: live application/source
   `96e6ea73d17df1c0bf0a3e53325fe77c01dcd40d`, .NET 10.0.14,

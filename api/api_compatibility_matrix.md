@@ -15,6 +15,24 @@
 - Mobile mới mặc định A4 khi template chưa có layout; không đổi giấy đã lưu rõ ràng. In Wi-Fi chỉ A4; Bluetooth chưa có transport. Preview bản in thật bắt buộc số hóa đơn/barcode/ngày/khách hàng/chữ ký, không dùng các toggle legacy để ẩn thông tin bắt buộc. QR chỉ là chỉ dẫn chuyển khoản, không đổi invoice/payment contract.
 
 - Additive optional response field: compatible.
+- Category pricing adds optional `roundSalePriceToThousands`, default false.
+  An omitted update flag preserves the stored policy. Deploy the additive
+  migration/API/Worker before enabling a category. Enabled categories accept
+  either the legacy four-decimal product price or the new rounded price, but
+  persist the server-calculated policy price; unrelated mismatches remain invalid.
+  Flutter uses fixed-point arithmetic with the same half-up threshold and minimum
+  1000 VND. Refresh category caches after enabling the policy; publishing the
+  mobile patch does not deploy the backend or enable the flag.
+- Enabling a category flag alone does not rewrite existing prices or invoice
+  snapshots. Moving a family between pricing policies recalculates its current
+  catalog prices atomically, including inactive variants. Existing invoice sync
+  checks each submitted unit price against the current catalog: an offline sale
+  created before repricing can be rejected with `ERR_INVALID_FIELD`, not silently
+  charged at a different price. Before enabling/repricing or moving a family,
+  require every selling device to sync its pending sales and resolve open drafts.
+  Empty server queues do not prove offline devices have no pending sales.
+  Do not lower this invoice validation or rewrite historical invoices as a
+  rollout workaround. A code/migration-only deploy keeps all new flags false.
 - Product/variant rollout: backend API and database migration must be deployed before a mobile release calls `/products/{productId}/variants`. Existing v1 clients may continue using the product fields and omit `productVariantId` on invoice sync; the server resolves that legacy line to the default variant whose ID equals `productId`. New clients must persist and send the explicitly selected `productVariantId`; never infer a variant from SKU, display name, or price.
 - Bulk-price accepts product/base targets, variant targets, or both; existing product-only requests remain valid. The response adds variant results while retaining product results, so clients must ignore unknown response fields. A mixed request applies all valid updates atomically, with product/default-variant aliases adjusted once.
 - `productVariantId` and `variantNameSnapshot` are optional in the invoice request for legacy compatibility. Invoice responses add the resolved `productVariantId`, `variantNameSnapshot`, and `variantExtraDataSnapshot`; readers must tolerate their absence on records from older/imported data.
