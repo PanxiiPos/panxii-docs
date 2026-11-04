@@ -3,7 +3,7 @@
 - Ngày lập: 2026-11-01.
 - Phạm vi: cửa hàng gia đình, offline-first, chấp nhận backend gián đoạn;
   ưu tiên dịch vụ miễn phí và thiết bị hiện có.
-- Trạng thái: **cold-start fix đã deploy; lượt 11:20 fail read latency; đã bật cache DNS theo owner, soak mới chạy từ 12:21:36 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày; không phải 24h pass; chưa GO**.
+- Trạng thái: **lượt 12:21 fail read latency lúc 16:58; đã đồng bộ keepalive Nginx/runner theo owner, soak mới chạy từ 17:05:38 ngày 04/11/2026 UTC+7 đến 19:00 cùng ngày; không phải 24h pass; chưa GO**.
 - Không tự nâng gói trả phí, dùng credit trial như miễn phí lâu dài hoặc
   thay đổi dữ liệu development/production để chuẩn bị release.
 
@@ -27,7 +27,8 @@ bị loại, VPS thuê thay thế. Source đang ở branch feature; không đồ
 ### Trạng thái hiện tại sau deploy ngày 2026-11-03
 
 - Live application source/image **`848d8be0127890746269957873314f54b6971cbe`**;
-  deploy configuration `02623e1`, pilot runner `ab82b1d2aa67955fe1e761b9b6ffafb849c5c85c`.
+  deploy configuration nền `02623e1`, pilot runner và HTTPS keepalive overlay
+  `b7ea06e37823919c642dfcc0203a127969093f34`.
   Khởi tạo thêm EF tracking/snapshot delegates bằng entity tạm trong bộ nhớ,
   DetectChanges rồi clear tracker; không SaveChanges, publish command hoặc tạo
   invoice trong DB. API invoice request/payload/queued envelope dùng generated
@@ -151,6 +152,8 @@ Runner cũ giữ tại `deploy/pilot.py.before-1ce4b50`; không chứa credentia
   coi là cold sample. Cửa sổ đầu read p95 **64,44 ms**, pull **13,12 ms**;
   host monitor pass. API/Worker và cả 7 container ID/image/mount/start time
   giữ nguyên. Chỉ host DNS và pilot runner thay đổi.
+  Lượt này sau đó fail **16:58:32**, xem incident tiếp theo; không cộng dồn
+  thời gian vào lượt mới hoặc gọi là pass.
 - Check **12:23:46 UTC+7**: phase `soaking`, PID sống, **3 cửa sổ đo**,
   max-window read p95 **361,59 ms**, pull **13,12 ms**; **10 idle reconnect,
   0 GET retry, 0 transport fail**. Runner checksum khớp, DNS service enabled,
@@ -166,6 +169,55 @@ archives `pilot-state.failed-20261104-042043-archived-20261104-052131.json`,
 `pilot-samples.failed-20261104-042043-archived-20261104-052131.jsonl`.
 Runner cũ: `deploy/pilot.py.before-ab82b1d`; resolver cũ:
 `resolv.conf.before-dns-cache-20261104`. Không cộng dồn thời gian các lượt fail.
+
+#### Incident 16:58 và đồng bộ keepalive Nginx/runner
+
+- Run `20261104-052131` fail **16:58:32 UTC+7**, sau khoảng **4 giờ 36 phút
+  56 giây**, vì read p95 **1316,50 ms > 500 ms**. Cửa sổ fail có 5 reads,
+  p50 **41,98 ms**; pull p95 **11,21 ms**; không GET retry. **20 invoice mới**
+  đều completed, sync cao nhất **530,60 ms**. Full failed-window đã được lưu.
+- Cả 5 catalog request vẫn HTTP 200, Nginx **25-32 ms**. Cache DNS có hoạt
+  động (2599 hits/316 misses), nhưng A TTL 60 giây và nhịp runner hơn 60
+  giây; idle reconnect 50 giây buộc cả 5 clients mở lại DNS/TLS mỗi cửa sổ.
+  Probe 25 lần cold DNS sau incident: DNS **42-399 ms**, TLS **8-26 ms**,
+  total **85-445 ms**. Không tái hiện đúng spike 1316,50 ms; không có phase
+  timing tại request lỗi nên không khẳng định toàn bộ spike do DNS.
+- Owner duyệt sửa đồng bộ: public HTTPS Nginx **keepalive_timeout 180s**,
+  runner proactive idle cutoff **120 giây**. Giữ nhịp sample khoảng 60 giây,
+  invoice 864 giây và ngưỡng read/pull/sync; không tạo heartbeat tăng tải,
+  pin IP, nới TTL hoặc bỏ DNS/TLS khỏi phép đo. Socket thực sự stale vẫn
+  GET retry tối đa một lần, POST không retry khi kết quả không rõ.
+- Runner/HTTPS template `b7ea06e`: slow request >=500 ms lưu `request-timing`
+  với total, connect (DNS/TCP/TLS gộp), remaining và attempts; latency gate
+  vẫn dùng total. **26 Windows pilot tests / 40 Linux deployment tests pass**,
+  gồm socket reuse sau 70 giây, idle >=120 giây reconnect và giữ timing.
+- Đã backup template/generated config, regenerate config, `nginx -t` rồi
+  graceful reload; không recreate container. Probe thật sau **70 giây**
+  dùng đúng socket cũ, search+pull **83,56 ms**; forced fresh TLS search
+  **330,70 ms**. Monitor pass, không tạo invoice probe.
+- Audit trước restart: **131 invoice/detail/completed receipt/change/published
+  outbox** toàn tenant khớp, zero duplicate/sai line values, queues rỗng.
+  Archive nguyên lượt fail, giữ 100 baseline commands, cấp UUID mới cho soak.
+- Run mới **`20261104-100534`** bắt đầu **17:05:38 UTC+7**, cutoff **19:00**,
+  khoảng **1 giờ 54 phút**, dự kiến **8 invoice mới** theo nhịp cũ. First
+  invoice **174,66 ms** trên process nóng, không coi là cold sample.
+  API/Worker vẫn `848d8be`; cả 7 container ID/image/mount/start time không đổi.
+  Chỉ HTTPS config reload và runner thay đổi; DNS cache giữ nguyên.
+- Check **17:07:49 UTC+7**: **3 cửa sổ đo**, max-window read p95 **81,74 ms**,
+  pull **25,58 ms**; **0 idle reconnect / 0 GET retry / 0 transport fail**.
+  PID sống, phase `soaking`, runner checksum và effective Nginx timeout khớp;
+  OnFailure Discord/deadline vẫn đúng. Đã xóa đúng các file test staging.
+- Đây vẫn là bounded run, chưa có final audit hoặc 24h pass. Giữ OnFailure
+  Discord và deadline cộng ba phút cho verification/logout.
+
+Evidence root-only: `pilot-dns-1700-probe.json`,
+`pilot-keepalive-20261104-verified.json`,
+`pilot-keepalive-bounded-20261104-start.json`,
+`pilot-keepalive-bounded-20261104-final-check.json`;
+archives `pilot-state.failed-20261104-052131-archived-20261104-100534.json`,
+`pilot-samples.failed-20261104-052131-archived-20261104-100534.jsonl`.
+Rollback template/generated config và thứ tự runner xem
+[runbook keepalive](../infrastructure/operations_runbook.md#11-keepalive-https-và-pilot).
 
 ### Lịch sử bằng chứng ngày 2026-11-02 và điều tra trước deploy mới
 
