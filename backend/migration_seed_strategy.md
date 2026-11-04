@@ -59,7 +59,7 @@ Migration rollback chỉ dùng khi đã test. Với migration dữ liệu không
 
 ## 6. CI gate
 
-- Với EF10/provider MySQL chính thức đang đánh giá: dùng Maintenance
+- Với EF10/provider MySQL chính thức đã deploy: dùng Maintenance
   `script-idempotent <output.sql>` theo runbook deploy của backend, không dùng
   output `dotnet ef migrations script --idempotent` lỗi cú pháp của provider.
   SQL phải thực thi thành công **hai lần** bằng MySQL CLI trên cả database

@@ -11,6 +11,29 @@
 
 ## 1. Trạng thái và lựa chọn đã chốt
 
+### Cập nhật ghi đè trạng thái live lúc 21:25 ngày 04/11/2026
+
+- Owner duyệt PR #1 đã merge và yêu cầu deploy: live application/source
+  `96e6ea73d17df1c0bf0a3e53325fe77c01dcd40d`, .NET 10.0.14,
+  EF Core 10.0.14/MySql.EntityFrameworkCore 10.0.12.
+  [CI merge SHA](https://github.com/PanxiiPos/panxii-backend/actions/runs/41842870171)
+  xanh; chỉ API/Worker thay image, giữ mọi dependency/volume/mount.
+- Đã xóa dữ liệu test sau xác nhận owner: chỉ 1 SuperAdmin giữ nguyên cả
+  mật khẩu và 17 migration history; 16 bảng khác trống. Không reset schema,
+  không seed. Có verified safety backup và transaction rollback rehearsal.
+  Không chạy lại thao tác xóa khi bắt đầu có dữ liệu thật.
+- Native production 0.1.5 đã phát hành, APK HTTPS verified, cùng signer.
+  Policy latest 0.1.5, minimum 0.1.0, URL 0.1.5. Chưa UAT thiết bị bản mới.
+- Pilot disable/stop, thêm guard systemd ngăn tự chạy lại. Không dùng
+  tenant/session/offline outbox test cũ để nạp dữ liệu thật. Public/private
+  health và Worker subscriber pass; command/retry/DLQ trống.
+- Owner hoãn independent recovery và monitor ngoài VPS; backup timer và
+  monitor đang có vẫn hoạt động. Chưa coi các gate hoãn đã pass.
+  [Bằng chứng đầy đủ](../release/release_management.md#backend-ef10-đã-deploy-và-dọn-dữ-liệu-test-theo-owner).
+
+Bảng dưới giữ lịch sử cấu hình/nghiệm thu trước lần cập nhật này; trạng thái
+live backend/database/mobile trong mục cập nhật phía trên được ưu tiên.
+
 | Hạng mục | Trạng thái khi viết hướng dẫn |
 |---|---|
 | Backend | API và Worker chạy sau reverse proxy; database và message broker chỉ truy cập qua mạng nội bộ. Chi tiết source/deploy identifier và cấu hình host được lưu trong hồ sơ vận hành riêng. |
@@ -24,7 +47,7 @@
 | Resilience gate | Runner `backend/scripts/test-resilience.ps1` yêu cầu 23 test, ba cold API/Worker restart và no-startup-write/empty-tracker assertions. `848d8be` local 23/23, cold 1023,49/661,77/539,26 ms; cloud CI pass; first cold VPS 827,05 ms. Regression 198 pass/4 opt-in skip, build warning-free. Có TRX/source manifest/logs. Không thay thế soak đủ 24 giờ hoặc mobile/restore gate; xem [ma trận kiểm thử](../testing/risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai) |
 | Development mobile gate | Ngày 2026-11-01 run `10e711ecd6964c088f22f96e0e7273c4` pass đủ 3+8 checkpoint trên `emulator-5554`; 8 invoice/local outbox Synced và MySQL không ghi trùng. Backup dữ liệu development hiện có restore khớp cả 18 bảng; source 488 file không đổi. API/Worker đã rebuild, các service phục hồi và app debug thường mở lại; không xóa volume. Chưa chứng minh backup ngoài VM, TLS hoặc Shorebird; xem [gate mobile](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy) |
 | Android | Production-signed `0.1.4+5` cài/chạy trên một Samsung SM-A336E, package `.production`, song song app debug không xóa dữ liệu. [APK HTTPS](https://panxii.duckdns.org/downloads/panxii-0.1.4-production.apk) hash đã khớp; khóa/recovery ngoài repo, owner giữ mật khẩu. Chưa nghiệm thu đầy đủ TenantAdmin physical pilot |
-| Shorebird | `auto_update: false`; production `0.1.4+5` patch 1 tải/verify/apply/restart pass; rollback thực tế về native base pass. Roll forward đã bật server-side nhưng chưa xác nhận thiết bị reapply. OTA bắt buộc ngày đầu; xem [release evidence](../release/release_management.md) |
+| Shorebird | `auto_update: false`; production `0.1.4+5` patch 1 tải/verify/apply/restart pass; rollback thực tế về native base pass. Ngày 04/11/2026 owner xác nhận thiết bị cập nhật lại thành công và Shorebird 100%; chấp nhận reapply theo xác nhận owner. Không bao gồm sửa UX sau soak chưa phát hành. OTA bắt buộc ngày đầu; xem [release evidence](../release/release_management.md) |
 | Update policy | Production minimum `0.1.0`, latest `0.1.4`, Android HTTPS URL thật. Policy local/development độc lập, không tự ép native update production |
 | Capacity/pilot | Các lượt trước fail vì stale socket hoặc read latency; đều archive. Run `20261104-052131` fail 16:58:32 ngày 04/11, read p95 1316,50 ms > 500 ms; Nginx 25-32 ms, 20 invoice mới completed, sync max 530,60 ms. Cache DNS có hoạt động nhưng runner reopen mỗi phút ở cutoff50s/TTL60s. Owner duyệt Nginx keepalive180s/runneridle120s, không đổi cadence/ngưỡng. `b7ea06e`: slow-request connection timing; 26 Windows/40 Linux tests pass. Probe70s reuse socket, search+pull83,56ms; forced reconnect330,70ms. Audit131 invoice/detail/receipt/change/publishedoutbox khớp, zero duplicate/sai line values, queues rỗng. Run mới `20261104-100534` từ **17:05:38 đến 19:00 UTC+7**, dự kiến8invoice mới, first174,66ms nóng; app containers không đổi. **Không phải 24h pass**. Xem [readiness](../release/production_readiness_plan.md). Không thay thế điện thoại/mạng ngoài; Canon không bắt buộc ngày đầu |
 | Shorebird CLI | Đã cài và đăng nhập trên máy phát triển hiện tại; máy khác cần cài/đăng nhập riêng |

@@ -6,6 +6,44 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-04 — chưa GO
 
+### Backend EF10 đã deploy và dọn dữ liệu test theo owner
+
+- Owner yêu cầu deploy bản đã merge và chuẩn bị database trống để nhập dữ
+  liệu thật; xác nhận chỉ giữ SuperAdmin, xóa mọi tenant/TenantAdmin/Staff
+  và dữ liệu test. Việc này là thao tác một lần được duyệt, không phải
+  chức năng reset có thể chạy lại sau khi có dữ liệu thật.
+- [PR #1](https://github.com/PanxiiPos/panxii-backend/pull/1) đã merge vào
+  `feature/production-vps`; commit live
+  `96e6ea73d17df1c0bf0a3e53325fe77c01dcd40d`.
+  [CI đúng merge SHA 41842870171](https://github.com/PanxiiPos/panxii-backend/actions/runs/41842870171)
+  success. API/Worker đã build trên VPS và chạy đúng image mới;
+  kiểm tra deps thực tế EF Core `10.0.14`, MySql.EntityFrameworkCore `10.0.12`,
+  không Pomelo. Runtime .NET `10.0.14`.
+- Có manual backup verified trước deploy và khi quiesce trước xóa. Thử
+  DELETE trong transaction rồi ROLLBACK trên dữ liệu thật pass trước COMMIT.
+  Giữ FK enforcement, không TRUNCATE/drop/recreate schema/volume, không
+  apply migration/seed. Giữ nguyên image cũ để rollback code; rollback code
+  không khôi phục dữ liệu đã xóa.
+- Final verify **21:25:25 UTC+7**: 1 dòng `platform_admins`, nguyên vẹn hash
+  toàn dòng (gồm mật khẩu), 17 dòng migration history nguyên hash; cả
+  **16 bảng còn lại = 0 dòng**, gồm tenant/user/device/admin session,
+  catalog, invoice, outbox, sync, audit và settings. Không tạo invoice thử
+  sau reset. Queue command/retry/DLQ đều rỗng; Worker có subscription.
+- Public health/private readiness, monitor hiện có pass; unauthenticated
+  platform tenant API trả 401. Dependency container IDs/mounts/volumes
+  giữ nguyên; chỉ API/Worker thay image. API version policy latest `0.1.5`,
+  minimum giữ `0.1.0`, Android URL trỏ APK 0.1.5 đã xác minh.
+- Pilot soak đã disable/stop và có systemd condition yêu cầu marker
+  `ALLOW_SYNTHETIC_PILOT` (không tồn tại), tránh vô tình nạp test lại.
+  Không bật lại pilot hay dùng credential/session tenant test cũ. Thiết bị
+  còn dữ liệu offline test chưa được xóa từ xa; phải dùng tài khoản tenant
+  mới cho dữ liệu thật, không replay/nhập dữ liệu test cũ.
+- Evidence root-only: `production-ef10-96e6ea7-deployed.json`,
+  `production-ef10-96e6ea7-reset-before.json`,
+  `production-ef10-96e6ea7-reset.json`, `production-ef10-96e6ea7-final.json`.
+  Owner hoãn independent restore/external monitor; lịch backup và monitor
+  đang có vẫn giữ nguyên, không coi các gate hoãn đã pass hay toàn bộ GO.
+
 ### Mobile production nội bộ 0.1.5 đã phát hành
 
 - Source mobile `399496a`, Shorebird release `951495` active, engine Flutter
@@ -24,9 +62,9 @@ Kế hoạch triển khai trước go-live:
 - Không có thiết bị ADB/app debug kết nối; hot reload đã thử nhưng không chạy
   được, chưa xác minh cài/UAT trên điện thoại cho bản này. Native release mới
   không phải OTA patch cho 0.1.4, không suy ra patch adoption/rollback của 0.1.5.
-- Chỉ phát hành APK/metadata Shorebird; không restart API/Worker, không deploy
-  EF10. API version policy vẫn minimum `0.1.0`, latest `0.1.4` và URL cũ:
-  tải 0.1.5 trực tiếp bằng link trên; đổi policy trong đợt cấu hình backend riêng.
+- Tại lúc phát hành APK chưa restart backend hoặc đổi policy; đợt deploy
+  EF10 sau đó đã đặt latest `0.1.5`, minimum giữ `0.1.0` và URL APK mới,
+  như bằng chứng backend bên trên.
 
 ### Bằng chứng nền và lịch sử trước 0.1.5
 
