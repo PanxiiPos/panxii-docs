@@ -27,6 +27,7 @@ Thư mục này lưu các quyết định kiến trúc có ảnh hưởng lâu d
 | ADR-012 | In A4 qua PC Windows và QR chỉ dẫn chuyển khoản | Accepted |
 | ADR-013 | Tự tìm lại PC in khi DHCP đổi IPv4 | Accepted |
 | ADR-014 | Mã hàng và số hóa đơn ngắn, giữ UUID identity | Accepted |
+| ADR-015 | [Category-scoped sale-price rounding](ADR-015-category-sale-price-rounding.md) | Accepted |
 
 ## Mẫu ADR
 

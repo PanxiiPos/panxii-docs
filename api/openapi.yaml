@@ -1351,6 +1351,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
         sortOrder: { type: integer, minimum: 0, default: 0 }
+        roundSalePriceToThousands: { type: boolean, default: false, description: "Opt-in nearest-1000 VND sale price, halfway up, minimum 1000. Listed price and conversion quantity remain unchanged." }
     UpdateCategoryRequest:
       type: object
       additionalProperties: false
@@ -1359,6 +1360,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
         sortOrder: { type: integer, minimum: 0 }
+        roundSalePriceToThousands: { type: boolean, nullable: true, description: "Omitted/null preserves the category policy. Enabling does not rewrite existing prices; reprice through versioned catalog commands." }
         expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCustomerRequest:
       type: object
@@ -1708,7 +1710,7 @@ components:
         updatedAtUtc: { type: string, format: date-time }
     Category:
       type: object
-      required: [id, code, name, isActive, sortOrder, version, updatedAtUtc, productCount]
+      required: [id, code, name, isActive, sortOrder, version, updatedAtUtc, productCount, roundSalePriceToThousands]
       properties:
         id: { type: string, format: uuid }
         code: { type: string }
@@ -1719,6 +1721,7 @@ components:
         version: { type: integer, format: int64 }
         updatedAtUtc: { type: string, format: date-time }
         productCount: { type: integer, minimum: 0, description: All direct tenant product references including inactive products; excludes variants and descendant categories. }
+        roundSalePriceToThousands: { type: boolean, default: false }
     ProductVersionRequest:
       type: object
       additionalProperties: false

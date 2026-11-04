@@ -103,6 +103,13 @@ ExtraDataJson  JSON         NULL
 
 Contract áp dụng cho thuộc tính mở rộng của entity. `app_settings` vẫn là nơi lưu cấu hình điều khiển hành vi ứng dụng/feature flag; không chuyển các setting đó vào `ExtraDataJson`. Trong catalog mục tiêu, `product_variants.Unit`, `BasePrice`, `ListedPrice`, `CalculationQuantity`, `TaxRate`, SKU và barcode là nguồn dữ liệu chuẩn cho nghiệp vụ tương ứng. `ExtraDataJson` chỉ bổ sung thông tin như kích thước, chất liệu, độ dày hoặc thuộc tính tương tự.
 
+Compatibility with the released seller UI: editable catalog attributes currently
+use scalar display-label values, e.g.
+`{"schemaVersion":1,"attributes":{"Thương hiệu":"HP","Độ dày":"0,8 mm"}}`.
+Typed attribute objects in the target design below remain protected complex
+values until that editor supports them. Do not copy characteristics into variant
+names. Default variant updates synchronize `ExtraDataJson` to the product root.
+
 Giá trị root luôn là object theo phiên bản:
 
 ```json
@@ -248,9 +255,16 @@ Composite FK `(TenantId, UserId)` tới `users`; unique `SessionId` và `Refresh
 | `Name` | `VARCHAR(160)` | Không | Tên danh mục |
 | `IsActive` | `TINYINT(1)` | Không | Trạng thái |
 | `SortOrder` | `INT` | Không | Thứ tự |
+| `RoundSalePriceToThousands` | `TINYINT(1)` | Không | Default 0; opt-in nearest-thousand VND, 500 rounds up, minimum 1000 |
 | Audit + ExtraData | ... | ... | Các cột dùng chung |
 
 Unique `(TenantId, Code)`. Không cho `ParentId = Id`; service phải kiểm tra vòng lặp cây.
+
+Enabled policy uses the exact `ListedPrice * CalculationQuantity` product, without
+intermediate rounding, and preserves both inputs. Enabling the flag does not
+rewrite existing rows; reprice explicitly through audited catalog commands.
+Category reassignment recalculates all family variants under the destination
+policy. Invoice snapshots are unchanged; see [ADR-015](../architecture/adr/ADR-015-category-sale-price-rounding.md).
 
 ### 4.5. `products`
 

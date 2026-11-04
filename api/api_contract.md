@@ -12,7 +12,7 @@
 
 - `POST /products/commands`: TenantAdmin, bắt buộc `Idempotency-Key` UUID khác rỗng; trả `202` với `{operationId,status:"Queued"}`. Worker kiểm tra lại tài khoản/tenant/quyền khi thực thi.
 - Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `activate`, `activateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
-- `prices`: 1–100 `{productId,variantId?,expectedVersion,listedPrice,calculationQuantity}`. Cả hai số phải >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Server tính `basePrice = listedPrice × calculationQuantity`, làm tròn tới 4 chữ số thập phân (midpoint away from zero). Client gửi decimal invariant dạng chuỗi để giữ chính xác; không nhận cùng physical ID hai lần (product/default variant). Điều chỉnh tăng/giảm trên mobile áp dụng vào `listedPrice`, không sửa trực tiếp giá bán.
+- `prices`: 1–100 `{productId,variantId?,expectedVersion,listedPrice,calculationQuantity}`. Cả hai số phải >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Server tính `basePrice = listedPrice × calculationQuantity`, mặc định làm tròn tới 4 chữ số thập phân (midpoint away from zero). Danh mục bật `roundSalePriceToThousands` tính trực tiếp từ tích chính xác rồi làm tròn nghìn VND, từ 500 lên, tối thiểu 1000; không đổi hai input ([ADR-015](../architecture/adr/ADR-015-category-sale-price-rounding.md)). Client gửi decimal invariant dạng chuỗi để giữ chính xác; không nhận cùng physical ID hai lần (product/default variant). Điều chỉnh tăng/giảm trên mobile áp dụng vào `listedPrice`, không sửa trực tiếp giá bán.
 - `GET /products/commands/{operationId}`: TenantAdmin, chỉ tenant hiện tại và người tạo operation. `200 data={status:"Completed"|"Rejected",errorCode?,result?}`; chưa có receipt trả `404 ERR_OPERATION_NOT_FOUND` (có thể vẫn đang chờ trong RabbitMQ). Payload mismatch giữ nguyên lỗi `ERR_SYNC_PAYLOAD_MISMATCH`; không thay payload của UUID đã gửi.
 - Result: `{clientEntityId,entityId,products:[],variants:[],deletedProductIds:[],deletedVariantIds:[]}`; `entityId` là ID server của resource vừa tạo, hoặc ID target/batch. `products`/`variants` là snapshot đầy đủ của các product bị tác động, không phải chỉ các dòng đổi giá. `deletedVariantIds` có thể null ở receipt cũ.
 - Mutation, receipt chứa result, audit, `CatalogBatch` server change và realtime outbox cùng transaction. Một version sai từ chối toàn batch; retry UUID/payload không thực thi lại. API legacy giữ nguyên để tương thích.
@@ -313,6 +313,14 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 `GET /categories?search=&cursor=&pageSize=&includeInactive=` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. Search theo tên/mã; sort `sortOrder ASC, name ASC, id ASC`; paging dùng cursor keyset opaque. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
 
 Mọi Category response gồm `id`, `parentId`, `code`, `name`, `isActive`, `sortOrder`, `version`, `updatedAtUtc`, **`productCount`**. Count là số product gốc tham chiếu trực tiếp category trong tenant, gồm cả product inactive; không đếm variant hoặc descendants.
+
+Category response/create/patch also exposes `roundSalePriceToThousands` (default
+false). Patch omission/null preserves it. This opt-in applies to every product
+create/edit and bulk-price path; legacy exact-product price submissions remain
+accepted for opted-in categories but persist the rounded result. It does not
+change listed price/quantity, invoice snapshots, or automatically reprice existing
+records when enabled. Reassigning a family recalculates its variants under the
+destination category policy.
 
 Lifecycle chỉ dành cho TenantAdmin, scoped tenant từ JWT và ghi audit cùng transaction:
 
