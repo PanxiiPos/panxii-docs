@@ -71,6 +71,15 @@ Ngày 2026-11-02: dọn build cache và APT cache, thu hồi thực tế **6,72 
 host monitor pass. Evidence root-only trên VPS: `/opt/panxii/cleanup-20261102.json`.
 Không cài lịch tự động prune hoặc thay đổi chính sách backup.
 
+Ngày 2026-11-05 lúc 00:03: dọn Docker build cache không dùng và APT cache,
+giữ release lock, không có build/package installation đang chạy. Thu hồi
+thực tế **5,04 GiB**; đĩa từ **32% xuống 21%**, còn **36,84 GiB** khả dụng.
+Đối chiếu giữ nguyên đủ 35 image IDs (gồm rollback), 7 container IDs,
+image/start time/mounts và 3 volumes. Không restart service, không xóa backup,
+APK, source release, log hoặc dữ liệu nghiệp vụ. Build cache còn 0; host
+monitor và public health pass. Evidence root-only: `/opt/panxii/cleanup-20261105.json`.
+Không bật lịch dọn tự động; lần build sau phải tạo lại cache.
+
 ## 10. DNS host chậm trong pilot
 
 Soak `20261104-042043` dừng lúc 12:12:33 ngày 04/11/2026 UTC+7 vì read
