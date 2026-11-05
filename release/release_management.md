@@ -8,6 +8,21 @@ Kế hoạch triển khai trước go-live:
 
 ### Mobile native production 0.1.6+8
 
+- OTA stable patch `1` (`780257`), source `9a6aac6`, phát hành ngày
+  05/11/2026 cho `0.1.6+8`, Android arm64, Flutter `3.47.8`.
+  Chỉ dòng đầu header trái A5 in đậm, không tăng cỡ chữ; địa chỉ/SĐT và
+  header phải giữ nguyên. Preview và PNG gửi in dùng chung renderer,
+  regression kiểm tra cả có/không QR ngân hàng. 49 test liên quan pass,
+  full Flutter analyze sạch; native/assets compatibility pass không override.
+  SHA-256 patch:
+  `cfea15e60509cf80cc70ee612782e2597a753319d357e4fa0ad16e31d3405597`.
+- Owner xác nhận nhận OTA và app tự mở lại trên Samsung SM-A336E.
+  ADB chỉ quan sát: PID `19372` -> `21287`, RestartActivity, patch signature
+  valid, active path `patches/1/dlc.vmcode`, successful launch và
+  `current_patch_number: Some(1)`. Không cài APK, force-stop hoặc gửi lệnh
+  mở lại app trong lần test OTA này. Public Shorebird check xác nhận patch 1
+  available trên stable, không có rolled-back patch. Native vẫn `0.1.6+8`,
+  không đổi API policy/backend/tool in. Chưa nghiệm thu giấy in của patch.
 - Owner yêu cầu phát hành APK nền mới để hỗ trợ tự restart sau OTA.
   Shorebird native release `0.1.6+8` đã publish bằng Flutter pin `3.47.8`,
   chữ ký patch do Shorebird quản lý, `auto_update: false`.
@@ -28,7 +43,8 @@ Kế hoạch triển khai trước go-live:
 - Đã cài và mở signed production trên Samsung SM-A336E. Native restart
   đã được kiểm tra riêng trên máy này bằng smoke debug tạm: PID 30008
   chuyển thành 30316, app mở lại; sau đó khôi phục app debug thường.
-  Chưa xác nhận apply OTA thật trên nền 0.1.6 hoặc in giấy thực tế.
+  Tại thời điểm phát hành native chưa xác nhận apply OTA; test patch 1
+  phía trên đã xác nhận sau đó. Chưa nghiệm thu in giấy thực tế.
 - Public policy latest `0.1.6`, URL APK mới; giữ minimum `0.1.0`.
   Chỉ recreate API cùng image cũ, không build/deploy backend source,
   migration, seed hay sửa dữ liệu nghiệp vụ. Worker, MySQL, RabbitMQ,

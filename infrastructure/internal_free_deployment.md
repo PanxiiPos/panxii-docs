@@ -18,7 +18,9 @@
 - Public policy latest `0.1.6`, URL APK mới, minimum vẫn `0.1.0`.
   API recreate cùng image chỉ để nhận policy; không đổi Worker/database/
   broker hoặc dữ liệu. Public health/private readiness pass.
-- Tự restart OTA cần APK nền này; chưa xác nhận apply OTA thật trên 0.1.6.
+- Tự restart OTA cần APK nền này. OTA stable patch 1 đã xác nhận apply thật
+  và tự restart trên Samsung SM-A336E (PID 19372 -> 21287); không cài lại APK
+  hay gửi lệnh mở app trong lần test. Native version/API policy không đổi.
   Chi tiết hash, kiểm thử và giới hạn tại
   [release management](../release/release_management.md#mobile-native-production-0168).
   Các mô tả mobile 0.1.5 bên dưới giữ lịch sử trước bản phát hành này.
