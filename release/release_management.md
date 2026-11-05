@@ -6,6 +6,39 @@ Kế hoạch triển khai trước go-live:
 
 ## Bằng chứng release production cập nhật ngày 2026-11-05 — chưa GO
 
+### Mobile native production 0.1.6+8
+
+- Owner yêu cầu phát hành APK nền mới để hỗ trợ tự restart sau OTA.
+  Shorebird native release `0.1.6+8` đã publish bằng Flutter pin `3.47.8`,
+  chữ ký patch do Shorebird quản lý, `auto_update: false`.
+- [APK production 0.1.6](https://panxii.duckdns.org/downloads/panxii-0.1.6-production.apk),
+  56.137.117 bytes, SHA-256
+  `C83E891A42AC20B5B199FBCFBF9273DDDE0CE2F1219BAFE1B4E08EC6D5D72F9C`.
+  Download độc lập qua HTTPS khớp APK local. Signer SHA-256 vẫn
+  `3D604285F3F0F18AB02EC1C1A3EA71832088F85FED4D13DA5E40C03A540F9EA7`;
+  package `.production`, tên Panxii, versionName `0.1.6`, versionCode `8`.
+  Không ghi đè APK 0.1.5 hoặc xóa dữ liệu thiết bị.
+- Bản mới có phần đầu in A4/A5 gọn hơn, khách hàng chữ thường, QR tra cứu
+  không nhãn, chân trang x/tổng trang; preview để trống thời gian Ngày in,
+  khi gửi mới gắn timestamp, retry giữ timestamp/payload. Android tải OTA
+  thành công sẽ restart tiến trình thật; tải lỗi không restart.
+- 48 test update/dialog/in/designer pass, toàn bộ Flutter analyze sạch.
+  Build từ working tree hiện tại gồm các thay đổi chưa commit; không gán
+  nhầm source HEAD là bản đã chứa toàn bộ thay đổi.
+- Đã cài và mở signed production trên Samsung SM-A336E. Native restart
+  đã được kiểm tra riêng trên máy này bằng smoke debug tạm: PID 30008
+  chuyển thành 30316, app mở lại; sau đó khôi phục app debug thường.
+  Chưa xác nhận apply OTA thật trên nền 0.1.6 hoặc in giấy thực tế.
+- Public policy latest `0.1.6`, URL APK mới; giữ minimum `0.1.0`.
+  Chỉ recreate API cùng image cũ, không build/deploy backend source,
+  migration, seed hay sửa dữ liệu nghiệp vụ. Worker, MySQL, RabbitMQ,
+  Nginx và admin container IDs/images/mounts giữ nguyên. Public health
+  HTTP 200 và private dependency readiness Healthy.
+- Evidence root-only: `/opt/panxii/mobile-016-published.json`.
+  Rollback quảng bá bằng khôi phục latest/URL 0.1.5 và recreate riêng API;
+  không hạ APK trên máy đã cài 0.1.6 hoặc rollback dữ liệu. Nếu lỗi app mới,
+  phát hành native build cao hơn. Gate GO tổng thể vẫn giữ trạng thái cũ.
+
 ### Hùng Nga: owner duyệt xóa hóa đơn và bật làm tròn Sắt thép
 
 - Sau deploy 23:52, owner yêu cầu xóa hóa đơn và làm tròn giá, xác nhận

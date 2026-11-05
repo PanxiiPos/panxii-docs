@@ -11,6 +11,18 @@
 
 ## 1. Trạng thái và lựa chọn đã chốt
 
+### Mobile production 0.1.6+8 ngày 05/11/2026
+
+- Đã publish Shorebird native release và [APK signed 0.1.6](https://panxii.duckdns.org/downloads/panxii-0.1.6-production.apk),
+  cùng package/signer production, cài và mở trên Samsung SM-A336E.
+- Public policy latest `0.1.6`, URL APK mới, minimum vẫn `0.1.0`.
+  API recreate cùng image chỉ để nhận policy; không đổi Worker/database/
+  broker hoặc dữ liệu. Public health/private readiness pass.
+- Tự restart OTA cần APK nền này; chưa xác nhận apply OTA thật trên 0.1.6.
+  Chi tiết hash, kiểm thử và giới hạn tại
+  [release management](../release/release_management.md#mobile-native-production-0168).
+  Các mô tả mobile 0.1.5 bên dưới giữ lịch sử trước bản phát hành này.
+
 ### Cập nhật ghi đè policy Hùng Nga lúc 00:01 ngày 05/11/2026
 
 - Owner xác nhận mọi máy đã sync/không draft và cho phép xóa invoice chỉ
