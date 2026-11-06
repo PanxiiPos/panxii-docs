@@ -48,6 +48,7 @@
   thực tế vẫn còn chờ. Chi tiết source, CI, migration và bằng chứng release
   được lưu trong hồ sơ vận hành nội bộ.
 - Thông tin bên dưới là lịch sử; không dùng làm căn cứ để thao tác dữ liệu live.
+
 ### Lịch sử deploy và chuẩn bị dữ liệu lúc 21:25 ngày 04/11/2026
 
 - Owner duyệt PR #1 đã merge và yêu cầu deploy: live application/source

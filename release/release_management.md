@@ -82,6 +82,7 @@ Kế hoạch triển khai trước go-live:
 - Commit, CI, backup, migration và bằng chứng triển khai chi tiết được lưu
   trong hồ sơ release nội bộ. Không rollback dữ liệu hoặc chạy migration
   downgrade như một hình thức rollback code.
+
 ### Mobile OTA patch 2: xem trước và in hóa đơn
 
 - Đã phát hành stable patch `2` (`778305`) cho app
