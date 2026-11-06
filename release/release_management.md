@@ -55,16 +55,18 @@ Kế hoạch triển khai trước go-live:
   không hạ APK trên máy đã cài 0.1.6 hoặc rollback dữ liệu. Nếu lỗi app mới,
   phát hành native build cao hơn. Gate GO tổng thể vẫn giữ trạng thái cũ.
 
-### Cập nhật thao tác bảo trì dữ liệu production
+### Bảo trì dữ liệu production được phê duyệt
 
-- Owner phê duyệt một lần bảo trì theo phạm vi đã xác nhận. Chi tiết nhận
-  dạng và số liệu của tenant không được công bố.
-- Backup được xác minh và giao dịch được diễn tập trước khi thực hiện. Audit
-  được giữ lại; kết quả được kiểm tra sau bảo trì. Evidence chi tiết chỉ lưu
-  trong hồ sơ vận hành nội bộ.
-- Chính sách giá được áp dụng theo phạm vi phê duyệt; dữ liệu ngoài phạm vi
-  được giữ nguyên. Thiết bị có thể còn cache cũ; đồng bộ và xử lý cache theo
-  quy trình có phạm vi. Không chạy lại thao tác bảo trì.
+- Owner phê duyệt một lần bảo trì dữ liệu sau khi xác nhận điều kiện an toàn
+  và phạm vi thực hiện. Không công bố tên hoặc mã tenant.
+- Trước khi thực hiện, backup mã hóa được xác minh và giao dịch được diễn tập
+  rồi rollback. Thao tác chỉ giới hạn trong phạm vi đã phê duyệt; audit được
+  giữ lại và kết quả được xác minh sau khi hoàn tất.
+- Chính sách giá được áp dụng theo phạm vi đã phê duyệt; dữ liệu ngoài phạm vi
+  không bị thay đổi. Evidence chi tiết được lưu trong hồ sơ nội bộ.
+- Thiết bị có thể còn cache dữ liệu cũ sau bảo trì. Đồng bộ và xử lý cache
+  theo quy trình có phạm vi; không xóa dữ liệu thiết bị khi còn dữ liệu offline.
+
 ### Triển khai cập nhật backend catalog pricing
 
 - Bản backend đã vượt qua các kiểm tra build, tương thích và resilience trước
