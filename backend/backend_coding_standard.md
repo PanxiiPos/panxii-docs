@@ -17,6 +17,7 @@
 8. **Không dùng exception cho flow bình thường.** Validation/business rejection trả `Result` hoặc error code có cấu trúc.
 9. **Không ẩn side effect.** Method có ghi DB, publish message, gửi email hoặc thay đổi trạng thái phải thể hiện rõ qua tên và interface.
 10. **Code mới phải có test ở đúng boundary.** Không merge feature nếu chưa chứng minh tenant, authorization, error contract và transaction behavior.
+11. **Không hard-code trạng thái, mã lỗi, log và exception message.** Dùng enum/constant/catalog một nguồn (`ErrorCodes`, status enum, log event), exception mang error code + args; message hiển thị đi qua i18n. Xem quy tắc chi tiết tại [frontend_coding_standard.md](../frontend/frontend_coding_standard.md#84-không-hard-code-trạng-thái-lỗi-log-và-ngoại-lệ).
 
 ---
 
@@ -567,6 +568,7 @@ Mỗi endpoint phải tuân theo [API Contract](../api/api_contract.md):
 | Generic repository cho mọi entity | Repository theo aggregate + query service |
 | `CommonHelper` khổng lồ | Value object/service theo capability |
 | Exception message tiếng Việt trong domain | Error code + args |
+| Hard-code status/error code/log message/exception text | Enum/constant catalog + error code + structured log event |
 | Domain gọi EF/HTTP/RabbitMQ | Port/interface và adapter |
 | Handler gọi handler | Shared domain policy hoặc application service contract |
 | Copy-paste tenant filter | Global Query Filter + tenant context |

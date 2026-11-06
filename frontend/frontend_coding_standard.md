@@ -106,6 +106,15 @@ graph TD
 - `core` chỉ chứa capability thật sự dùng chung, không chứa business logic của feature.
 - Feature A không import trực tiếp BLoC, datasource hoặc repository implementation của feature B.
 
+### 2.2. Product và sellable variant
+
+- `Product` là nhóm hàng gốc; chỉ `ProductVariant` đại diện mặt hàng được chọn để bán. SKU, barcode, đơn vị, giá và thuộc tính riêng của từng SKU phải đọc từ variant.
+- Mobile domain/local schema phải giữ `productId` và `productVariantId` riêng; không gộp variant thành JSON field hoặc suy ra variant từ tên/giá.
+- Invoice line local giữ snapshot `skuSnapshot`, `productNameSnapshot`, `variantNameSnapshot`, `unitSnapshot`, giá và dữ liệu thuộc tính cần in. Khi đọc invoice đã sync, luôn render snapshot; không thay bằng catalog mới nhất.
+- Deserialize `extraData` thành JSON object có version; xử lý an toàn key/type chưa biết và giữ dữ liệu nguyên dạng. Không dùng thuộc tính mở rộng làm thay cho ID/SKU/unit/giá cố định.
+- Dữ liệu backfill có thể chứa JSON legacy chưa version hóa; không tự xóa/ghi đè khi đọc. Chỉ wrap JSON object thành schema version mới khi lưu có chủ ý, giữ nguyên mọi key cũ trong `attributes`; legacy JSON không phải object cần luồng chuyển đổi rõ ràng.
+- API variants hiện có trên backend nhưng mobile phải chỉ bật tính năng sau khi local schema migration, catalog sync, offline selection và invoice payload đã được cập nhật cùng nhau.
+
 ---
 
 ## 3. Quy tắc Theme bằng `flex_color_scheme`
@@ -175,6 +184,8 @@ Nếu cần màu nghiệp vụ như `sale`, `reverse`, `pending`, tạo semantic
 - Cùng một semantic level phải dùng cùng `TextTheme`: `titleLarge`, `titleMedium`, `bodyLarge`, `bodyMedium`, `labelLarge`.
 - Không dùng chữ in hoa toàn bộ để thay thế hierarchy.
 - Text dài phải có overflow/wrap rõ ràng và được test trên màn hình nhỏ.
+- Cỡ gốc dễ đọc, preset cỡ chữ toàn app và cách kết hợp system `TextScaler` tuân theo [Design System, mục 5](design_system.md#5-accessibility). Áp dụng scaling đúng một lần ở app root, gồm overlay và `forui`; không vô hiệu hóa accessibility scaling để tránh overflow.
+- Tùy chọn cỡ chữ là preference local của thiết bị, không phải cấu hình cửa hàng hoặc nghiệp vụ. Thay đổi có hiệu lực ngay và giữ nguyên BLoC/form/navigation state.
 
 ---
 
@@ -261,12 +272,20 @@ abstract final class AppFeedback {
 
 Wrapper không được nuốt error code; message phải được dịch trước khi hiển thị.
 
+Đoạn trên chỉ minh họa wrapper, không phải implementation. Quy chuẩn cấu hình tập trung, phân loại toast/dialog/banner, thời gian hiển thị, hàng đợi và lifecycle nằm tại [Design System, mục 4.1–4.3](design_system.md#41-cấu-hình-thông-báo-dùng-chung).
+
+- Theme giữ visual tokens; policy dùng chung (dự kiến `AppFeedbackConfig`) giữ behavior/preset. Không lặp màu, cỡ chữ, duration, placement hoặc dismiss policy trong feature.
+- Severity và presentation là hai khái niệm riêng: lỗi field hiển thị tại field, lỗi nền ở status/banner; không biến mọi lỗi thành modal.
+- Widget/BLoC listener tại presentation gọi wrapper; domain/data không giữ `BuildContext`, không mở dialog và wrapper không tự gọi repository.
+- Hiển thị theo event/transition một lần, không gọi trong `build`. Chống lặp theo intent/operation ID, kiểm tra mounted/route/session sau `await` và dọn feedback cũ khi logout/đổi tenant.
+
 ### 5.3. Dialog và destructive action
 
 - Dialog phải có title, nội dung, action chính và action hủy rõ ràng.
 - Reverse invoice, logout device, xóa local database cần destructive confirmation.
 - Không gọi use case khi dialog mới mở; chỉ gọi khi người dùng confirm.
 - Dialog trả typed result, không trả `dynamic` nếu có thể tránh.
+- Back/Hủy/null result không được thực hiện nghiệp vụ; action nguy hiểm chỉ chạy khi nhận kết quả xác nhận tường minh. Không cho submit trùng hoặc đóng mất trạng thái khi đang thực thi.
 
 ---
 
@@ -339,11 +358,17 @@ Widget -> BLoC -> UseCase -> Repository
 Repository là owner của việc chọn local/remote:
 
 - Query UI đọc SQLite trước.
+- Search BLoC phát kết quả local ngay, đồng thời gọi API khi online; debounce 300 ms và dùng query generation/cancellation để response cũ không ghi đè kết quả của từ khóa/bộ lọc mới.
+- Chuẩn hóa query giống business/API contract. Trang server đầu tiên thay tập kết quả synced đang cache; local mutation/outbox pending vẫn được giữ riêng. Merge theo ID, áp version server mới hơn hoặc bằng chỉ khi không có local mutation pending; deduplicate trước khi emit state.
+- Khi query/filter/sort/tenant đổi, reset server cursor và local continuation cursor. Chỉ một request load-more cho một cursor được chạy tại một thời điểm; append page chỉ khi query generation còn hiện hành và cursor khớp.
+- Dùng cursor keyset cho local và remote list lớn. Server `nextCursor` quyết định tiếp trang online; cursor local không thay thế cursor server hoặc `ServerSequence` của sync pull. Offline giữ local results, không giả lập đã tải hết server pages.
+- Với API v1, request đầu cursor-based phải gửi query key `cursor` với giá trị rỗng (`cursor=`); các request tiếp theo gửi nguyên `nextCursor`. `page` chỉ dành cho client cũ và không được dùng trong feature mobile mới.
 - Background worker gửi `Pending` outbox lên `/api/v1/invoices/sync`.
 - Response parse theo canonical API envelope.
 - Retry dùng cùng `Idempotency-Key`/`clientOperationId`.
 - SignalR chỉ gửi event/cursor; dữ liệu đầy đủ lấy từ pull API.
-- Upsert local và cursor update trong cùng SQLite transaction.
+- UI trạng thái mạng/sync dùng token `networkOnline`, `networkOffline`, `syncPending`, `syncUploading`, `syncQueued`, `syncDownloading`, `syncComplete`, `syncError` từ [Design System](design_system.md); feature không tự khai báo token/màu. Luôn có nhãn/icon và không hiển thị `Queued` như đồng bộ hoàn tất.
+- Sync pull upsert local và cập nhật `LastServerSequence` trong cùng SQLite transaction. Cursor của list chỉ được commit sau khi page đó xử lý thành công; không dùng list cursor làm sync checkpoint.
 
 Widget không được biết app đang online hay offline bằng cách tự gọi network. BLoC nhận state từ repository.
 
@@ -379,15 +404,11 @@ Frontend phải parse đúng [API Contract](../api/api_contract.md):
 ### 8.2. Error mapping
 
 ```dart
-String localizeApiError(BuildContext context, AppError error) {
-  final key = 'errors.${error.code}';
-  return key.tr(args: error.args.map(
-    (key, value) => MapEntry(key, value?.toString() ?? ''),
-  ));
-}
+final message = localizeError(error.code, args: error.args);
 ```
 
 - Không hiển thị raw server message.
+- Dùng helper `localizeError` và mapping catalog dùng chung. Alias i18n của [Error Code Catalog](../api/error_codes.md) được ưu tiên theo API contract, ví dụ `ERR_INVALID_CREDENTIALS -> errors.invalidCredentials`; `errors.<code>` chỉ dùng khi code có key trực tiếp (như namespace client), không tự đổi alias đã phát hành.
 - Không dùng HTTP status làm text key.
 - `retryable == true` mới được retry tự động, có backoff.
 - Field error phải map tới form field cụ thể.
@@ -399,6 +420,22 @@ String localizeApiError(BuildContext context, AppError error) {
 - Key i18n đặt theo feature, ví dụ `products.search`, `invoices.reverseConfirm`.
 - `vi.json` và `en.json` phải cùng key tree.
 - Text dài phải được test với tiếng Việt và tiếng Anh.
+
+### 8.4. Không hard-code trạng thái, lỗi, log và ngoại lệ
+
+Toàn bộ dự án (mobile, backend, script) **cấm hard-code** các giá trị dưới đây tại nơi sử dụng. Mỗi giá trị phải có **một nơi định nghĩa duy nhất** (enum/constant/catalog) và được tái sử dụng.
+
+| Loại | Quy tắc | Ví dụ mobile |
+|---|---|---|
+| Trạng thái (sync, invoice, payment...) | Dùng enum/constant có `wireValue`; SQL và API mapping sinh từ enum | `SyncStatus.pending.wireValue` |
+| Mã lỗi | Dùng constant trong catalog; khớp `api/error_codes.md` và key `errors.<code>` ở `vi.json`/`en.json` | `AppErrorCode.apiEnvelopeInvalid` |
+| Ngoại lệ | Chỉ ném exception của dự án mang `code` + `args`; không `throw FormatException('text')`, `StateError('text')`, `ArgumentError(...)`, `Exception('text')` | `throw const AppException(AppErrorCode.x)` |
+| Log | Dùng event name/message template constant + structured field đã redact; không nối chuỗi tự do | `LogEvent.syncUploadFailed` |
+| Header, JSON key, scheme, path, platform | Dùng constant dùng chung | `ApiHeaders.correlationId` |
+
+- Message hiển thị cho người dùng luôn đi qua i18n (`8.3`); không đặt text trong exception.
+- Thêm code mới phải cập nhật catalog, `vi.json`, `en.json` và test trong cùng thay đổi.
+- Test/CI phải có guard bắt `throw` exception framework với message tự do.
 
 ---
 
@@ -443,6 +480,14 @@ Tên component phải thể hiện semantic:
 - Deep link và back navigation phải có behavior rõ ràng.
 - Khi rời form có dữ liệu chưa sync, phải cảnh báo hoặc giữ state local.
 
+### 10.1. Khách hàng trên hóa đơn
+
+- Invoice composer mặc định ở trạng thái khách vãng lai. Khi `customerId == null`, không hiển thị tên, số điện thoại hay thông tin customer nào trên hóa đơn hoặc bản in.
+- Cung cấp action rõ ràng `Chọn khách hàng` để mở danh sách khách đã lưu, có tìm kiếm và trạng thái loading/empty/offline; chọn một customer thì mới gắn customer đó vào invoice.
+- Tạo customer bằng luồng/form riêng với action xác nhận `Lưu khách hàng`. Chỉ sau khi lưu local thành công mới chọn customer vừa tạo cho invoice; tạo offline phải được lưu vào outbox theo rule sync.
+- Không đặt form customer nhập tạm trong invoice composer. Không đưa text nhập dở hoặc customer chưa được lưu vào invoice draft/payload/print. Hủy form tạo customer hoặc bỏ chọn phải giữ invoice ở trạng thái khách vãng lai.
+- Lưu nháp/chốt invoice không được tự tạo customer. Mọi label, validation và empty state phải dùng i18n; nội dung dài không làm tràn UI.
+
 ---
 
 ## 11. Design và accessibility
@@ -465,7 +510,8 @@ Tên component phải thể hiện semantic:
 - Dispose controller, subscription và SignalR connection đúng lifecycle.
 - List lớn dùng lazy loading/cursor pagination.
 - Ảnh/cache phải có kích thước và eviction policy.
-- Debounce tìm kiếm; không gửi request mỗi keystroke.
+- Debounce tìm kiếm 300 ms; không gửi request mỗi keystroke và bỏ response stale.
+- Nạp trước tối đa một trang mỗi lần, không tải trùng cursor; giữ vị trí cuộn khi realtime cập nhật.
 - Không parse payload lớn trên UI isolate nếu có thể chuyển sang isolate/background.
 - Không dùng `setState` để điều phối cross-feature state.
 
@@ -487,6 +533,9 @@ Tên component phải thể hiện semantic:
 - Local data hiển thị khi offline.
 - Network error giữ local data và đưa outbox Pending.
 - Retry cùng operation id không duplicate.
+- Search local hiển thị trước; server page thay synced result, pending local record được giữ và deduplicate theo ID/version.
+- Đổi query/filter reset cursor; response query cũ và load-more trùng cursor bị bỏ qua.
+- Offline hoặc remote search failure giữ local results và báo trạng thái dữ liệu có thể cũ.
 - `ERR_DEVICE_REVOKED` xóa session/database và redirect login.
 
 ### Widget test
@@ -495,6 +544,8 @@ Tên component phải thể hiện semantic:
 - Icon là `hugeicons` và có semantic label.
 - Dropdown/Dialog/DateRangePicker/Badge/Toast dùng wrapper `forui`.
 - Error field hiển thị đúng bản dịch.
+- Invoice khách vãng lai mặc định không có thông tin customer trên hóa đơn và bản in.
+- Customer chỉ được gắn invoice sau khi chọn từ danh bạ hoặc lưu thành công qua luồng tạo customer; hủy form không để lại dữ liệu customer trong invoice.
 - Text tiếng Việt/Anh không overflow.
 
 ### Integration/E2E
@@ -525,6 +576,7 @@ Tên component phải thể hiện semantic:
 | `setState` cho server state | BLoC/repository |
 | `dynamic` cho API model | Typed DTO + parser |
 | Nuốt error và hiển thị toast chung chung | Error code + retry policy |
+| Hard-code status/error code/log/exception message | Enum/constant catalog + error code (mục 8.4) |
 
 ---
 
@@ -550,6 +602,7 @@ Tên component phải thể hiện semantic:
 
 - [ ] API parse canonical envelope.
 - [ ] Error dùng `error.code`, không dùng raw message.
+- [ ] Không hard-code status, error code, log event, exception message (mục 8.4).
 - [ ] Offline UI đọc SQLite trước.
 - [ ] Retry giữ nguyên idempotency key.
 - [ ] Kill-switch xóa token, key và database.

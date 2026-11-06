@@ -4,8 +4,8 @@
 ---
 
 ## 1. TECH STACK CHÍNH
-*   **Backend:** ASP.NET Core 8 Web API, Clean Architecture.
-*   **Database:** MySQL 8.0, Entity Framework Core 8 (Code-First).
+*   **Backend:** ASP.NET Core 10 LTS Web API, Clean Architecture.
+*   **Database:** MySQL 8.0, Entity Framework Core 10.0.14/MySql.EntityFrameworkCore 10.0.12 (Code-First). Ngày 2026-11-04 owner duyệt merge/deploy `96e6ea7` sau CI/provider/rollback gates pass; giữ nguyên schema và 17 migration IDs. Xem [bằng chứng triển khai](release/production_readiness_plan.md).
 *   **Mobile:** Flutter, BLoC Architecture, `easy_localization` (Đa ngôn ngữ).
 *   **Local Storage:** SQLite (Mã hóa bằng `sqflite_sqlcipher`).
 *   **Real-time:** SignalR (Đồng bộ real-time giữa các client).
@@ -16,7 +16,7 @@
 Mọi bảng (trừ hệ thống gốc) phải thỏa mãn 3 điều kiện:
 1.  Kế thừa `IMustHaveTenant` (Có cột `TenantId`).
 2.  Kế thừa `IAuditable` (Có cột `CreatedAt`, `CreatedBy`, `UpdatedAt`, `UpdatedBy`).
-3.  Có cột mở rộng `ExtraDataJson` (NVARCHAR MAX) để tránh migration khi phát sinh data nhỏ.
+3.  Entity phù hợp có `ExtraDataJson` kiểu `JSON` của MySQL để lưu thuộc tính nghiệp vụ bổ sung theo contract `schemaVersion`/`attributes`; không dùng thay cho cột nghiệp vụ cố định hoặc cấu hình trong `AppSettings`. Chi tiết tại [database_design.md](database/database_design.md).
 
 **Các Entity chính:**
 *   `Tenants`: Lưu thông tin cửa hàng.

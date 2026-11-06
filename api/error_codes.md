@@ -31,11 +31,20 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVALID_CREDENTIALS` | 401 | No | `errors.invalidCredentials` | Tenant/user/password không hợp lệ |
 | `ERR_ACCESS_DENIED` | 403 | No | `errors.accessDenied` | Không đủ quyền |
 | `ERR_NOT_FOUND` | 404 | No | `errors.notFound` | Route/resource không tồn tại |
+| `ERR_OPERATION_NOT_FOUND` | 404 | Yes (operation status only) | `errors.ERR_OPERATION_NOT_FOUND` | Chưa có receipt catalog/invoice của actor trong tenant; kiểm tra lại hoặc gửi nguyên UUID/payload, không tạo operation mới |
 | `ERR_CONFLICT` | 409 | No | `errors.conflict` | Request xung đột trạng thái hiện tại |
 | `ERR_TENANT_INACTIVE` | 422 | No | `errors.tenantInactive` | Tenant bị khóa |
 | `ERR_DEVICE_REVOKED` | 401 | No | `errors.deviceRevoked` | Device bị revoke |
 | `ERR_PRODUCT_NOT_FOUND` | 404 | No | `errors.productNotFound` | Không thấy product |
+| `ERR_PRODUCT_VARIANT_NOT_FOUND` | 404 | No | `errors.productVariantNotFound` | Không thấy variant thuộc product trong tenant |
+| `ERR_CATEGORY_NOT_FOUND` | 404 | No | `errors.categoryNotFound` | Không thấy category trong tenant |
+| `ERR_DUPLICATE_CATEGORY_CODE` | 409 | No | `errors.duplicateCategoryCode` | Category code trùng trong tenant |
+| `ERR_CATEGORY_PARENT_CYCLE` | 400 | No | `errors.categoryParentCycle` | Parent category tạo chu trình |
+| `ERR_CATEGORY_INACTIVE` | 409 | No | `errors.categoryInactive` | Category đã ngừng hoạt động; chọn category active trước tạo/gán product; worker kiểm tra lại |
+| `ERR_CATEGORY_IN_USE` | 409 | No | `errors.categoryInUse` | Không xóa category còn product tham chiếu, kể cả product inactive; chỉ bật/tắt |
+| `ERR_CATEGORY_HAS_CHILDREN` | 409 | No | `errors.categoryHasChildren` | Không xóa category còn category con; xử lý/chuyển con trước, không cascade |
 | `ERR_PRODUCT_INACTIVE` | 422 | No | `errors.productInactive` | Product ngừng bán |
+| `ERR_PRODUCT_REQUIRES_ACTIVE_VARIANT` | 409 | No | `errors.productRequiresActiveVariant` | Product active phải còn ít nhất một variant active |
 | `ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION` | 409 | No | `errors.productDeleteRequiresDeactivation` | Product có lịch sử, chỉ được deactivate |
 | `ERR_DUPLICATE_SKU` | 409 | No | `errors.duplicateSku` | SKU trùng |
 | `ERR_DUPLICATE_BARCODE` | 409 | No | `errors.duplicateBarcode` | Barcode trùng |
@@ -52,6 +61,8 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 | `ERR_INVOICE_NOT_FOUND` | 404 | No | `errors.invoiceNotFound` | Không thấy invoice |
 | `ERR_INVOICE_IMMUTABLE` | 422 | No | `errors.invoiceImmutable` | Invoice đã sync |
 | `ERR_INVOICE_TOTAL_INVALID` | 422 | No | `errors.invoiceTotalInvalid` | Tổng không cân bằng |
+| `ERR_INVOICE_SERVICE_INVALID` | 422 | No | `errors.ERR_INVOICE_SERVICE_INVALID` | Snapshot phí dịch vụ sai, trùng ID hoặc không tương thích payloadVersion |
+| `ERR_INVOICE_SERVICE_CONFIGURATION_INVALID` | 422 | No | `errors.ERR_INVOICE_SERVICE_CONFIGURATION_INVALID` | Sale mới có ID/nhãn dịch vụ không khớp định nghĩa Service đang bật của tenant |
 | `ERR_INVOICE_ALREADY_REVERSED` | 409 | No | `errors.invoiceAlreadyReversed` | Đã reverse |
 | `ERR_ADMIN_PIN_INVALID` | 401 | No | `errors.adminPinInvalid` | PIN sai; legacy, không dùng cho reverse invoice v1 |
 | `ERR_IDEMPOTENCY_KEY_MISMATCH` | 400 | No | `errors.idempotencyMismatch` | Header/body lệch |
@@ -81,3 +92,32 @@ Error code là public contract giữa Backend và Flutter. Backend chỉ trả c
 ## 3. i18n minimum keys
 
 `vi.json` và `en.json` phải có đủ các key ở cột `i18n key`. CI nên kiểm tra hai file có cùng key tree.
+
+Mobile Login dùng mapping tập trung `AuthErrorCode.translationKeys` để giữ nguyên các alias của catalog, ví dụ `ERR_INVALID_CREDENTIALS -> errors.invalidCredentials`; không đổi wire code của API. Code client dùng namespace riêng `client.*` và key `errors.<client-code>`.
+
+## 4. Lỗi local của mobile (không phải API wire code)
+
+| Code | Xử lý | i18n key |
+|---|---|---|
+| `client.unknown` | Báo lỗi chung, cho thử lại; không hiển thị exception/raw server message | `errors.client.unknown` |
+| `client.network_unavailable` | Báo mất kết nối/timeout; giữ form, cho đăng nhập lại thủ công | `errors.client.network_unavailable` |
+| `client.auth.tenant_login_required` | Không lưu token hoặc vào tenant flow với tài khoản không được hỗ trợ | `errors.client.auth.tenant_login_required` |
+| `client.display.read_failed` | Báo lỗi đọc preference; cho đọc lại/đặt lại | `errors.client.display.read_failed` |
+| `client.display.write_failed` | Giữ cỡ chữ đã áp dụng trước đó; cho thử lưu lại | `errors.client.display.write_failed` |
+| `client.display.value_invalid` | Báo giá trị lưu không hợp lệ; dùng cỡ chữ an toàn và cho đặt lại | `errors.client.display.value_invalid` |
+
+### Lỗi in/QR chỉ phát sinh ở mobile
+
+Các mã sau không phải response của backend. Bridge trả HTTP status + JSON lỗi đơn giản; client chuyển thành lỗi in, không log token/payload.
+
+| Code | Xử lý | i18n key |
+|---|---|---|
+| `ERR_BANK_ACCOUNT_INVALID` | Sửa đủ BIN/tài khoản/tên hoặc xóa cả ba | `errors.ERR_BANK_ACCOUNT_INVALID` |
+| `ERR_BANK_QR_AMOUNT_INVALID` | Chỉ QR cho tổng VND nguyên dương tối đa 12 chữ số | `errors.ERR_BANK_QR_AMOUNT_INVALID` |
+| `ERR_WIFI_PRINT_DISABLED` | Chủ cửa hàng bật và lưu quyền thành công | `errors.ERR_WIFI_PRINT_DISABLED` |
+| `ERR_PRINT_A4_REQUIRED` | Chọn giấy A4 trong mẫu | `errors.ERR_PRINT_A4_REQUIRED` |
+| `ERR_PRINT_DRAFT` | Chốt hóa đơn trước | `errors.ERR_PRINT_DRAFT` |
+| `ERR_PRINT_PAIRING_INVALID` | Nhập HTTPS LAN IPv4/token/pin hợp lệ từ PC | `errors.ERR_PRINT_PAIRING_INVALID` |
+| `ERR_PRINT_NOT_PAIRED` | Mở cài đặt ghép nối PC | `errors.ERR_PRINT_NOT_PAIRED` |
+| `ERR_PRINT_CERTIFICATE` | Dừng, đối chiếu pin/chứng chỉ PC; không bỏ TLS | `errors.ERR_PRINT_CERTIFICATE` |
+| `ERR_PRINT_FAILED` | Kiểm tra cùng job và Windows queue; không tự in bản mới | `errors.ERR_PRINT_FAILED` |

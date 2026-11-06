@@ -8,6 +8,22 @@
 
 ## 1. Quy ước chung
 
+### Catalog offline commands (mobile)
+
+- `POST /products/commands`: TenantAdmin, bắt buộc `Idempotency-Key` UUID khác rỗng; trả `202` với `{operationId,status:"Queued"}`. Worker kiểm tra lại tài khoản/tenant/quyền khi thực thi.
+- Body: `{action,clientEntityId,productId,variantId?,expectedVersion,data,prices?}`. `clientEntityId` là UUID local khác rỗng; `data` luôn là object. Actions: `create`, `update`, `createVariant`, `updateVariant`, `deactivate`, `deactivateVariant`, `activate`, `activateVariant`, `delete`, `deleteVariant`, `prices`. `data` theo DTO của hành động legacy tương ứng; `expectedVersion` ngoài cùng là authoritative.
+- `prices`: 1–100 `{productId,variantId?,expectedVersion,listedPrice,calculationQuantity}`. Cả hai số phải >0, tối đa 4 chữ số thập phân, `decimal(19,4)`. Server tính `basePrice = listedPrice × calculationQuantity`, mặc định làm tròn tới 4 chữ số thập phân (midpoint away from zero). Danh mục bật `roundSalePriceToThousands` tính trực tiếp từ tích chính xác rồi làm tròn nghìn VND, từ 500 lên, tối thiểu 1000; không đổi hai input ([ADR-015](../architecture/adr/ADR-015-category-sale-price-rounding.md)). Client gửi decimal invariant dạng chuỗi để giữ chính xác; không nhận cùng physical ID hai lần (product/default variant). Điều chỉnh tăng/giảm trên mobile áp dụng vào `listedPrice`, không sửa trực tiếp giá bán.
+- `GET /products/commands/{operationId}`: TenantAdmin, chỉ tenant hiện tại và người tạo operation. `200 data={status:"Completed"|"Rejected",errorCode?,result?}`; chưa có receipt trả `404 ERR_OPERATION_NOT_FOUND` (có thể vẫn đang chờ trong RabbitMQ). Payload mismatch giữ nguyên lỗi `ERR_SYNC_PAYLOAD_MISMATCH`; không thay payload của UUID đã gửi.
+- Result: `{clientEntityId,entityId,products:[],variants:[],deletedProductIds:[],deletedVariantIds:[]}`; `entityId` là ID server của resource vừa tạo, hoặc ID target/batch. `products`/`variants` là snapshot đầy đủ của các product bị tác động, không phải chỉ các dòng đổi giá. `deletedVariantIds` có thể null ở receipt cũ.
+- Mutation, receipt chứa result, audit, `CatalogBatch` server change và realtime outbox cùng transaction. Một version sai từ chối toàn batch; retry UUID/payload không thực thi lại. API legacy giữ nguyên để tương thích.
+- Không xóa riêng default variant; variant đã có lịch sử hóa đơn phải ngừng bán. Không xóa variant active cuối cùng của product active. Cho phép ngừng/bán lại riêng bất kỳ variant (kể cả default/cuối cùng) mà không đổi product gốc hoặc variant khác.
+- `deactivate`/`activate` đổi trạng thái product và TẤT CẢ variant trong cùng transaction, kể cả variant đã ngừng riêng. `deactivateVariant`/`activateVariant` chỉ đổi variant chỉ định. Mỗi entity chỉ tăng version khi cờ active của chính nó đổi; invoice history không đổi. Variant chỉ bán được khi cả gốc và variant active.
+- REST tương ứng: `POST /products/{id}/activate` và `POST /products/{productId}/variants/{variantId}/activate`, TenantAdmin only, body `{expectedVersion}`, trả envelope `Product`/`ProductVariant` giống deactivate; lỗi invalid request/not found/version conflict/access denied theo contract hiện có. Mobile tiếp tục dùng durable commands thay vì gọi REST trực tiếp.
+- Product/variant response bổ sung `basePriceText`, `listedPriceText` và `calculationQuantityText` dạng invariant string; các field numeric giữ nguyên. Client mới ưu tiên string; không dùng floating point để tính giá.
+- Variant update có thể gửi lại `extraData` legacy/schema chưa hỗ trợ **không đổi** (so sánh cấu trúc JSON với dữ liệu hiện tại) để sửa tên/giá mà không mất thuộc tính. Vẫn kiểm tra tenant và `expectedVersion`. Tạo mới hoặc thay đổi schema chưa hỗ trợ vẫn bị từ chối; không phải cơ chế ghi JSON tùy ý. Mobile dùng form tên/giá trị, tự tạo schema 1, không gửi tiền đã format theo locale.
+- Pull `CatalogBatch.entity` dùng result shape trên; áp dụng snapshot/tombstone/ID mapping và sequence cùng local transaction. Client không xem `202` là sync thành công và không tự rebase conflict.
+- Deployment: cập nhật API và worker cùng phiên bản. Worker cần `JWT_SECRET_KEY` hợp lệ (cùng cấu hình API) vì product service phụ thuộc cursor codec; thiếu key sẽ retry/DLQ trước khi ghi receipt. Local compose đã truyền biến này, không lưu giá trị secret vào source.
+
 ### Headers
 
 | Header | Bắt buộc | Mô tả |
@@ -122,16 +138,66 @@ Request: `{ "refreshToken": "opaque-token" }`. Tenant user được kiểm tra t
 
 Thu hồi session hiện tại. Mọi request có access token thuộc session bị revoke sẽ bị từ chối ngay; không xóa dữ liệu server.
 
+### `GET /me`
+
+**Role:** TenantAdmin, Staff. Trả hồ sơ tài khoản đang xác thực trong tenant hiện tại; không nhận `userId` hoặc `tenantId` từ client.
+
+Response `200` trả `UserProfile`: `id`, `tenantId`, `username`, `displayName`, `email`, `phone`, `role`, `status`, `version`, `createdAtUtc`, `updatedAtUtc`. Không trả password/hash, PIN hoặc token.
+
+```json
+{
+  "data": {
+    "id": "user-uuid",
+    "tenantId": "tenant-uuid",
+    "username": "cashier01",
+    "displayName": "Cashier",
+    "email": null,
+    "phone": "0900000000",
+    "role": "Staff",
+    "status": "Active",
+    "version": 3,
+    "createdAtUtc": "2026-10-08T09:00:00Z",
+    "updatedAtUtc": "2026-10-09T09:00:00Z"
+  },
+  "meta": { "correlationId": "uuid", "serverTimeUtc": "2026-10-09T09:00:00Z" }
+}
+```
+
+### `PATCH /me`
+
+**Role:** TenantAdmin, Staff. Chỉ cập nhật hồ sơ của chính user từ JWT. Request bắt buộc có `username`, `displayName`, `email`, `phone`, `expectedVersion`; `email` và `phone` có thể là `null` để xóa giá trị. `username` là bất biến qua endpoint này: client phải gửi lại đúng username hiện tại; giá trị khác trả `400 ERR_INVALID_FIELD` với `args.field = "username"`. Version cũ trả `409 ERR_VERSION_CONFLICT`.
+
+```json
+{
+  "username": "cashier01",
+  "displayName": "Cashier",
+  "email": null,
+  "phone": "0900000000",
+  "expectedVersion": 3
+}
+```
+
+Password/credential không thuộc API hồ sơ này; không gửi hoặc trả credential. API đổi mật khẩu cần contract riêng nếu được đưa vào phạm vi.
+
 Access token sống 15 phút; refresh token mặc định sống 30 ngày. Login và refresh bị giới hạn 10 request/phút/IP. Password dùng BCrypt; secret ký JWT lấy từ `JWT_SECRET_KEY` và tối thiểu 32 byte.
 
 ## 3. Products, categories và customers
 
 TenantAdmin có quyền quản lý sản phẩm trong tenant; Staff chỉ được tìm/xem sản phẩm active. Mọi thao tác lấy tenant từ JWT, không nhận tenant scope do client quyết định.
 
-### `GET /products?search=&page=&pageSize=&updatedSince=&includeInactive=`
+API hỗ trợ product gốc và các variant bán được. Để tương thích client cũ, product vẫn giữ SKU/đơn vị/giá legacy; khi tạo product, server đồng thời tạo variant mặc định có cùng ID với product. Client mới đọc danh sách variant và gửi `productVariantId` khi đồng bộ hóa đơn. `ProductNameSnapshot` là tên product gốc, còn `VariantNameSnapshot` là nhãn variant riêng. Không dùng `ExtraData` để thay thế SKU hoặc giá. Schema `ExtraData` của variant theo contract ở [database_design.md](../database/database_design.md).
+
+### `GET /products?search=&cursor=&pageSize=&updatedSince=&includeInactive=`
 
 **Role:** Staff, TenantAdmin.  
-Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental.
+Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeInactive=true` để xem cả sản phẩm đã vô hiệu hóa. `updatedSince` dùng để pull incremental. `search` tìm theo tên, SKU hoặc barcode. Kết quả sắp xếp `name ASC, id ASC`.
+Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ; không dùng trong client mới.
+
+Màn catalog mobile dùng `GET /products/catalog?search=&cursor=&pageSize=&includeInactive=` thay vì list nhóm hàng. Endpoint mới trả `data: [{product: <Product>, variant: <ProductVariant>}]` cùng `meta.paging`; mỗi dòng là một biến thể bán được, bao gồm default variant đúng một lần. Search tìm tên gốc, tên biến thể, SKU, barcode và JSON đặc điểm đã lưu; không biến kết quả variant thành product gốc. Sort `variant.sku ASC, variant.id ASC`, `pageSize` 1–200, bắt buộc cursor mode (`cursor=` ở trang đầu); cursor gắn tenant/search/filter, có hạn 15 phút. Staff chỉ thấy cả parent và variant active; `includeInactive=true` chỉ TenantAdmin. Endpoint product legacy phía trên không đổi.
+
+Cả `GET /products` và `GET /products/catalog` nhận query `categoryId=<uuid>` tùy chọn: lọc **đúng** category của product gốc, kết hợp với search/status/updatedSince hiện có, không tự gồm category con hoặc product chưa phân loại. Category không thuộc tenant hoặc không tồn tại trả collection rỗng; không rò rỉ ownership. Cursor gắn cả categoryId; không dùng cursor giữa hai category hoặc giữa có/không có filter (`400 ERR_INVALID_PAGING`). Bỏ categoryId vẫn giữ list legacy để tương thích API, không có nghĩa mobile có tab “Tất cả”. Product snapshot (list, catalog, detail và sync tạo mới) trả `categoryId` nullable và `extraData` nullable.
+
+Mã hàng vẫn bắt buộc trong payload API và kiểm tra duy nhất trong tenant. Form mobile cho bỏ trống mã: trước enqueue tự tạo `MH-` + 12 ký tự theo [ADR-014](../architecture/adr/ADR-014-short-business-codes.md), giữ mã đó trong payload bền vững qua retry/remap; mã người dùng nhập không được thay thế. Không tạo mã mới khi replay operation. Sale mới dùng `INV-` + 12 ký tự cùng thuật toán ở app/backend; reverse/correction do backend tạo cũng dùng số ngắn. UUID identity không đổi; số hóa đơn đã lưu và nháp legacy dùng UUID đầy đủ được giữ nguyên. Deploy API/worker trước mobile để số ngắn không bị ghi lại thành số dài.
 
 ```json
 {
@@ -142,13 +208,19 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
     "name": "Coffee",
     "unit": "cup",
     "basePrice": 25000.0000,
+    "basePriceText": "25000",
+    "listedPrice": 25000.0000,
+    "listedPriceText": "25000",
+    "calculationQuantity": 1.0000,
+    "calculationQuantityText": "1",
     "taxRate": 0,
+    "isActive": true,
     "version": 4,
     "updatedAtUtc": "2026-10-08T09:00:00Z"
   }],
   "meta": {
     "paging": {
-      "page": 1,
+      "nextCursor": "opaque-cursor-or-null",
       "hasMore": true,
       "pageSize": 50
     }
@@ -158,18 +230,56 @@ Staff chỉ nhận sản phẩm active. TenantAdmin có thể đặt `includeIna
 
 ### `POST /products`
 
-**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`. `basePrice` phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1, nghiệp vụ thuế là phần mở rộng sau.
+**Role:** TenantAdmin. Request yêu cầu `sku`, `name`, `unit`, `basePrice`, `taxRate`; `barcode` và `categoryId` tùy chọn. Có thể gửi thêm `listedPrice` và `calculationQuantity` cùng nhau; khi có, `basePrice` phải bằng tích hai giá trị sau khi làm tròn 4 chữ số. Nếu không gửi, server giữ tương thích bằng cách đặt `listedPrice = basePrice`, `calculationQuantity = 1`. Barcode tối đa 64 ký tự và duy nhất trong tenant nếu có. Giá phải lớn hơn 0; `taxRate` giữ bằng 0 trong v1.
+
+`extraData` tùy chọn là object JSON (không phải chuỗi): `{"schemaVersion":1,"attributes":{...}}`, tối đa **16 KiB UTF-8**. Schema/giới hạn giống tạo/cập nhật variant. Worker lưu cùng attributes vào product và default variant; áp dụng cả catalog command `action: "create"`. Bỏ/null extraData không thêm property vào queued payload cũ, không thay cách tính payload hash và không tái serialize command đã xếp hàng để xác minh hash.
+
+Nếu gửi categoryId, API kiểm tra category cùng tenant và active trước khi queue; worker kiểm tra lại trước ghi (kể cả catalog create). Không tồn tại/khác tenant: `ERR_CATEGORY_NOT_FOUND`; inactive: `ERR_CATEGORY_INACTIVE`. Command đã nhận `202` vẫn có thể bị worker từ chối nếu category đổi trạng thái trước commit. categoryId vẫn tùy chọn ở API để tương thích command/client cũ; **mobile tạo mới bắt buộc chọn một category active**, không tạo product uncategorized. Dữ liệu sample/legacy chưa phân loại vẫn hợp lệ nhưng không xuất hiện trong category filter.
 Header `Idempotency-Key` là bắt buộc. API publish command bền vững tới RabbitMQ rồi trả `202` với `{ "operationId": "uuid", "status": "Queued" }`. Worker mới tạo product; client nhận event `DataCreated` sau khi MySQL commit.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_FIELD`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_DUPLICATE_SKU`, `ERR_DUPLICATE_BARCODE`.
 
+### `GET /products/{id}`
+
+**Role:** Staff, TenantAdmin. Trả chi tiết product trong tenant hiện tại theo cùng `Product` schema như list. Staff chỉ đọc product active; product inactive hoặc khác tenant trả `404 ERR_PRODUCT_NOT_FOUND`. TenantAdmin đọc được product active/inactive để quản lý.
+
+### `GET /products/{productId}/variants?includeInactive=`
+
+**Role:** Staff, TenantAdmin. Trả các variant của product; mặc định chỉ variant active. `includeInactive=true` chỉ dành cho TenantAdmin. Response gồm `id`, `productId`, `sku`, `barcode`, `name`, `unit`, `basePrice`, `listedPrice`, `calculationQuantity`, `taxRate`, `isActive`, `version`, `extraData` và `updatedAtUtc`.
+
+### `GET /products/{productId}/variants/{variantId}`
+
+**Role:** Staff, TenantAdmin. Trả variant nếu thuộc product và tenant hiện tại. Staff chỉ đọc variant active; TenantAdmin có thể đọc variant inactive.
+
+### `POST /products/{productId}/variants`
+
+**Role:** TenantAdmin. Tạo variant bán được với SKU, unit, `basePrice`, `listedPrice` và `calculationQuantity`, cùng tùy chọn barcode, tên, `extraData`. `basePrice` được tính từ giá niêm yết nhân hệ số cho một đơn vị bán; nếu hai field mới bị bỏ qua thì dùng `basePrice` và hệ số 1 để tương thích client cũ. Barcode/SKU phải không trùng trong tenant ở kiểm tra nghiệp vụ. `taxRate` hiện phải bằng 0. Thành công trả `201` và Location tới variant mới.
+
+`extraData` nhận object dạng `{"schemaVersion":1,"attributes":{...}}`; giới hạn JSON 16 KiB. Dùng attributes cho đặc tính hàng hóa linh hoạt như thương hiệu, độ dày, kích thước hoặc quy cách; dữ liệu định danh/bán hàng như SKU, unit, giá phải nằm ở field riêng.
+
+### `PATCH /products/{productId}/variants/{variantId}`
+
+**Role:** TenantAdmin. Cập nhật SKU/barcode/tên/unit/giá niêm yết/hệ số quy đổi/thuộc tính với `expectedVersion` bắt buộc. Giá bán được server tính lại; tích không khớp `basePrice` trả `ERR_INVALID_REQUEST`. Trả `409 ERR_VERSION_CONFLICT` nếu version cũ.
+
+### `POST /products/{productId}/variants/{variantId}/deactivate`
+
+**Role:** TenantAdmin. Vô hiệu hóa riêng variant bằng `expectedVersion`, kể cả default/variant active cuối cùng; không đổi product gốc hoặc variant khác. Variant đã xuất hiện trên hóa đơn không được xóa vật lý.
+
+### `POST /products/{productId}/variants/{variantId}/activate`
+
+**Role:** TenantAdmin. Body `{expectedVersion}`; bán lại riêng variant, trả `ProductVariant`. Không đổi gốc hoặc variant khác; bán thực tế vẫn yêu cầu gốc active. Version cũ trả `409 ERR_VERSION_CONFLICT`.
+
 ### `PATCH /products/{id}`
 
-**Role:** TenantAdmin. Có `expectedVersion`; nếu version không khớp trả `409 ERR_VERSION_CONFLICT`. Giá mới phải lớn hơn 0. Staff không được sửa giá gốc.
+**Role:** TenantAdmin. Cho cập nhật `name`, `barcode`, `unit`, `basePrice`, `listedPrice`, `calculationQuantity`, `taxRate`, `categoryId` và bắt buộc `expectedVersion`. Giá bán được tính lại từ giá niêm yết × hệ số quy đổi; client cũ chỉ gửi `basePrice` được xử lý tương thích với hệ số 1. `barcode: null` dùng để xóa barcode; barcode khác null phải duy nhất trong tenant. Nếu version không khớp trả `409 ERR_VERSION_CONFLICT`; barcode trùng trả `409 ERR_DUPLICATE_BARCODE`. Staff không được sửa giá.
 
 ### `POST /products/{id}/deactivate`
 
-**Role:** TenantAdmin. Vô hiệu hóa sản phẩm, giữ nguyên dữ liệu lịch sử; không cho invoice mới sử dụng sản phẩm inactive. Request có `expectedVersion`; trả Product đã cập nhật.
+**Role:** TenantAdmin. Vô hiệu hóa sản phẩm và TẤT CẢ biến thể trong cùng transaction, giữ nguyên dữ liệu lịch sử; không cho invoice mới sử dụng sản phẩm inactive. Request có `expectedVersion`; trả Product đã cập nhật.
+
+### `POST /products/{id}/activate`
+
+**Role:** TenantAdmin. Body `{expectedVersion}`; bán lại gốc và TẤT CẢ biến thể trong cùng transaction, kể cả biến thể đã ngừng riêng. Trả `Product`; không đổi invoice history. Version cũ trả `409 ERR_VERSION_CONFLICT`.
 
 ### `DELETE /products/{id}?expectedVersion=`
 
@@ -182,23 +292,52 @@ Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INV
 ```json
 {
   "productIds": ["uuid"],
+  "variantIds": ["variant-uuid"],
   "operation": "Increase",
   "mode": "Percentage",
   "value": 5.0,
-  "expectedVersions": { "product-uuid": 4 }
+  "expectedVersions": { "product-uuid": 4 },
+  "variantExpectedVersions": { "variant-uuid": 2 }
 }
 ```
 
-`operation` nhận `Increase` hoặc `Decrease`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server giới hạn số lượng, lọc theo tenant, transaction toàn bộ và tăng `Version`.
-Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_VERSION_CONFLICT`.
+Chọn `productIds`, `variantIds`, hoặc cả hai; mỗi collection tối đa 100 ID và tổng target tối đa 100. `expectedVersions` phải khớp chính xác các product được chọn; `variantExpectedVersions` phải khớp chính xác các variant được chọn. Collection không chọn có thể bỏ qua cùng version map tương ứng.
+
+Product ID nhắm vào giá gốc/legacy của product và đồng bộ giá default variant. Variant ID nhắm vào giá riêng của variant. Có thể chọn cả giá gốc lẫn variant trong cùng request; server tính riêng từng giá và cập nhật tất cả trong một transaction, trả `products` và `variants` đã thay đổi. Nếu product và default variant cùng được chọn, đó là một giá dùng chung nên chỉ áp dụng điều chỉnh một lần; không cộng dồn hai lần. Chọn variant khác thì giá variant đó được thay đổi độc lập.
+
+`operation` nhận `Increase` hoặc `Decrease`; `mode` nhận `Percentage` hoặc `FixedAmount`; `value` là độ lớn dương, không gửi số âm để biểu diễn giảm giá. UI tự chọn cách hiển thị dấu. Giá sau điều chỉnh vẫn phải lớn hơn 0. Server lọc theo tenant, kiểm tra concurrency cho từng loại target và transaction toàn bộ.
+Errors: `ERR_ACCESS_DENIED`, `ERR_REQUIRED_FIELD`, `ERR_UNKNOWN_FIELD`, `ERR_INVALID_REQUEST`, `ERR_INVALID_ENUM`, `ERR_INVALID_DECIMAL`, `ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE`, `ERR_PRICE_MUST_BE_POSITIVE`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_VARIANT_NOT_FOUND`, `ERR_VERSION_CONFLICT`.
+
+### Categories
+
+`GET /categories?search=&cursor=&pageSize=&includeInactive=` cho phép Staff và TenantAdmin đọc category active trong tenant; TenantAdmin có thể gửi `includeInactive=true`. Search theo tên/mã; sort `sortOrder ASC, name ASC, id ASC`; paging dùng cursor keyset opaque. `POST /categories` và `PATCH /categories/{id}` chỉ dành cho TenantAdmin. Code duy nhất trong tenant; category cha phải cùng tenant và không thể tạo chu trình. PATCH nhận `name`, `parentId`, `sortOrder`, `expectedVersion`; version cũ trả `409 ERR_VERSION_CONFLICT`.
+
+Mọi Category response gồm `id`, `parentId`, `code`, `name`, `isActive`, `sortOrder`, `version`, `updatedAtUtc`, **`productCount`**. Count là số product gốc tham chiếu trực tiếp category trong tenant, gồm cả product inactive; không đếm variant hoặc descendants.
+
+Category response/create/patch also exposes `roundSalePriceToThousands` (default
+false). Patch omission/null preserves it. This opt-in applies to every product
+create/edit and bulk-price path; legacy exact-product price submissions remain
+accepted for opted-in categories but persist the rounded result. It does not
+change listed price/quantity, invoice snapshots, or automatically reprice existing
+records when enabled. Reassigning a family recalculates its variants under the
+destination category policy.
+
+Lifecycle chỉ dành cho TenantAdmin, scoped tenant từ JWT và ghi audit cùng transaction:
+
+- `PATCH /categories/{id}/status` body `{"isActive":false,"expectedVersion":3}` (hoặc true để bật lại); thành công `200` theo envelope `{data: <Category>, meta: ...}`. Không cascade trạng thái xuống product/category con; dữ liệu tham chiếu được giữ.
+- `DELETE /categories/{id}?expectedVersion=3`: hard delete chỉ khi **không có product nào** tham chiếu, kể cả product inactive, và không có category con. Thành công `204` không body. Có product: `409 ERR_CATEGORY_IN_USE` (chỉ bật/tắt, không xóa); có con: `409 ERR_CATEGORY_HAS_CHILDREN` (xử lý/chuyển category con trước, không cascade/detach ngầm).
+- Version bắt buộc >= 1; version cũ trả `409 ERR_VERSION_CONFLICT`; không tồn tại/khác tenant `404 ERR_CATEGORY_NOT_FOUND`. Tạo/gán product hoặc category con tham gia concurrency token của category được tham chiếu, nên version có thể tăng khi số tham chiếu thay đổi. Nếu association/status/delete chạy đồng thời, một write bị conflict và rollback; client reload trước retry. Không tự retry request phá optimistic concurrency.
+
+Mobile chỉ dùng category active làm tab, không tạo tab “Tất cả”. Khi lần đầu vào mà không có category active, chuyển quản lý category; tạo product yêu cầu category đang chọn. Trạng thái lỗi/offline không được suy diễn là danh sách category rỗng đã xác nhận.
+Errors: `ERR_ACCESS_DENIED`, `ERR_CATEGORY_NOT_FOUND`, `ERR_DUPLICATE_CATEGORY_CODE`, `ERR_CATEGORY_PARENT_CYCLE`, `ERR_VERSION_CONFLICT`.
 
 ### TenantAdmin quản lý tài khoản Staff
 
 Các endpoint sau chỉ dành cho TenantAdmin và chỉ tác động đến tài khoản role `Staff` thuộc tenant trong JWT. Không nhận `tenantId` hoặc `role` từ request để xác định quyền.
 
-#### `GET /tenant/staff?search=&page=&pageSize=`
+#### `GET /tenant/staff?search=&cursor=&pageSize=`
 
-Liệt kê Staff của tenant, bao gồm tài khoản inactive; response có paging và không chứa credential.
+Liệt kê Staff của tenant, bao gồm tài khoản inactive; search theo username/display name, sort `displayName ASC, id ASC`, dùng cursor keyset và không chứa credential.
 
 #### `POST /tenant/staff`
 
@@ -226,15 +365,19 @@ Errors: `ERR_STAFF_NOT_FOUND`, `ERR_DUPLICATE_USERNAME`, `ERR_VERSION_CONFLICT`,
 
 ### Customers
 
-TenantAdmin có CRUD customer trong tenant. Staff chỉ được tìm kiếm/đọc thông tin customer phục vụ lập invoice; Staff không được tạo, sửa hoặc xóa customer. Mọi thao tác lấy tenant từ JWT.
+TenantAdmin có CRUD customer trong tenant theo các giới hạn nghiệp vụ. Staff được tìm kiếm/đọc và tạo customer phục vụ lập invoice; Staff không được sửa hoặc xóa customer. Mọi thao tác lấy tenant từ JWT.
 
-#### `GET /customers?search=&updatedSince=&includeInactive=`
+#### `GET /customers?search=&cursor=&pageSize=&updatedSince=&includeInactive=`
 
-**Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại.
+**Role:** Staff, TenantAdmin. Staff chỉ nhận customer active; gửi `includeInactive=true` với role Staff trả `403 ERR_ACCESS_DENIED`. TenantAdmin có thể đặt `includeInactive=true` để xem customer đã deactivate. Chỉ trả customer thuộc tenant hiện tại. `search` tìm theo tên, mã customer hoặc số điện thoại; sort `fullName ASC, id ASC`. Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ.
+
+#### `GET /customers/{id}`
+
+**Role:** Staff, TenantAdmin. Trả chi tiết customer trong tenant hiện tại theo `Customer` schema. Staff chỉ đọc customer active; customer inactive hoặc khác tenant trả `404 ERR_CUSTOMER_NOT_FOUND`. TenantAdmin đọc được customer active/inactive để quản lý.
 
 #### `POST /customers`
 
-**Role:** TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
+**Role:** Staff, TenantAdmin. Request gồm `code`, `fullName`, và các field tùy chọn `phone`, `email`, `address`. `code` duy nhất trong tenant.
 Header `Idempotency-Key` là bắt buộc. API trả `202` với operation id sau publisher confirm; worker tạo customer và phát snapshot realtime sau khi commit.
 Errors: `ERR_ACCESS_DENIED`, `ERR_INVALID_REQUEST`, `ERR_DUPLICATE_CUSTOMER_CODE`.
 
@@ -255,14 +398,45 @@ Errors: `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_DELETE_REQUIRES_DEACTIVATION`, `
 
 Nếu feature `RequireCustomerPhone` bật, invoice gắn customer bắt buộc có phone; kiểm tra ở server khi sync.
 
+### `GET /tenant/profile`
+
+**Role:** TenantAdmin, Staff. Trả thông tin tenant gắn với access token hiện tại: `id`, `code`, `name`, `status`, `timeZone`, `currencyCode`, `version`, `createdAtUtc`, `updatedAtUtc`. Không nhận `tenantId` từ path, query hoặc body; server lấy tenant từ JWT context. Endpoint này chỉ đọc tenant hiện tại, không cấp quyền quản trị tenant khác như `/platform/tenants/{tenantId}`.
+
+Errors: `ERR_UNAUTHENTICATED`, `ERR_TENANT_NOT_FOUND`.
+
 ## 4. Invoice
+
+### Invoice business status và local sync status
+
+Wire response giữ field `status`, có kiểu enum `InvoiceStatus`:
+
+| `InvoiceStatus` | Ý nghĩa |
+|---|---|
+| `Active` | Invoice đã được server ghi nhận và chưa thuộc cặp bút toán đảo |
+| `Reversed` | Invoice thuộc cặp bút toán đảo; áp dụng cho invoice gốc và invoice Reverse theo reverse-entry rule |
+
+`invoiceType` vẫn phân biệt `Sale`, `Reverse`, `Correction`; status không thể thay thế type. `SyncStatus` là enum local của mobile, không phải trạng thái server và không được đọc từ `Invoice.status`:
+
+| `SyncStatus` | Ý nghĩa |
+|---|---|
+| `Draft` | Hóa đơn chỉ được lưu local, chưa chốt để sync |
+| `Pending` | Đã chốt local, chờ gửi |
+| `Sending` | Client đang gửi |
+| `Queued` | API đã nhận command, server chưa xác nhận commit |
+| `Synced` | Server đã commit, xác nhận bằng event/pull |
+| `Failed` | Bị từ chối hoặc cần xử lý; lưu `LastErrorCode` |
+
+Trạng thái mạng `Online`/`Offline` và hoạt động pull `Downloading` là trạng thái app-wide riêng, không thuộc `InvoiceStatus` hay per-invoice `SyncStatus`. API không trả `SyncStatus`.
 
 ### `POST /invoices/sync`
 
 **Role:** Staff, TenantAdmin. Đây là command idempotent và là endpoint chính cho offline outbox.
-Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hiện hỗ trợ giá trị `1`.
+Header `Idempotency-Key` là bắt buộc và phải trùng `clientOperationId`; `payloadVersion` hỗ trợ `1` (không phí dịch vụ) và `2` (có snapshot phí dịch vụ).
 
 Sale `quantity` và `unitPrice` phải lớn hơn 0. `taxRate`/`taxAmount` phải bằng 0 trong v1; không áp dụng nghiệp vụ tính thuế cho đến phần mở rộng sau. Hóa đơn Reverse và Correction do endpoint tương ứng tạo ở server, không được gửi như Sale payload từ client.
+
+`variantNameSnapshot` là tùy chọn: biến thể không có tên riêng gửi `null`. Trong kiểm tra catalog, `null` và `""` được coi cùng nghĩa không có tên; không thay bằng tên product và không bỏ kiểm tra ordinal khi tên biến thể thật tồn tại.
+Money và quantity dùng `decimal` tối đa 4 chữ số thập phân. Server kiểm tra công thức bằng decimal chính xác, không tự làm tròn hoặc áp tolerance; client gửi `roundingAmount` tường minh nếu có. Chưa áp dụng `MidpointRounding` hay quy tắc làm tròn theo currency cho đến khi quy tắc nghiệp vụ được định nghĩa.
 
 Request:
 
@@ -285,8 +459,10 @@ Request:
     "details": [{
       "lineNumber": 1,
       "productId": "uuid",
+      "productVariantId": "uuid",
       "skuSnapshot": "SKU-001",
       "productNameSnapshot": "Coffee",
+      "variantNameSnapshot": "Cup 500ml",
       "unitSnapshot": "cup",
       "quantity": 2,
       "unitPrice": 50000,
@@ -298,6 +474,8 @@ Request:
   }
 }
 ```
+
+`productVariantId` và `variantNameSnapshot` có thể bỏ khi gửi từ client cũ; server phân giải về variant mặc định. Client mới phải gửi ID variant được chọn, SKU, tên product gốc, nhãn variant và unit khớp catalog hiện tại. Response hóa đơn lưu `productVariantId`, `variantNameSnapshot` và `variantExtraDataSnapshot` để giữ nguyên thông tin bán tại thời điểm tạo hóa đơn.
 
 Response `202` sau khi RabbitMQ xác nhận đã nhận lệnh:
 
@@ -315,11 +493,38 @@ Worker xác thực invoice và ghi invoice, `sync_operations`, `server_changes`,
 
 Errors: `ERR_TENANT_INACTIVE`, `ERR_DEVICE_REVOKED`, `ERR_PRODUCT_NOT_FOUND`, `ERR_PRODUCT_INACTIVE`, `ERR_CUSTOMER_NOT_FOUND`, `ERR_CUSTOMER_INACTIVE`, `ERR_INVOICE_TOTAL_INVALID`, `ERR_CUSTOMER_PHONE_REQUIRED`, `ERR_SYNC_CONFLICT`.
 
+### `GET /invoices?search=&from=&to=&invoiceType=&cursor=&pageSize=`
+
+**Role:** Staff, TenantAdmin. Staff chỉ thấy invoice do chính mình tạo (`createdByUserId` = user trong JWT); TenantAdmin thấy toàn bộ invoice trong tenant. Tenant và user lấy từ JWT, không nhận từ query.
+`search` tìm invoice number theo substring hoặc invoice ID/barcode theo exact match. `from` (bao gồm) và `to` (không bao gồm) lọc theo `clientCreatedAtUtc`; `invoiceType` nhận `Sale`, `Reverse` hoặc `Correction`. Kết quả sắp xếp `clientCreatedAtUtc DESC, id DESC`. Mobile mới dùng cursor keyset opaque: request đầu gửi `cursor=` rỗng, các trang sau truyền nguyên `nextCursor`. `page` chỉ được hỗ trợ như legacy mode cho client API v1 cũ. `pageSize` tối đa 200, mặc định 50. Response cursor gồm `nextCursor`, `pageSize`, `hasMore`; cursor hết hạn sau 15 phút. Dùng `GET /invoices/{id}` để lấy chi tiết.
+Errors: `ERR_INVALID_PAGING`, `ERR_INVALID_ENUM`.
+
 ### `GET /invoices/{id}`
 
-**Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse.
+**Role:** Staff, TenantAdmin. Chỉ đọc invoice cùng tenant, gồm detail snapshot và thông tin reverse. Staff chỉ đọc invoice do chính mình tạo; invoice của người khác trả `404 ERR_INVOICE_NOT_FOUND`.
 
-Staff và TenantAdmin được in invoice đã đọc trên thiết bị client. App dựng bản in từ invoice snapshot và `ReceiptTemplate` trong `/settings/effective`, rồi gửi tới máy in local/Bluetooth; in không thay đổi invoice và không có server-side print endpoint. Nếu in lỗi, mobile dùng `ERR_PRINT_FAILED`; invoice không rollback.
+Staff và TenantAdmin được in invoice có quyền đọc, không phải nháp, khi `EnableWifiPrint=true` đã được xác nhận. App dựng A4/A5 từ invoice snapshot, `StoreProfile` và `ReceiptTemplate`, gửi PNG cùng `paper: A4/A5` qua HTTPS pin chứng chỉ tới bridge Windows trong LAN; bridge dùng driver Canon LBP 2900 theo đúng khổ. Không có backend print endpoint hay transport Bluetooth. Lỗi in không rollback invoice. Retry cùng tài liệu dùng UUID đã lưu; `submitted` chỉ xác nhận Windows queue, `uncertain` không tự in lại. Chi tiết [bridge](../../tools/windows-print-bridge/README.md).
+
+### `GET /invoices/operations/{operationId}`
+
+**Role:** tenant user; receipt chỉ được đọc trong tenant và actor phù hợp. Trả envelope với `data.status` (`Completed`, `Rejected`, hoặc `Queued` nếu đã có receipt đang xử lý), `data.result` là Invoice khi Completed, `data.errorCode` khi Rejected. Không tìm thấy trả 404; client giữ nguyên operation và kiểm tra lại hoặc resend nguyên payload, không đổi UUID.
+
+### Phí dịch vụ invoice payloadVersion 2
+
+V1 tiếp tục không phí. V2 thêm vào invoice:
+
+```json
+{
+  "serviceCharges": [
+    { "serviceId": "delivery", "labelSnapshot": "Giao hàng", "amount": 5000 }
+  ],
+  "serviceTotal": 5000
+}
+```
+
+Tối đa 10 ID duy nhất, ID tối đa 80 ký tự, nhãn tối đa 120, amount không âm/decimal(19,4). `serviceTotal` phải bằng tổng snapshot amounts, không suy diễn từ tổng invoice hoặc tự sửa số tiền client. Sale mới đối chiếu định nghĩa Service trong ReceiptTemplate của tenant; dữ liệu cấu hình stale không được âm thầm đổi nhãn. Total = subtotal − discountAmount + taxAmount (0) + roundingAmount + serviceTotal. Giữ snapshot dù mẫu đổi sau bán.
+
+Correction nhận thêm `payloadVersion` (mặc định 1), serviceCharges/serviceTotal. V1 correction bị từ chối nếu hóa đơn gốc có bất kỳ snapshot phí nào, kể cả phí 0; không âm thầm xóa phí. V2 giữ ID/nhãn gốc dù mẫu đổi, dịch vụ mới phải khớp định nghĩa đang bật. Reverse negate phí gốc và giữ nhãn/ID mà không lookup mẫu mới. Response invoice, realtime/pull và operation result đều mang snapshots; client cũ thiếu field xem như không có phí lịch sử, không tự tính lại số tiền server.
 
 ### `POST /invoices/{id}/reverse`
 
@@ -330,12 +535,37 @@ Staff và TenantAdmin được in invoice đã đọc trên thiết bị client.
 ```
 
 Server lock invoice gốc, kiểm tra chưa reverse, tạo invoice âm mới và outbox event trong cùng transaction. Không update/delete detail gốc.
+`Idempotency-Key` là UUID bắt buộc và `X-Device-Id` phải được gửi; retry cùng key/payload trả lại kết quả đã áp dụng, payload khác trả `409 ERR_SYNC_PAYLOAD_MISMATCH`. Response thành công là `201`.
 
 Errors: `ERR_ACCESS_DENIED`, `ERR_INVOICE_NOT_FOUND`, `ERR_INVOICE_ALREADY_REVERSED`, `ERR_INVOICE_IMMUTABLE`.
 
 ### `POST /invoices/{id}/correction`
 
-**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới và lý do. Không mutate invoice cũ.
+**Role:** TenantAdmin. Thực hiện reverse invoice cũ rồi tạo invoice correction mới; request chứa detail mới, lý do và `roundingAmount` tùy chọn (mặc định `0`). Không mutate invoice cũ. `Idempotency-Key` UUID và `X-Device-Id` là bắt buộc. Server tính lại subtotal/discount từ details, yêu cầu tax bằng 0, tính `totalAmount = subtotal - discountAmount + roundingAmount` và yêu cầu total lớn hơn 0; reverse, correction, audit, sync change và outbox commit atomically. Retry cùng key/payload trả lại kết quả correction đã tạo.
+
+Request:
+
+```json
+{
+  "reasonCode": "PRICE_CORRECTION",
+  "roundingAmount": 0,
+  "details": [{
+    "lineNumber": 1,
+    "productId": "uuid",
+    "skuSnapshot": "SKU-001",
+    "productNameSnapshot": "Coffee",
+    "unitSnapshot": "cup",
+    "quantity": 1,
+    "unitPrice": 100000,
+    "discountAmount": 0,
+    "taxRate": 0,
+    "taxAmount": 0,
+    "lineTotal": 100000
+  }]
+}
+```
+
+`details` phải có tối thiểu một dòng theo schema `SaleInvoiceDetailRequest`. `roundingAmount` là decimal có thể âm hoặc dương; client không gửi chuỗi tiền đã format.
 
 ## 5. Sync pull và feature flags
 
@@ -355,6 +585,7 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
     "RequireCustomerPhone": true,
     "EnableInventory": false,
     "EnableBluetoothPrint": true,
+    "EnableWifiPrint": false,
     "AutoRoundMoney": true,
     "storeProfile": {
       "storeName": "Panxii Store",
@@ -375,7 +606,15 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
       "showBarcode": false,
       "showCategory": true
     },
-    "settingsVersion": 12
+    "settingsVersion": 12,
+    "settingVersions": {
+      "StoreProfile": 2,
+      "ReceiptTemplate": 0,
+      "ProductDisplay": 3,
+      "AutoRoundMoney": 1,
+      "EnableBluetoothPrint": 0,
+      "EnableWifiPrint": 0
+    }
   }
 }
 ```
@@ -384,19 +623,37 @@ Response dùng `data` là danh sách change; `meta.paging` có `nextSequence`, `
 
 **Role:** TenantAdmin với tenant setting. Giá trị phải validate theo schema của key. Các key cấu hình cửa hàng gồm:
 
-- `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null }`.
-- `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null }`; `templateId` chỉ nhận template được app hỗ trợ.
+- `StoreProfile`: `{ "storeName": "...", "address": null, "phone": null, "taxCode": null, "bankTransfer": { "bin": "970436", "accountNumber": "000123456789", "accountName": "TEST ACCOUNT" } }`. `bankTransfer` tùy chọn, bỏ cả property hoặc đặt null để xóa; nếu có object phải đủ ba field, BIN đúng 6 chữ số ASCII, tài khoản 6–34 chữ số ASCII (giữ số 0 đầu), tên không trống/tối đa 100 ký tự/không control characters. Không nhận object thiếu.
+- `ReceiptTemplate`: `{ "templateId": "Standard", "showStoreAddress": true, "showTaxBreakdown": true, "footerText": null, "layout": { ... } }`; `layout` tùy chọn, theo `ReceiptLayout` trong OpenAPI. Không có layout vẫn dùng Standard legacy.
 - `ProductDisplay`: `{ "layout": "Grid", "sortBy": "Name", "showSku": true, "showBarcode": false, "showCategory": true }`; `layout` là `Grid`/`List`, `sortBy` là `Name`/`Sku`.
 
-Request dùng `{ "value": <value theo schema>, "expectedVersion": 12 }`. Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`. Các tùy chọn này chỉ ảnh hưởng trình bày/in, không thay đổi quyền, giá hoặc dữ liệu invoice. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+Request dùng `{ "value": <value theo schema>, "expectedVersion": 2 }`, lấy `expectedVersion` từ `settingVersions[key]` của tenant hiện tại; `0` khi chưa có tenant override, kể cả khi effective value đến từ global setting. `settingsVersion` là aggregate, không phải concurrency token dùng cho PUT. Sau PUT dùng version trả về cho lần ghi tiếp theo; conflict trả `409 ERR_VERSION_CONFLICT`, không tự retry ghi đè.
+
+`settingVersions` là metadata additive cho các key `StoreProfile`, `ReceiptTemplate`, `ProductDisplay`, `AutoRoundMoney`, `EnableBluetoothPrint`, `EnableWifiPrint`. Editor không được đoán version của năm key hiện có nếu thiếu metadata. Riêng Wi-Fi bổ sung sau: API/cache cũ thiếu key thì đọc disabled/version 0; backend cũ vẫn không hỗ trợ ghi key mới. Triển khai backend trước mobile editor.
+
+Thay đổi áp dụng cho tenant hiện tại và được trả về bởi `/settings/effective`, không sửa invoice đã đồng bộ. TenantAdmin được ghi feature flags `AutoRoundMoney`, `EnableBluetoothPrint`, `EnableWifiPrint`; Wi-Fi mặc định false, là quyền in cho tenant; Bluetooth chỉ lưu tùy chọn, chưa có transport. SuperAdmin quản lý global feature flags qua `/platform/feature-flags`.
+
+#### Receipt layout version 1 và 2
+
+Version 2 giữ contract version 1 và thêm `header: { "left": "...", "right": "..." }`, mỗi chuỗi tối đa 1000 ký tự; header chỉ hợp lệ ở v2. Khi một cột không rỗng, hai cột thay nhóm thông tin cửa hàng mặc định. Editor không có header vẫn ghi v1. Template không có layout mặc định A4 ở mobile mới; layout cũ có giấy rõ ràng được giữ nguyên. In qua PC yêu cầu A4.
+
+Bản in thật luôn có số hóa đơn + Code128, ngày tạo, dòng khách hàng để ghi tay và chữ ký, dù mẫu cũ tắt các khối này. QR nhận tiền tùy bankTransfer, chỉ VND nguyên dương tối đa 12 chữ số, không áp dụng Reverse; không tag nội dung chuyển khoản/tên người gửi, không gọi API ngân hàng và không ghi nhận thanh toán. Xem [compatibility matrix](api_compatibility_matrix.md) trước rollout: editor cũ có thể xóa bankTransfer hoặc không đọc được v2.
+
+`layout` gồm `version: 1`, `paper`, `showSku`, `showUnit`, `blocks`. `paper` gồm preset `Roll58`/`Roll80`/`A0`–`A10`/`Custom`, `widthMm`, `heightMm` (null chỉ với giấy cuộn), `marginMm`. A-series dùng kích thước ISO 216 dạng đứng; preset và kích thước phải khớp. Giới hạn rộng 25–1500 mm, cao 25–2000 mm, lề 0–10 mm; vùng in sau hai lề tối thiểu 10 mm mỗi chiều.
+
+`blocks` có 2–40 phần tử, ID không rỗng/tối đa 80 ký tự và duy nhất, thứ tự array là thứ tự in. Built-in type chỉ xuất hiện tối đa một lần; `Items`, `Total` bắt buộc xuất hiện và enabled=true. Built-in nhận `{ id, type, enabled }`. `Text` nhận thêm `text` (1–1000 ký tự, không chỉ khoảng trắng) và `align` (`Left`, `Center`, `Right`). `Service` nhận `label` (1–120 ký tự, không chỉ khoảng trắng), `hideWhenZero`; tối đa 10 service. Đây là plain text, không HTML/script, không nội suy code.
+
+Service block chỉ định nghĩa danh mục, **không nhận `amount`, giá mặc định hoặc số tiền mẫu**. Quy tắc cho bước invoice sau: tiền dịch vụ nhập riêng từng hóa đơn, mặc định 0, không âm, cộng tổng; ẩn khi 0 mặc định bật. Chưa thay đổi schema/formula của invoice v1, chưa hỗ trợ sync khoản phí thật. Việc ẩn khối chỉ ảnh hưởng in, không thay đổi tổng tiền hoặc lịch sử invoice.
+
+Các field legacy được giữ để tương thích đọc; khi có layout, renderer mới dùng layout làm nguồn bố cục, `footerText` vẫn là nội dung khối Footer. PUT thay thế toàn bộ value của ReceiptTemplate: client phải giữ layout và mọi field đang dùng, không gửi patch một phần. Xem deployment gate trong compatibility matrix để tránh editor cũ ghi mất layout.
 
 ### SuperAdmin quản lý tenant và onboarding TenantAdmin
 
 Chỉ SuperAdmin được quản lý tenant. Tạo tenant và tài khoản TenantAdmin đầu tiên là một use case/transaction: nếu tạo account thất bại, tenant cũng không được lưu. Password chỉ được hash, không trả về hoặc ghi log. Các API quản lý TenantAdmin ở `/platform/tenants/{tenantId}/admins` dùng để quản lý thêm account sau onboarding.
 
-#### `GET /platform/tenants?search=&page=&pageSize=&includeDeleted=`
+#### `GET /platform/tenants?search=&cursor=&pageSize=&includeDeleted=`
 
-Liệt kê tenant, mặc định không gồm tenant đã soft-delete. `includeDeleted=true` chỉ dành cho SuperAdmin. Response có paging chuẩn.
+Liệt kê tenant, mặc định không gồm tenant đã soft-delete. `includeDeleted=true` chỉ dành cho SuperAdmin. Search theo code/tên, sort `name ASC, id ASC`; response dùng cursor keyset.
 
 #### `POST /platform/tenants`
 
@@ -448,9 +705,9 @@ Errors: `ERR_TENANT_NOT_FOUND`, `ERR_DUPLICATE_TENANT_CODE`, `ERR_INVALID_REQUES
 
 Các endpoint dưới đây chỉ dành cho **SuperAdmin**. `{tenantId}` xác định tenant đích; server phải kiểm tra tenant tồn tại và tenant scope trên mọi thao tác. Không cho client thay đổi role: tài khoản do nhóm API này quản lý luôn có role `TenantAdmin`.
 
-#### `GET /platform/tenants/{tenantId}/admins?search=&page=&pageSize=`
+#### `GET /platform/tenants/{tenantId}/admins?search=&cursor=&pageSize=`
 
-Liệt kê tài khoản TenantAdmin của tenant, gồm cả tài khoản đã vô hiệu hóa. Response dùng collection envelope và paging chuẩn; không trả password, password hash, PIN hoặc token.
+Liệt kê tài khoản TenantAdmin của tenant, gồm cả tài khoản đã vô hiệu hóa. Search theo username/display name/email, sort `displayName ASC, id ASC`; response dùng collection envelope và cursor keyset; không trả password, password hash, PIN hoặc token.
 
 #### `POST /platform/tenants/{tenantId}/admins`
 
@@ -616,6 +873,10 @@ Mọi response thành công đều dùng một trong hai dạng sau.
 
 #### Collection/paging
 
+Mobile mới dùng cursor keyset opaque cho mọi list có paging, ngoại trừ `GET /sync/pull` dùng `afterSequence`/`nextSequence` để phục hồi thay đổi tuần tự. API v1 tạm hỗ trợ `page` offset deprecated để giữ tương thích client cũ. Nếu có query key `cursor`, kể cả giá trị rỗng, request chọn cursor mode; nếu không có `cursor`, request chọn legacy page mode (`page` mặc định là 1). Không gửi đồng thời `page` và `cursor`; kết hợp cả hai trả `400 ERR_INVALID_PAGING`. Cursor list được ràng buộc với tenant/user scope, từ khóa đã chuẩn hóa, filter và sort; client không tự tạo, giải mã, sửa hoặc dùng lại cursor cho query khác. Server dùng thứ tự xác định và khóa phụ ID duy nhất. Cursor hết hạn sau 15 phút; cursor không hợp lệ/hết hạn trả `400 ERR_INVALID_PAGING`; client bỏ cursor và tải lại bằng `cursor=`.
+
+Với các query search, trim và chuẩn hóa Unicode NFC, không phân biệt hoa thường; query rỗng sau chuẩn hóa nghĩa là không filter, text fields dùng substring match và identifiers/barcodes dùng exact match khi endpoint quy định. Local và server phải dùng cùng fields/semantics. `pageSize` mặc định 50, tối đa 200. Cursor response có `nextCursor`, `hasMore`, `pageSize`; legacy page response giữ `page`, `hasMore`, `pageSize`. Không yêu cầu `totalCount`.
+
 ```json
 {
   "data": [],
@@ -738,6 +999,11 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
   "name": "Coffee",
   "unit": "cup",
   "basePrice": 25000.0000,
+  "basePriceText": "25000",
+  "listedPrice": 25000.0000,
+  "listedPriceText": "25000",
+  "calculationQuantity": 1.0000,
+  "calculationQuantityText": "1",
   "costPrice": null,
   "taxRate": 0.0000,
   "isActive": true,
@@ -817,46 +1083,58 @@ Giá trị `status`: `Applied`, `AlreadyApplied`, `Rejected`. Retry thành công
 
 ## 10. Bảng endpoint đầy đủ và format bắt buộc
 
+Query trong bảng là contract ưu tiên cho client mới. API v1 vẫn nhận `page` deprecated theo mục compatibility để hỗ trợ client cũ; không gửi `page` cùng `cursor`.
+
 | Method | Endpoint | Request body/query | Response `data` | Status thành công |
 |---|---|---|---|---:|
 | POST | `/auth/login` | `LoginRequest` | `LoginResponse` | 200 |
 | POST | `/auth/refresh` | `RefreshTokenRequest` | `TokenResponse` | 200 |
 | POST | `/auth/logout` | Không body | `LogoutResult` | 200 |
-| GET | `/products` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Product[]` + paging | 200 |
-| POST | `/products` | `CreateProductRequest` | `Product` | 201 |
+| GET | `/products` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Product[]` + cursor paging | 200 |
+| POST | `/products` | `CreateProductRequest` + `Idempotency-Key` | `AcceptedCommandResponse` | 202 |
+| GET | `/products/{productId}/variants` | query `includeInactive` | `ProductVariant[]` | 200 |
+| GET | `/products/{productId}/variants/{variantId}` | path `productId,variantId` | `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants` | TenantAdmin; `CreateProductVariantRequest` | `ProductVariant` | 201 |
+| PATCH | `/products/{productId}/variants/{variantId}` | TenantAdmin; `UpdateProductVariantRequest` + `expectedVersion` | `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants/{variantId}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `ProductVariant` | 200 |
+| POST | `/products/{productId}/variants/{variantId}/activate` | TenantAdmin; `expectedVersion` | Active `ProductVariant`; parent/siblings unchanged | 200 |
 | PATCH | `/products/{id}` | `UpdateProductRequest` + `expectedVersion` | `Product` | 200 |
 | POST | `/products/{id}/deactivate` | `expectedVersion` | `Product` | 200 |
+| POST | `/products/{id}/activate` | TenantAdmin; `expectedVersion` | `Product`; all variants active | 200 |
 | DELETE | `/products/{id}` | query `expectedVersion` | `DeletionResult` | 200 |
 | POST | `/products/bulk-price` | `BulkPriceRequest` | `BulkPriceResult` | 200 |
-| GET | `/tenant/staff` | query `search,page,pageSize` | `StaffAccount[]` + paging | 200 |
+| GET | `/tenant/staff` | query `search,cursor,pageSize` | `StaffAccount[]` + cursor paging | 200 |
 | POST | `/tenant/staff` | `CreateStaffRequest` | `StaffAccount` | 201 |
 | GET | `/tenant/staff/{userId}` | path `userId` | `StaffAccount` | 200 |
 | PATCH | `/tenant/staff/{userId}` | `UpdateStaffRequest` + `expectedVersion` | `StaffAccount` | 200 |
 | POST | `/tenant/staff/{userId}/deactivate` | Không body | `StaffAccount` | 200 |
 | DELETE | `/tenant/staff/{userId}` | path `userId` | `DeletionResult` | 200 |
-| GET | `/categories` | query filter/cursor | `Category[]` + paging | 200 |
+| GET | `/categories` | query `search,cursor,pageSize,includeInactive` | `Category[]` + cursor paging | 200 |
 | POST | `/categories` | `CreateCategoryRequest` | `Category` | 201 |
 | PATCH | `/categories/{id}` | `UpdateCategoryRequest` + version | `Category` | 200 |
-| GET | `/customers` | query `search,page,pageSize,updatedSince,cursor,includeInactive` | `Customer[]` + paging; Staff chỉ thấy active | 200 |
-| POST | `/customers` | TenantAdmin; `CreateCustomerRequest` | `Customer` | 201 |
+| PATCH | `/categories/{id}/status` | `isActive,expectedVersion` | `Category` | 200 |
+| DELETE | `/categories/{id}` | query `expectedVersion` | Không có body; chỉ category không có product/con | 204 |
+| GET | `/customers` | query `search,cursor,pageSize,updatedSince,includeInactive` | `Customer[]` + cursor paging; Staff chỉ thấy active | 200 |
+| POST | `/customers` | `CreateCustomerRequest` | `Customer` | 201 |
 | PATCH | `/customers/{id}` | TenantAdmin; `UpdateCustomerRequest` + `expectedVersion` | `Customer` | 200 |
 | POST | `/customers/{id}/deactivate` | TenantAdmin; `expectedVersion` | Inactive `Customer` | 200 |
 | DELETE | `/customers/{id}` | TenantAdmin; query `expectedVersion` | `DeletionResult` | 200 |
+| GET | `/invoices` | query `search,from,to,invoiceType,cursor,pageSize`; Staff chỉ thấy invoice của mình | `InvoiceSummary[]` + cursor paging | 200 |
 | GET | `/invoices/{id}` | path `id` | `Invoice` | 200 |
 | POST | `/invoices/sync` | `SyncInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201/200 |
 | POST | `/invoices/{id}/reverse` | TenantAdmin; `ReverseInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
 | POST | `/invoices/{id}/correction` | `CorrectionInvoiceRequest` + idempotency | `OperationResult<Invoice>` | 201 |
-| GET | `/sync/pull` | `cursor,limit` | `SyncChange[]` + paging | 200 |
+| GET | `/sync/pull` | `afterSequence,limit` | `SyncChange[]` + sequence paging | 200 |
 | GET | `/settings/effective` | Không body | `EffectiveSettings` | 200 |
 | PUT | `/settings/{key}` | `UpdateSettingRequest` + version; TenantAdmin tenant scope | `Setting` | 200 |
-| GET | `/platform/tenants` | query `search,page,pageSize,includeDeleted` | `PlatformTenant[]` + paging | 200 |
+| GET | `/platform/tenants` | query `search,cursor,pageSize,includeDeleted` | `PlatformTenant[]` + cursor paging | 200 |
 | POST | `/platform/tenants` | `CreatePlatformTenantRequest` including initial `TenantAdmin` | `CreatePlatformTenantResponse` | 201 |
 | GET | `/platform/tenants/{tenantId}` | path `tenantId`; optional `includeDeleted` | `PlatformTenant` | 200 |
 | PATCH | `/platform/tenants/{tenantId}` | `UpdatePlatformTenantRequest` + `expectedVersion` | `PlatformTenant` | 200 |
 | POST | `/platform/tenants/{tenantId}/suspend` | Không body | `PlatformTenant` | 200 |
 | POST | `/platform/tenants/{tenantId}/reactivate` | Không body | `PlatformTenant` | 200 |
 | DELETE | `/platform/tenants/{tenantId}` | path `tenantId` | `DeletePlatformTenantResponse` (soft-delete) | 200 |
-| GET | `/platform/tenants/{tenantId}/admins` | query `search,page,pageSize` | `TenantAdminAccount[]` + paging | 200 |
+| GET | `/platform/tenants/{tenantId}/admins` | query `search,cursor,pageSize` | `TenantAdminAccount[]` + cursor paging | 200 |
 | POST | `/platform/tenants/{tenantId}/admins` | `CreateTenantAdminRequest` | `TenantAdminAccount` | 201 |
 | GET | `/platform/tenants/{tenantId}/admins/{userId}` | path `tenantId,userId` | `TenantAdminAccount` | 200 |
 | PATCH | `/platform/tenants/{tenantId}/admins/{userId}` | `UpdateTenantAdminRequest` + `expectedVersion` | `TenantAdminAccount` | 200 |

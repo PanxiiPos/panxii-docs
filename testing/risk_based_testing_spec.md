@@ -333,3 +333,150 @@ Một release chỉ đạt khi:
 5. OpenAPI không có breaking change ngoài version/approval.
 6. Test artifact được lưu cùng release và liên kết với commit/build SHA.
 7. Có rollback và incident runbook phù hợp.
+
+## 10. Gate resilience trước triển khai
+
+Chạy `backend/scripts/test-resilience.ps1` từ thư mục backend. Các test nằm trong
+`backend/Panxii.Tests/Resilience`; dùng MySQL, RabbitMQ, API, Worker và Nginx thực,
+không dùng database/vhost đang có dữ liệu thật. CLI test có thể gây SIGKILL,
+thay đổi trigger và xóa volume **trong project test tự sinh**.
+
+| Nhóm P0 | Fault/boundary | Assertion bắt buộc |
+|---|---|---|
+| Availability | Broker down trước confirm | HTTP 503 `ERR_SERVICE_UNAVAILABLE`; không có entity/operation/change/outbox; live vẫn 200, ready 503; retry cùng UUID thành công |
+| Durable queue | Worker dừng, broker restart sau 202 | Chưa có invoice khi worker dừng; command còn trong queue; khởi động worker tạo đúng một invoice |
+| Cold-start | Restart API/Worker ba lần; khởi tạo EF/auth/query chỉ đọc trước HTTP/subscribe | Không thêm invoice/detail/receipt/change/outbox lúc startup; mỗi hóa đơn mới đầu tiên có Completed receipt và snapshot trong 1500 ms; không hóa đơn warm-up/bỏ mẫu |
+| Crash giữa chừng | Chặn outbox insert bằng MySQL named lock sau SaveChanges thứ nhất, rồi SIGKILL worker hoặc MySQL | Chứng minh worker đã đến boundary; không đọc được partial commit; rollback sau crash; redelivery commit đúng một lần |
+| Atomicity | Trigger làm detail thứ hai hoặc outbox insert thất bại | Không còn invoice/detail/operation/change/outbox; bỏ fault rồi retry cùng operation thành công |
+| Duplicate | 16 request cùng UUID; client không đọc response rồi reset socket sau DB commit | Một invoice, đúng số detail, một Completed operation, một change, một logical DataCreated outbox sau queue drain (kể cả unacked) |
+| Payload mismatch | Cùng UUID nhưng timestamp payload khác | CommandRejected `ERR_SYNC_PAYLOAD_MISMATCH`; snapshot và timestamp gốc không đổi |
+| Batch/reconnect | API ngừng sau 3/8 invoice; client time +2h/-24h; replay mọi UUID | Đủ 8 invoice, không duplicate; pull page size 2 strictly increasing, cursor đúng; replay pull ổn định |
+| Proxy | API/Worker không publish host ports, Nginx restart | Auth vẫn bắt buộc; request tới API ngừng trả 502; data không mất; retry cùng UUID sau recovery không duplicate |
+| Realtime/tenant | WebSocket SignalR thật qua Nginx, tenant A/B đều hoạt động | Snapshot có invoice đã commit; B không nhận event A và ngược lại; B không GET/pull invoice A |
+| Missed event | Commit/publish khi client không nối hub, reconnect sau đó | Pull từ sequence cũ trả đúng snapshot/operation một lần |
+| Outbox replay | Đưa Published outbox về Pending để mô phỏng publish-before-mark replay | Hai delivery giữ nguyên messageId/sequence; durable change/invoice không duplicate |
+| Outbox recovery | Broker unavailable sau DB commit | Invoice/operation/change/outbox Pending còn nguyên; broker/worker recovery publish và pull đúng một lần |
+| Poison/retry | Gửi malformed JSON vào queue | Không retry vô hạn; DLQ sau 5 retry, giữ message body/id; retry queue rỗng |
+| Backup/restore | Dump thật, encrypted artifact, restore vào DB và vhost riêng | Fingerprint từng bảng bằng nguồn; login/sync/pull/reverse hoạt động; replay receipt/reverse không duplicate; không ghi vào DB nguồn |
+| Backup fail-closed | Dump lỗi, thiếu completion footer, truncation, corruption, sai key | Lệnh lỗi hoặc exception rõ; không trả backup hợp lệ |
+
+### 10.1. Ngưỡng và bằng chứng
+
+- Deadline recovery/poll mỗi boundary: 60 giây trên fixture nhỏ. Đây là ngưỡng
+  engineering của test, **không phải** SLA/RTO production đã được phê duyệt.
+- Bootstrap container tối đa 180 giây; mỗi subprocess Docker tối đa 8 phút.
+  Thời gian tải image/build không được diễn giải thành RTO khôi phục dữ liệu.
+- Test dùng polling theo trạng thái thật và monotonic stopwatch cho process
+  bên ngoài; không dùng clock mobile để quyết định thứ tự ghi sổ.
+- Không dùng sleep dài hoặc retry cả test để che fault. Đường phục hồi được
+  quan sát tới commit/Published và drain cả delivery unacked trước khi đếm.
+- Tối thiểu 23 test phải chạy và pass, không skip. Runner mặc định có watchdog
+  hang 20 phút; mỗi lần chạy có TRX riêng và cleanup stack riêng.
+- `scripts/test-resilience.ps1 -ColdStartOnly` chỉ chạy cold-start gate riêng,
+  ghi ba mẫu trong `cold-start.json` và API/Worker logs có timestamp. Pass một
+  test này không thay cho full gate, đo trên VPS đích hoặc soak đủ 24 giờ.
+- Cold gate kiểm tra startup không tăng business/auth row counts và tracker
+  rỗng sau khởi tạo delegates trong bộ nhớ; không SaveChanges/publish warm-up.
+  Thêm `-PersistenceDiagnostics` chỉ để phân rã EF/publisher timing và đo
+  hóa đơn mới thứ hai sau mỗi cold sample. So sánh này không thay thế/bỏ
+  cold sample hoặc đổi ngưỡng; Debug logging ảnh hưởng latency, không dùng
+  diagnostic pass làm production acceptance.
+- Manifest ghi commit/working tree và SHA-256 source trước test; source thay đổi
+  trong quá trình chạy thì gate fail thay vì chứng nhận nhầm build.
+- Test hạ tầng được skip trong `dotnet test` thông thường nếu chưa chạy runner;
+  **skip không phải bằng chứng release**. Các test mã hóa thuần không cần Docker.
+- Artifact chứa dữ liệu tổng hợp; không log token/secret hoặc dùng PII thật.
+
+### 10.2. Giới hạn và release blocker còn lại
+
+Đây là gate backend/infrastructure local, không phải E2E Flutter/SQLCipher.
+Việc mất mạng/batch và không đọc response được mô phỏng bằng HTTP client test;
+nó không chứng minh app đã giữ outbox qua OS process kill hoặc thiết bị hỏng.
+Outbox replay kiểm tra message identity/durable state; dedup trên SQLite và
+advance cursor sau local transaction vẫn cần test trên thiết bị.
+
+Nginx fixture chỉ HTTP loopback, không chứng minh HTTPS, forwarded-header trust,
+ẩn origin IP hay gia hạn chứng chỉ. Không chạy script chaos lên production.
+Backup ngoài VM thật (upload/download, key recovery, retention/quota, alert), mất VM,
+backup khi workload production đang ghi, restore đầy đủ dữ liệu production, Shorebird
+patch/rollback và mobile native compatibility vẫn cần bằng chứng riêng theo
+staging/release gate. Không gộp các mục chưa test thành trạng thái PASS.
+
+## 11. Gate mobile trên development đang chạy
+
+Từ `backend`, chạy trên Windows:
+
+```powershell
+.\scripts\test-development-mobile.ps1 -AllowDevelopmentInterruption
+```
+
+Đây là gate **opt-in có gián đoạn**, khác gate cô lập ở mục 10. Nó chỉ nhận
+emulator Android local và container development thuộc workspace hiện tại;
+API phải là `Development`, cổng `5099` và các cổng publish phải là loopback.
+Không chạy trên production. Ngoại lệ dùng tenant demo development hiện có
+chỉ áp dụng khi người vận hành đã đồng ý; không dùng dữ liệu khách production.
+Runner không xóa volume hoặc sửa/xóa hóa đơn đã đồng bộ.
+
+Trước deploy, dừng API/Worker, dump database development thực, mã hóa AES-GCM,
+đọc lại và restore vào MySQL disposable có label riêng. Fingerprint **tất cả
+bảng** phải bằng nguồn. Chỉ sau bước này mới rebuild API/Worker bằng Compose
+hiện có với `--no-deps`; MySQL/RabbitMQ và volume hiện có không bị recreate.
+
+Mobile chạy `integration_test/development_resilience_test.dart` với SQLCipher,
+`InvoiceStore`, `RemoteInvoiceRepository`, API client và SignalR client thực:
+
+| Boundary | Assertion |
+|---|---|
+| Outbox INSERT lỗi sau cập nhật invoice trong transaction | Invoice vẫn Draft, không có outbox; chỉ xóa draft do test vừa tạo |
+| API thực sự ngừng, submit offline | 6 invoice/outbox Pending; submit lại bị chặn; frozen UUID/payload giữ nguyên |
+| Durable Uploading rồi host force-stop PID Android | Pha resume có PID mới, mở lại SQLCipher; Uploading về Pending, UUID/payload byte-for-byte không đổi |
+| Batch mất response sau acceptance thứ 3, rồi API ngừng | 2 Queued, 4 Pending trong batch test; không invoice nào được coi là Synced |
+| Worker vẫn dừng khi API phục hồi | Cả 6 Queued, không được mark Synced chỉ vì HTTP 202 |
+| SignalR handshake thật rồi khởi động Worker | Có DataCreated của operation test; receipt Completed làm local invoice/outbox Synced |
+| Bỏ 202 thật rồi retry | Operation UUID/payload không đổi; server verifier chứng minh không ghi trùng |
+| RabbitMQ ngừng trước acceptance | API 503, local Pending; broker recovery đồng bộ thành công |
+| Hub đã ngắt khi hai invoice cuối commit | Pull page size 2 từ sequence cũ trả operation bị lỡ, strictly increasing, không sequence trùng |
+| Đối chiếu cuối | 8 invoice test local/outbox Synced; mỗi invoice server có một detail, một Completed receipt, một server change và một Published DataCreated outbox |
+
+Pha prepare có 3 checkpoint, resume có 8 checkpoint; driver phải pass cả hai,
+không được chỉ chạy pha prepare để kết luận thành công. Recovery deadline mỗi
+điều kiện là 75 giây, control request 90 giây, mỗi subprocess host 12 phút.
+Đây không phải SLA production; không retry cả suite tự động.
+
+Bằng chứng ở `backend/artifacts/development-mobile/<run>/`: TRX prepare/verify/revoke,
+`prepare.json`, `resume.json`, `device-process.json`, `backup-restore.json`,
+`manifest.json`, backup mã hóa và key được Windows DPAPI bảo vệ cho tài khoản
+đã chạy runner. Source thay đổi trong lúc chạy làm gate fail. Token test chỉ
+ở file defines tạm; session bị revoke và file bị xóa trong finally. App debug
+thường được cài lại bằng `adb install -r`, không clear SQLCipher/secure storage.
+Các invoice test có prefix `INV-TEST-<run>-`; lịch sử được giữ để đối chiếu.
+
+Giới hạn: force-stop sau durable Uploading, **không** kill trong mọi instruction
+của SQLite transaction hoặc giả lập mất điện/disk full/corruption/key loss.
+Pull này kiểm tra API và identity sau missed event, không chứng nhận toàn bộ
+mobile pull-coordinator/cursor transaction hay multi-device conflict.
+Không thao tác MySQL crash/Nginx trên stack development; các boundary đó thuộc
+gate cô lập mục 10. Không test giấy in, backup ngoài VM, TLS hoặc Shorebird OTA. Bản debug
+thường không phải APK nền Shorebird; cần cài lại bản nền trước thử patch.
+
+### 11.1. Bằng chứng development ngày 2026-11-01
+
+Run `10e711ecd6964c088f22f96e0e7273c4` kết thúc lúc
+`2026-11-01T09:23:14.6712001Z`, exit code 0. Prepare/resume pass đủ 3+8
+checkpoint; verifier MySQL và revoke session đều pass, không skip.
+8 invoice/local outbox Synced; mỗi server invoice có đúng một detail,
+Completed operation, server change và Published DataCreated outbox.
+Backup development restore khớp fingerprint cả 18 bảng.
+
+Host chứng minh force-stop PID `10413` và resume bằng PID `10551`.
+Manifest ghi SHA-256 của 488 source file, `sourceUnchanged: true`,
+`cleanupCompleted: true`, `passed: true`. API/Worker/MySQL/RabbitMQ đều chạy,
+ready 200, app debug thường mở lại. Control port forwarding, private defines
+và container restore disposable đã được gỡ; forwarding API 5099 được giữ cho app.
+Bằng chứng tại `backend/artifacts/development-mobile/10e711ecd6964c088f22f96e0e7273c4/`.
+Sau restore đã attach app thường, hot reload thành công qua Dart SDK MCP và
+`get_runtime_errors` không trả lỗi. Helper attach được dừng; app vẫn chạy.
+
+Các lần thử trước có lỗi harness/snapshot và một lần bị source gate chặn khi
+Flutter tự thêm ignore rule `.widget_preview/`; chúng không được tính là pass.
+Không bỏ qua source check hoặc sửa manifest cũ để chứng nhận lại.

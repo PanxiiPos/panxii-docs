@@ -159,6 +159,21 @@ PR gate: build, unit, integration, API contract, static analysis và migration v
 
 Staging gate: E2E offline, revoke, reverse, RabbitMQ retry/DLQ, backup restore smoke test.
 
+Backend/infrastructure resilience có runner
+`backend/scripts/test-resilience.ps1`: tự tạo Docker stack/DB/vhost riêng, fault
+injection và dump/restore thật, lưu TRX và fail nếu có test skip hoặc thiếu bằng
+chứng. Không chạy chaos lên production. Xem
+[ma trận resilience](risk_based_testing_spec.md#10-gate-resilience-trước-triển-khai)
+và [restore gate](../infrastructure/disaster_recovery.md#31-gate-tự-động-trên-môi-trường-cô-lập).
+Local gate không thay thế Flutter/SQLCipher E2E, backup ngoài VM hoặc Shorebird OTA.
+
+Gate bổ sung trên Android emulator và stack development hiện có:
+`backend/scripts/test-development-mobile.ps1 -AllowDevelopmentInterruption`.
+Nó backup/restore snapshot development trước deploy, chạy SQLCipher/repository
+thực qua force-stop/restart, API/broker interruption, SignalR/receipt/pull và
+đối chiếu local/server. Chỉ chạy với đồng ý gián đoạn; không xóa volume.
+Xem [phạm vi mobile và giới hạn](risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy).
+
 Production gate: migration review, backup đã thành công, rollback plan, health check, alert và smoke test endpoint login/sync/pull.
 
 ## 10. Test data và nguyên tắc

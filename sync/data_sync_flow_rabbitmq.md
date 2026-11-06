@@ -31,6 +31,16 @@ API chỉ trả `202 Queued` sau publisher confirm. Worker commit entity, `sync_
 
 Mỗi outbox có `ClientOperationId` UUID, `EntityId`, `PayloadJson`, `PayloadHash`, `AttemptCount`, `NextAttemptAt`.
 
+Invoice mobile sinh operation đúng lúc chuyển Draft sang Pending; cập nhật invoice và insert outbox trong cùng SQLite transaction với điều kiện trạng thái vẫn Draft. Gọi submit lại không được thay operation đã commit. Mọi retry mạng/timeout/khởi động lại đọc UUID và payload đã lưu; chỉ thao tác gửi lại Failed có xác nhận mới tạo operation khác sau khi kiểm tra invoice chưa có trên server.
+
+Hash receipt `SyncInvoice` payload v1/v2 giữ JSON PascalCase với `JsonSerializerDefaults.General` tường minh, khác Web/camelCase dùng cho response và reverse/correction. Không đổi format của hash đã lưu chỉ vì chuẩn hóa options: sẽ gây `ERR_SYNC_PAYLOAD_MISMATCH` khi replay. Tests khóa projection cũ v1 và v2 có phí; thay đổi contract/order/ignore/default phải giữ tương thích hash hoặc có kế hoạch version/migration riêng.
+
+### 3.1. Catalog pause/resume
+
+Mobile ghi `activate`/`deactivate` cho gốc hoặc `activateVariant`/`deactivateVariant` cho một biến thể cùng local mutation trong một transaction tenant/user-scoped. Đổi gốc cascade mọi biến thể đang có trong cache; đổi riêng một biến thể không đổi gốc hoặc sibling, kể cả default variant. Chỉ entity thực sự đổi cờ active tăng version.
+
+Catalog command được gửi qua `POST /products/commands`; payload và operation UUID được đóng băng trước lần gửi đầu. Retry/replay không sửa payload hoặc `Idempotency-Key`. Worker kiểm tra quyền/version, áp dụng cascade lên mọi biến thể server (kể cả chưa cache local), lưu đầy đủ snapshot gốc/biến thể trong receipt `CatalogBatch` cùng operation/change/outbox. `202 Queued` chưa phải synced; client chỉ xác nhận sau receipt/pull, giữ các mutation local mới hơn đang pending khi áp dụng snapshot. Bán lại gốc bật cả biến thể đã ngừng riêng trước đó, không khôi phục lịch sử cờ cũ.
+
 ## 4. Luồng tạo invoice offline và realtime create
 
 ```mermaid
@@ -122,6 +132,13 @@ operation ID and stable error code, not the rejected payload.
 API does not wait for command processing. It returns `202` only after RabbitMQ
 confirms the persistent command. If RabbitMQ is unavailable before confirmation,
 the API returns `503 ERR_SERVICE_UNAVAILABLE` and does not claim acceptance.
+
+Command/outbox publisher giới hạn connection attempt 2 giây và protocol
+operation/publisher confirm 5 giây. Publisher tự tạo lại connection/channel sau
+lỗi, không dùng automatic recovery để tránh race với disposal của cùng owner;
+consumer/SignalR relay vẫn dùng recovery của kết nối consume. Request đã bị hủy
+không được bắt đầu publish sau khi chờ lock. Gate resilience kiểm tra broker
+down/restart và retry cùng operation với HTTP timeout 15 giây.
 
 ## 7. Transactional outbox publisher
 

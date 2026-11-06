@@ -2,11 +2,17 @@
 **Dự án:** Hệ thống POS Bán hàng SaaS
 **Mục tiêu:** Cung cấp các lệnh CLI và cấu hình chuẩn để khởi tạo Source Code, Local Môi trường, và Production DevOps.
 
+> Dự án đã có source; không chạy lại các lệnh tạo project bên dưới lên repository
+> hiện tại. Với triển khai nội bộ tiết kiệm chi phí, làm theo
+> [hướng dẫn VPS thuê và Shorebird Free](infrastructure/internal_free_deployment.md).
+> Hướng dẫn đó phân biệt bằng chứng đã triển khai và gate còn thiếu; không chạy
+> lại bootstrap/seed lên database VPS đã có dữ liệu pilot.
+
 ---
 
 ## 1. YÊU CẦU CÔNG CỤ (PREREQUISITES)
 *   **IDE:** Cursor, Windsurf, hoặc VS Code.
-*   **Backend:** .NET 8.0 SDK, Entity Framework Core CLI (`dotnet tool install --global dotnet-ef`).
+*   **Backend:** .NET SDK 10.0.403 theo `backend/global.json`; EF CLI phải tương thích EF Core 8.0.33 hiện tại (`dotnet tool install --global dotnet-ef --version 8.0.33`). Runtime 10 LTS không kéo dài lifecycle EF 8; xem [readiness](release/production_readiness_plan.md).
 *   **Mobile:** Flutter SDK (bản Stable mới nhất).
 *   **DevOps:** Docker Desktop (cho Local), Git.
 *   **OTA Tool:** Shorebird CLI (Cài đặt qua `shorebird.dev`).
@@ -94,39 +100,13 @@ JWT_SECRET_KEY=ChuoiKyTuBiMatDaiHon256BitsChoHeThongSaaS!
 ---
 
 ## 5. TRIỂN KHAI PRODUCTION (VPS)
-### 5.1. Docker Compose Production
-File production phải dùng private network, Docker secrets và không expose MySQL/API port trực tiếp:
-```yaml
-version: '3.8'
-services:
-  pos-db:
-    image: mysql:8.0
-    restart: always
-    volumes:
-      - db_data:/var/lib/mysql
-  pos-api:
-    image: registry.example.com/pos-api:<git-sha>
-    restart: always
-    depends_on:
-      - pos-db
-    networks: [backend]
-volumes:
-  db_data:
-networks:
-  backend:
-    internal: true
+Không dùng cấu hình Docker local hoặc ví dụ khởi tạo cũ để deploy production.
+Các bước triển khai, quản lý secret, backup và CI/CD được tập trung tại:
 
-Nginx là service duy nhất bind public `80/443`. Không dùng root cho application và không commit `.env` production.
-```
+- [Setup nội bộ miễn phí để thực hiện sau](infrastructure/internal_free_deployment.md).
+- [Hạ tầng production chuẩn](infrastructure/infrastructure_setup.md).
+- [Checklist phát hành và rollback](release/release_management.md).
 
-### 5.2. CI/CD GitHub Actions
-Tạo file `.github/workflows/deploy.yml`:
-Sử dụng action `appleboy/ssh-action` để tự động truy cập VPS qua SSH Private Key, pull code mới và chạy lệnh: `docker compose up -d --build --remove-orphans`.
-
-### 5.3. Backup Cronjob (Linux)
-Tạo script `/opt/backup.sh`:
-```bash
-#!/bin/bash
-docker exec pos-db /usr/bin/mysqldump -u root -p'YourSecurePassword!' PosDatabase > /opt/backups/db_$(date +\%F).sql
-```
-Mở `crontab -e` và thêm lệnh chạy mỗi 2h sáng: `0 2 * * * bash /opt/backup.sh`
+Chỉ Nginx mở public `80/443`; không public MySQL/RabbitMQ/internal API.
+Deploy image theo Git SHA sau khi test, review migration và có backup ngoài VPS.
+Không truyền mật khẩu database trên dòng lệnh hoặc ghi secret vào Git/Actions log.

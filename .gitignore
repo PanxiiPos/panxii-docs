@@ -27,3 +27,8 @@ _site/
 .idea/
 .DS_Store
 Thumbs.db
+
+
+# Graphify
+.graphify-out/
+graphify-out/

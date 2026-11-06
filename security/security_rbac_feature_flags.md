@@ -87,8 +87,11 @@ Các flag ban đầu:
 | `RequireCustomerPhone` | bool | false | Chặn sync invoice thiếu phone |
 | `EnableInventory` | bool | false | Ẩn module và chặn endpoint kho |
 | `EnableAttendance` | bool | false | Chặn module chấm công |
-| `EnableBluetoothPrint` | bool | false | Cho phép cấu hình máy in |
-| `AutoRoundMoney` | bool | false | Server tính rounding theo rule |
+| `EnableBluetoothPrint` | bool | false | Giữ tùy chọn Bluetooth; chưa triển khai transport |
+| `EnableWifiPrint` | bool | false | TenantAdmin bật/tắt; Staff/TenantAdmin được in hóa đơn có quyền đọc qua PC Wi-Fi khi cờ đã xác nhận |
+| `AutoRoundMoney` | bool | false | Chưa áp dụng vào invoice v1; cần đặc tả rounding theo currency trước khi server tính rounding |
+
+Bridge Windows là dịch vụ LAN ghép nối bằng token/pin, không nhận JWT tenant hoặc tự kiểm tra feature flags. Cờ được enforce tại mobile trước in, không phải cơ chế thu hồi token PC. Chỉ chia sẻ token cho thiết bị tin cậy, firewall Private/LocalSubnet, không mở Internet. Thu hồi thiết bị/token bridge theo [hướng dẫn vận hành](../../tools/windows-print-bridge/README.md).
 
 UI chỉ ẩn/disable trải nghiệm; mọi rule quan trọng phải kiểm tra lại tại API.
 

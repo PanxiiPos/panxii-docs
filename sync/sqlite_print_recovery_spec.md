@@ -28,14 +28,21 @@ Invoice commit và printer là hai state machine độc lập.
 
 ```text
 Invoice: Pending -> Synced
-PrintJob: Pending -> Printing -> Completed | Failed
+PrintJob (PC): accepted -> printing -> submitted | uncertain | failed
 ```
 
 - Printer timeout không rollback invoice/payment.
 - Retry/reprint dùng `PrintJobId`.
 - UI hiển thị invoice success và print failure riêng.
+- Khi màn hình in đang mở, app tự kiểm tra cùng UUID/nội dung sau mỗi 2 giây
+  nếu trạng thái là `accepted`/`printing`, tối đa 30 lần. Terminal hiển thị
+  dialog và trạng thái trên màn hình; `submitted` chỉ xác nhận gửi Windows.
+  Hết lượt hoặc lỗi mạng dừng tự kiểm tra, báo rõ và cho kiểm tra thủ công
+  cùng lệnh; đóng màn hình hủy timer, không hủy job PC hoặc tự in thêm.
 - Print payload lấy từ invoice snapshot, không đọc giá hiện tại.
-- Print worker có backoff, attempt limit và error code.
+- Bridge persist UUID/hash trước khi worker claim; gửi lại cùng UUID/nội dung chỉ đọc trạng thái. Không retry tự động job đã bắt đầu spool. Crash tại printing chuyển uncertain; chỉ in thêm bản mới sau xác nhận và kiểm tra queue/giấy. Submitted không phải giấy đã in.
+- Điện thoại lưu journal theo hash tài liệu trong secure storage tenant/user trước network; cùng tài liệu giữ UUID qua restart và in tài liệu khác xen giữa. Đổi ảnh (mẫu/ngôn ngữ/cấu hình) là tài liệu mới; phải kiểm tra queue nếu đã có lần in trước.
+- Ảnh chờ in được giữ trong SQLite PC rồi xóa khi terminal; metadata dedup được giữ. Pairing token/cert chỉ local; xem [vận hành bridge](../../tools/windows-print-bridge/README.md).
 
 ## 4. Acceptance tests
 
@@ -46,3 +53,19 @@ PrintJob: Pending -> Printing -> Completed | Failed
 - Reopen sau corruption.
 - Printer offline/timeout/mất giữa job.
 - Retry print không tạo invoice thứ hai.
+
+### 4.1. Runner Android development
+
+`backend/scripts/test-development-mobile.ps1 -AllowDevelopmentInterruption`
+chạy SQLCipher thật trên emulator, kiểm tra rollback khi outbox insert lỗi,
+invoice/outbox offline, immutable submit và frozen UUID/payload. Host force-stop
+app tại durable Uploading, xác nhận PID cũ đã mất và pha resume dùng PID mới;
+SQLCipher reopen phải reset Uploading về Pending mà không đổi UUID/payload.
+Cuối run kiểm tra `integrity_check`, `foreign_key_check` và local/server convergence.
+
+Runner có backup/restore dữ liệu development trước deploy, tạm ngắt các service
+development và cài lại app debug thường sau test, không clear dữ liệu app.
+Chỉ chạy khi có đồng ý của người vận hành. Xem
+[gate mobile development](../testing/risk_based_testing_spec.md#11-gate-mobile-trên-development-đang-chạy).
+Chưa chứng minh kill tại mọi điểm của transaction, mất điện/WAL/disk full,
+corruption/key recovery hoặc máy in thật.

@@ -9,11 +9,14 @@ security:
   - bearerAuth: []
 tags:
   - name: Auth
+  - name: User Profile
   - name: Products
   - name: Customers
   - name: Invoices
   - name: Sync
   - name: Settings
+  - name: Tenant Administration
+  - name: Tenant Profile
   - name: Platform Administration
 paths:
   /auth/login:
@@ -65,17 +68,228 @@ paths:
       responses:
         '200': { description: Session revoked, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessLogoutResponse' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /me:
+    get:
+      operationId: getMyProfile
+      tags: [User Profile]
+      description: TenantAdmin and Staff only. Returns the authenticated tenant user's profile; tenant and user identity come from the access token.
+      x-error-codes: [ERR_UNAUTHENTICATED]
+      responses:
+        '200': { description: Current user profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessUserProfileResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      operationId: updateMyProfile
+      tags: [User Profile]
+      description: TenantAdmin and Staff only. Updates the authenticated user's profile fields with optimistic concurrency. The username is immutable through this endpoint; the request must echo the current username, otherwise the server rejects with ERR_INVALID_FIELD. Does not update credentials.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_INVALID_FIELD, ERR_INVALID_EMAIL, ERR_VERSION_CONFLICT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMyProfileRequest' }
+      responses:
+        '200': { description: Updated current user profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessUserProfileResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tenant/staff:
+    get:
+      operationId: listTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Lists Staff accounts in the authenticated tenant, including inactive accounts. Search by username or display name; order by displayName ascending then id ascending; uses opaque keyset cursor.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: Staff account collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffListResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      operationId: createTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Creates a Staff account in the authenticated tenant; the initial password is never returned.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_DUPLICATE_USERNAME]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTenantStaffRequest' }
+      responses:
+        '201': { description: Staff account created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tenant/staff/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Returns a Staff account in the authenticated tenant.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_STAFF_NOT_FOUND]
+      responses:
+        '200': { description: Staff account, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Updates Staff profile fields with optimistic concurrency.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_STAFF_NOT_FOUND, ERR_DUPLICATE_USERNAME, ERR_VERSION_CONFLICT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTenantStaffRequest' }
+      responses:
+        '200': { description: Staff account updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      operationId: deleteTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Hard-deletes only a Staff account with no device or business history; otherwise deactivate it.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_STAFF_NOT_FOUND, ERR_STAFF_DELETE_REQUIRES_DEACTIVATION]
+      responses:
+        '200': { description: Staff account deleted, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessDeletionResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tenant/staff/{userId}/deactivate:
+    post:
+      operationId: deactivateTenantStaff
+      tags: [Tenant Administration]
+      description: TenantAdmin only. Deactivates the Staff account and revokes all active devices.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_STAFF_NOT_FOUND]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Staff account deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantStaffResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tenant/profile:
+    get:
+      operationId: getCurrentTenantProfile
+      tags: [Tenant Profile]
+      description: TenantAdmin and Staff. Returns the tenant identified by the authenticated token; the client cannot select a tenant ID.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_TENANT_NOT_FOUND]
+      responses:
+        '200': { description: Current tenant profile, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessTenantProfileResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /products/commands:
+    post:
+      operationId: submitCatalogCommand
+      tags: [Products]
+      description: TenantAdmin only. Durable offline mutation; permission rechecked by worker. Receipt, catalog batch, audit and realtime outbox commit atomically. Same UUID and payload may be retried.
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogCommand' }
+      responses:
+        '202':
+          description: Queued, not yet committed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /products/commands/{operationId}:
+    get:
+      operationId: getCatalogCommandStatus
+      tags: [Products]
+      description: TenantAdmin only, current tenant and creating user only. ERR_OPERATION_NOT_FOUND can mean queued but not yet processed; retry the unchanged command/UUID.
+      parameters:
+        - { name: operationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Durable completion or rejection receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { type: string, enum: [Completed, Rejected] }
+                      errorCode: { type: string, nullable: true }
+                      result: { $ref: '#/components/schemas/CatalogCommandResult' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /products/catalog:
+    get:
+      operationId: browseCatalogVariants
+      tags: [Products]
+      summary: List and search sellable variants
+      description: Returns one row per variant with its product family snapshot. Searches family name, variant name, SKU, barcode and saved characteristic JSON. Ordered by variant SKU then ID. Optional categoryId strictly filters the family category, excluding uncategorized products and descendants. Cursor is bound to categoryId. Staff see only active variants in active families; includeInactive requires TenantAdmin. Cursor mode only; send cursor= for the first page.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { name: cursor, in: query, required: true, schema: { type: string }, description: Empty on the first page; otherwise use nextCursor unchanged. }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/CategoryFilter' }
+      responses:
+        '200':
+          description: Sellable variant collection with opaque keyset paging metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [product, variant]
+                      properties:
+                        product: { $ref: '#/components/schemas/Product' }
+                        variant: { $ref: '#/components/schemas/ProductVariant' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /products:
     get:
       operationId: listProducts
       tags: [Products]
-      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only.
+      description: Staff and TenantAdmin may search products in their tenant. Staff only see active products; includeInactive is TenantAdmin-only. Optional categoryId strictly filters the product category, excluding uncategorized products and descendants; cursor is bound to categoryId. Search name, SKU, or barcode; order by name ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
+        - { $ref: '#/components/parameters/CategoryFilter' }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200':
@@ -90,7 +304,8 @@ paths:
       operationId: createProduct
       tags: [Products]
       summary: Queue product creation
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE]
+      description: categoryId is optional for legacy API clients but required for new mobile creation. A supplied category must be active and belong to the tenant; API and worker both validate. Optional extraData is copied to the product and default variant. Existing queued payload hashes are preserved.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_CATEGORY_NOT_FOUND, ERR_CATEGORY_INACTIVE, ERR_INVALID_REQUEST]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
@@ -105,15 +320,29 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SuccessQueuedCommandResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [Products]
+      description: Returns one product in the authenticated tenant. Staff may read active products only; inactive or cross-tenant products return not found. TenantAdmin may read active or inactive products.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      responses:
+        '200': { description: Product detail, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       operationId: updateProduct
       tags: [Products]
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_DECIMAL, ERR_PRICE_MUST_BE_POSITIVE, ERR_DUPLICATE_BARCODE, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/ProductId' }
       requestBody:
@@ -128,12 +357,167 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
+    delete:
+      operationId: deleteProduct
+      tags: [Products]
+      description: TenantAdmin only. Hard-deletes only a product with no invoice/history references.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_DELETE_REQUIRES_DEACTIVATION, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+        - { name: expectedVersion, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '200': { description: Product deleted, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessDeletionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{id}/deactivate:
+    post:
+      operationId: deactivateProduct
+      tags: [Products]
+      description: TenantAdmin only. Deactivates the product and ALL variants atomically while preserving invoice history.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      responses:
+        '200': { description: Product deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{id}/activate:
+    post:
+      operationId: activateProduct
+      tags: [Products]
+      description: TenantAdmin only. Resumes the product and ALL variants atomically, including individually stopped variants. Invoice history is unchanged.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/ProductId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      responses:
+        '200': { description: Product and variants resumed, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}/variants:
+    parameters:
+      - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listProductVariants
+      tags: [Products]
+      description: Staff and TenantAdmin may list variants in their tenant. Inactive variants are included only when includeInactive=true for TenantAdmin.
+      parameters:
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND]
+      responses:
+        '200': { description: Product variants, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantListResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Creates a sellable variant; ExtraData follows the versioned schemaVersion/attributes contract and is limited to 16 KiB.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_NOT_FOUND, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_INVALID_REQUEST, ERR_PRICE_MUST_BE_POSITIVE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProductVariantRequest' }
+      responses:
+        '201': { description: Variant created, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /products/{productId}/variants/{variantId}:
+    parameters:
+      - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getProductVariant
+      tags: [Products]
+      description: Returns a variant belonging to the product in the authenticated tenant. Staff may read active variants only.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND]
+      responses:
+        '200': { description: Product variant, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Updates the sellable variant with optimistic concurrency.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_DUPLICATE_SKU, ERR_DUPLICATE_BARCODE, ERR_INVALID_REQUEST, ERR_VERSION_CONFLICT, ERR_PRICE_MUST_BE_POSITIVE]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProductVariantRequest' }
+      responses:
+        '200': { description: Variant updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessError' }
+  /products/{productId}/variants/{variantId}/deactivate:
+    post:
+      operationId: deactivateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Deactivates only this variant, including the default or last active variant, without changing its parent or siblings. Invoice history is preserved.
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      responses:
+        '200': { description: Variant deactivated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}/variants/{variantId}/activate:
+    post:
+      operationId: activateProductVariant
+      tags: [Products]
+      description: TenantAdmin only. Resumes only this variant without changing its parent or siblings. Selling still requires an active parent.
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductVersionRequest' }
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
+      responses:
+        '200': { description: Variant resumed, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessProductVariantResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /invoices/sync:
     post:
       operationId: syncInvoice
       tags: [Invoices]
       summary: Queue invoice synchronization
-      description: Staff and TenantAdmin may create and sync Sale invoices within their tenant.
+      description: Staff and TenantAdmin may create and sync Sale invoices within their tenant. New clients identify a sellable item with productId plus productVariantId; legacy clients may omit productVariantId and resolve to the backfilled default variant.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_INVALID_QUANTITY, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_INACTIVE, ERR_CUSTOMER_NOT_FOUND, ERR_CUSTOMER_INACTIVE, ERR_CUSTOMER_PHONE_REQUIRED, ERR_INVOICE_TOTAL_INVALID, ERR_SYNC_PAYLOAD_MISMATCH, ERR_IDEMPOTENCY_KEY_MISMATCH, ERR_UNSUPPORTED_PAYLOAD_VERSION]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
@@ -174,15 +558,21 @@ paths:
     get:
       operationId: listCategories
       tags: [Products]
+      description: Lists active categories in the tenant. Search by name or code; order by sortOrder ascending, name ascending, then id ascending; uses opaque keyset cursor.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
+        - { $ref: '#/components/parameters/Search' }
         - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
+        - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         '200': { description: Category collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryListResponse' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       operationId: createCategory
       tags: [Products]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_CATEGORY_NOT_FOUND, ERR_DUPLICATE_CATEGORY_CODE]
       requestBody:
         required: true
         content:
@@ -197,11 +587,12 @@ paths:
     get:
       operationId: listCustomers
       tags: [Customers]
-      description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only.
+      description: Staff and TenantAdmin may search customers in their tenant. Staff only see active customers; includeInactive is TenantAdmin-only. Search name, customer code, or phone; order by fullName ascending then id ascending; uses opaque keyset cursor.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_FIELD, ERR_INVALID_PAGING]
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: updatedSince, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: includeInactive, in: query, required: false, schema: { type: boolean, default: false } }
@@ -213,7 +604,7 @@ paths:
       operationId: createCustomer
       tags: [Customers]
       summary: Queue customer creation
-      description: TenantAdmin only. Creates a customer in the authenticated tenant.
+      description: Staff and TenantAdmin. Creates a customer in the authenticated tenant.
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_DUPLICATE_CUSTOMER_CODE]
       parameters:
         - { $ref: '#/components/parameters/IdempotencyKey' }
@@ -229,6 +620,18 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      description: Returns one customer in the authenticated tenant. Staff may read active customers only; inactive or cross-tenant customers return not found. TenantAdmin may read active or inactive customers.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CUSTOMER_NOT_FOUND]
+      parameters:
+        - { $ref: '#/components/parameters/CustomerId' }
+      responses:
+        '200': { description: Customer detail, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCustomerResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       operationId: updateCustomer
       tags: [Customers]
@@ -281,9 +684,26 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /categories/{id}:
+    delete:
+      operationId: deleteCategory
+      tags: [Products]
+      summary: Hard-delete an unreferenced category (TenantAdmin only)
+      description: All product references count, including inactive products. Categories with children are explicitly rejected. No cascade or implicit detachment. Version may advance when new product/child references are attached.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_CATEGORY_NOT_FOUND, ERR_CATEGORY_IN_USE, ERR_CATEGORY_HAS_CHILDREN, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CategoryId' }
+        - { name: expectedVersion, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '204': { description: Category deleted; no response body }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
     patch:
       operationId: updateCategory
       tags: [Products]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_CATEGORY_NOT_FOUND, ERR_CATEGORY_PARENT_CYCLE, ERR_VERSION_CONFLICT]
       parameters:
         - { $ref: '#/components/parameters/CategoryId' }
       requestBody:
@@ -297,22 +717,88 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /categories/{id}/status:
+    patch:
+      operationId: setCategoryStatus
+      tags: [Products]
+      summary: Activate or deactivate a category (TenantAdmin only)
+      description: Keeps product and child references; does not cascade product or child status. Requires optimistic concurrency and records an audit event.
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_REQUEST, ERR_CATEGORY_NOT_FOUND, ERR_VERSION_CONFLICT]
+      parameters:
+        - { $ref: '#/components/parameters/CategoryId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetCategoryStatusRequest' }
+      responses:
+        '200': { description: Category status updated, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessCategoryResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /products/bulk-price:
     post:
       operationId: bulkUpdateProductPrices
       tags: [Products]
-      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE, ERR_PRICE_MUST_BE_POSITIVE, ERR_VERSION_CONFLICT]
+      x-error-codes: [ERR_ACCESS_DENIED, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL, ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE, ERR_PRICE_MUST_BE_POSITIVE, ERR_PRODUCT_NOT_FOUND, ERR_PRODUCT_VARIANT_NOT_FOUND, ERR_VERSION_CONFLICT]
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/BulkPriceRequest' }
       responses:
-        '200': { description: Bulk update result, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessOperationResponse' } } } }
+        '200': { description: Bulk update result, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessBulkPriceResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/BusinessError' }
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [Invoices]
+      description: Staff receives only invoices they created; TenantAdmin receives all invoices in the tenant. Search invoice number by substring or invoice ID/barcode by exact match; order by clientCreatedAtUtc descending then id descending. Uses opaque keyset cursor and returns summaries without details.
+      x-error-codes: [ERR_INVALID_PAGING, ERR_INVALID_ENUM]
+      parameters:
+        - { $ref: '#/components/parameters/Search' }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: invoiceType, in: query, required: false, schema: { type: string, enum: [Sale, Reverse, Correction] } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: Invoice summary collection, content: { application/json: { schema: { $ref: '#/components/schemas/SuccessInvoiceListResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /invoices/operations/{operationId}:
+    get:
+      operationId: getInvoiceOperation
+      tags: [Invoices]
+      description: Durable confirmation of a queued invoice command, scoped to tenant and actor. Completed carries the persisted invoice; Rejected carries an error code. Online/HTTP 202 alone never proves completion.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice command receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [Queued, Completed, Rejected] }
+                      result: { $ref: '#/components/schemas/Invoice' }
+                      errorCode: { type: string, nullable: true }
+                  meta: { $ref: '#/components/schemas/Meta' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /invoices/{id}:
     get:
       operationId: getInvoice
@@ -394,10 +880,11 @@ paths:
     get:
       operationId: listPlatformTenants
       tags: [Platform Administration]
-      description: SuperAdmin only. Lists tenants; deleted tenants are excluded unless includeDeleted is true.
+      description: SuperAdmin only. Lists tenants; deleted tenants are excluded unless includeDeleted is true. Search code or name; order by name ascending then id ascending; uses opaque keyset cursor.
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
         - { name: includeDeleted, in: query, required: false, schema: { type: boolean, default: false } }
       x-error-codes: [ERR_ACCESS_DENIED, ERR_INVALID_PAGING]
@@ -496,10 +983,11 @@ paths:
     get:
       operationId: listTenantAdmins
       tags: [Platform Administration]
-      description: SuperAdmin only. Lists TenantAdmin accounts in the specified tenant.
+      description: SuperAdmin only. Lists TenantAdmin accounts in the specified tenant. Search username, display name, or email; order by displayName ascending then id ascending; uses opaque keyset cursor.
       parameters:
         - { $ref: '#/components/parameters/Search' }
-        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       x-error-codes: [ERR_ACCESS_DENIED, ERR_TENANT_NOT_FOUND, ERR_INVALID_PAGING]
       responses:
@@ -625,9 +1113,10 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
-    Search: { name: search, in: query, required: false, schema: { type: string, maxLength: 120 } }
-    Cursor: { name: cursor, in: query, required: false, schema: { type: string, nullable: true } }
-    PageSize: { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    Search: { name: search, in: query, required: false, description: Trim outer whitespace, normalize Unicode NFC, and compare case-insensitively. Text fields use substring matching; endpoint descriptions define identifier matching. Empty query means no filter., schema: { type: string, maxLength: 120 } }
+    Cursor: { name: cursor, in: query, required: false, allowEmptyValue: true, description: Cursor mode is selected when this query key is present; send an empty value for the first page. Omit only for legacy page mode. Opaque keyset cursor is bound to tenant/user scope, filters, and sort, and expires after 15 minutes., schema: { type: string } }
+    Page: { name: page, in: query, required: false, deprecated: true, description: Legacy API v1 offset pagination for existing clients; do not send together with cursor., schema: { type: integer, minimum: 1, default: 1 } }
+    PageSize: { name: pageSize, in: query, required: false, description: Maximum number of items in one cursor page., schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
     DeviceId: { name: X-Device-Id, in: header, required: true, schema: { type: string } }
     CorrelationId: { name: X-Correlation-Id, in: header, required: false, schema: { type: string, format: uuid } }
     IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
@@ -635,6 +1124,12 @@ components:
     ProductId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CustomerId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     CategoryId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    CategoryFilter:
+      name: categoryId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+      description: Exact tenant-scoped product category; not descendants or uncategorized products. Unknown or foreign category yields an empty collection. Cursor cannot be reused with another category filter.
   responses:
     BadRequest: { description: 'Invalid request. Codes include ERR_INVALID_REQUEST, ERR_REQUIRED_FIELD, ERR_UNKNOWN_FIELD, ERR_INVALID_FIELD, ERR_INVALID_UUID, ERR_INVALID_EMAIL, ERR_INVALID_TIME_ZONE, ERR_INVALID_ENUM, ERR_INVALID_DECIMAL and ERR_INVALID_PAGING.', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     Unauthorized: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
@@ -644,6 +1139,60 @@ components:
     NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
     ServiceUnavailable: { description: RabbitMQ or required dependency is unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
   schemas:
+    CatalogCommand:
+      type: object
+      required: [action, clientEntityId, productId, expectedVersion, data]
+      properties:
+        action: { type: string, enum: [create, update, createVariant, updateVariant, deactivate, deactivateVariant, activate, activateVariant, delete, deleteVariant, prices] }
+        clientEntityId: { type: string, format: uuid, description: Nonempty temporary resource or batch UUID }
+        productId: { type: string, format: uuid }
+        variantId: { type: string, format: uuid, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 0 }
+        data:
+          type: object
+          additionalProperties: true
+          description: Corresponding legacy action DTO fields. Outer expectedVersion is authoritative. Decimal fields accept invariant strings. Empty object for delete/deactivate/activate/prices. Product activation/deactivation cascades to ALL variants, while variant actions leave parent and siblings unchanged.
+        prices:
+          type: array
+          nullable: true
+          minItems: 1
+          maxItems: 100
+          description: Required for prices; unique physical IDs, validated before any mutation.
+          items:
+            type: object
+            required: [productId, expectedVersion, listedPrice, calculationQuantity]
+            properties:
+              productId: { type: string, format: uuid }
+              variantId: { type: string, format: uuid, nullable: true }
+              expectedVersion: { type: integer, format: int64, minimum: 1 }
+              listedPrice:
+                oneOf:
+                  - { type: string, pattern: '^[0-9]{1,15}(\.[0-9]{1,4})?$', example: '25200.1234' }
+                  - { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, maximum: 999999999999999.9999 }
+              calculationQuantity:
+                oneOf:
+                  - { type: string, pattern: '^[0-9]{1,15}(\.[0-9]{1,4})?$', example: '2.5' }
+                  - { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, maximum: 999999999999999.9999 }
+    CatalogCommandResult:
+      type: object
+      nullable: true
+      required: [clientEntityId, entityId, products, variants, deletedProductIds]
+      properties:
+        clientEntityId: { type: string, format: uuid }
+        entityId: { type: string, format: uuid }
+        products:
+          type: array
+          items: { $ref: '#/components/schemas/Product' }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariant' }
+        deletedProductIds:
+          type: array
+          items: { type: string, format: uuid }
+        deletedVariantIds:
+          type: array
+          nullable: true
+          items: { type: string, format: uuid }
     Meta:
       type: object
       required: [correlationId, serverTimeUtc, apiVersion]
@@ -657,6 +1206,7 @@ components:
       required: [hasMore]
       properties:
         nextCursor: { type: string, nullable: true }
+        page: { type: integer, minimum: 1, deprecated: true }
         nextSequence: { type: integer, format: int64, minimum: 0 }
         hasMore: { type: boolean }
         pageSize: { type: integer, minimum: 1, maximum: 200 }
@@ -701,21 +1251,96 @@ components:
       required: [sku, name, unit, basePrice, taxRate]
       properties:
         sku: { type: string, minLength: 1, maxLength: 64 }
+        barcode: { type: string, maxLength: 64, nullable: true }
         name: { type: string, minLength: 1, maxLength: 200 }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, description: Listed unit price used to calculate basePrice with calculationQuantity. }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, description: Quantity/weight per sale unit; basePrice equals listedPrice times calculationQuantity, rounded to four decimal places. }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
+        extraData: { $ref: '#/components/schemas/ProductExtraData' }
     UpdateProductRequest:
       type: object
       additionalProperties: false
       required: [expectedVersion]
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
+        barcode: { type: string, maxLength: 64, nullable: true }
         unit: { type: string, minLength: 1, maxLength: 32 }
         basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         categoryId: { type: string, format: uuid, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
+    CreateProductVariantRequest:
+      type: object
+      additionalProperties: false
+      required: [sku, unit, basePrice]
+      properties:
+        sku: { type: string, minLength: 1, maxLength: 64 }
+        barcode: { type: string, maxLength: 64, nullable: true }
+        name: { type: string, maxLength: 200, nullable: true }
+        unit: { type: string, minLength: 1, maxLength: 32 }
+        basePrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        listedPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        calculationQuantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true }
+        taxRate: { type: number, format: decimal, enum: [0], default: 0 }
+        extraData:
+          type: object
+          nullable: true
+          required: [schemaVersion, attributes]
+          properties:
+            schemaVersion: { type: integer, enum: [1] }
+            attributes: { type: object, additionalProperties: true }
+    UpdateProductVariantRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateProductVariantRequest'
+        - type: object
+          required: [expectedVersion]
+          properties:
+            expectedVersion: { type: integer, format: int64, minimum: 1 }
+    ProductVariant:
+      type: object
+      required: [id, productId, sku, unit, basePrice, listedPrice, calculationQuantity, taxRate, isActive, version, updatedAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        sku: { type: string }
+        barcode: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+        unit: { type: string }
+        basePrice: { type: number, format: decimal }
+        basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
+        listedPrice: { type: number, format: decimal }
+        listedPriceText: { type: string, description: Exact invariant decimal companion for listedPrice. }
+        calculationQuantity: { type: number, format: decimal }
+        calculationQuantityText: { type: string, description: Exact invariant decimal companion for calculationQuantity. }
+        taxRate: { type: number, format: decimal }
+        isActive: { type: boolean }
+        version: { type: integer, format: int64 }
+        extraData:
+          type: object
+          nullable: true
+          properties:
+            schemaVersion: { type: integer, enum: [1] }
+            attributes: { type: object, additionalProperties: true }
+        updatedAtUtc: { type: string, format: date-time }
+    ProductExtraData:
+      type: object
+      nullable: true
+      description: Optional structured attributes, at most 16384 UTF-8 bytes. Copied to product and default variant on creation.
+      required: [schemaVersion, attributes]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        attributes: { type: object, additionalProperties: true }
+    SetCategoryStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [isActive, expectedVersion]
+      properties:
+        isActive: { type: boolean }
         expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCategoryRequest:
       type: object
@@ -725,13 +1350,17 @@ components:
         code: { type: string, minLength: 1, maxLength: 64 }
         name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
+        sortOrder: { type: integer, minimum: 0, default: 0 }
+        roundSalePriceToThousands: { type: boolean, default: false, description: "Opt-in nearest-1000 VND sale price, halfway up, minimum 1000. Listed price and conversion quantity remain unchanged." }
     UpdateCategoryRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion]
+      required: [name, parentId, sortOrder, expectedVersion]
       properties:
         name: { type: string, minLength: 1, maxLength: 160 }
         parentId: { type: string, format: uuid, nullable: true }
+        sortOrder: { type: integer, minimum: 0 }
+        roundSalePriceToThousands: { type: boolean, nullable: true, description: "Omitted/null preserves the category policy. Enabling does not rewrite existing prices; reprice through versioned catalog commands." }
         expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateCustomerRequest:
       type: object
@@ -762,13 +1391,22 @@ components:
     BulkPriceRequest:
       type: object
       additionalProperties: false
-      required: [productIds, operation, mode, value]
+      required: [operation, mode, value]
+      description: Select one or both price collections. Product IDs target the listed price and its default variant; variant IDs target those specific variant listed prices. The sale price is recalculated from listedPrice × calculationQuantity. Selecting a product and its default variant together applies one adjustment, not two.
       properties:
-        productIds: { type: array, minItems: 1, items: { type: string, format: uuid } }
+        productIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Product listed prices to adjust. }
+        variantIds: { type: array, maxItems: 100, items: { type: string, format: uuid }, description: Optional. Specific variant listed prices to adjust. }
         operation: { type: string, enum: [Increase, Decrease], x-error-code: ERR_INVALID_ENUM }
         mode: { type: string, enum: [Percentage, FixedAmount], x-error-code: ERR_INVALID_ENUM }
         value: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_ADJUSTMENT_MUST_BE_POSITIVE }
-        expectedVersions: { type: object, additionalProperties: { type: integer, format: int64 } }
+        expectedVersions: { type: object, additionalProperties: { type: integer, format: int64, minimum: 1 }, description: Exact productId-to-version map for the selected productIds. }
+        variantExpectedVersions: { type: object, additionalProperties: { type: integer, format: int64, minimum: 1 }, description: Exact variantId-to-version map for the selected variantIds. }
+    BulkPriceResult:
+      type: object
+      required: [products, variants]
+      properties:
+        products: { type: array, items: { $ref: '#/components/schemas/Product' } }
+        variants: { type: array, items: { $ref: '#/components/schemas/ProductVariant' } }
     ReverseInvoiceRequest:
       type: object
       additionalProperties: false
@@ -781,6 +1419,13 @@ components:
       required: [reasonCode, details]
       properties:
         reasonCode: { type: string, maxLength: 80 }
+        roundingAmount: { type: number, format: decimal, default: 0 }
+        payloadVersion: { type: integer, enum: [1, 2], default: 1 }
+        serviceTotal: { type: number, format: decimal, minimum: 0 }
+        serviceCharges:
+          type: array
+          maxItems: 10
+          items: { $ref: '#/components/schemas/InvoiceServiceChargeRequest' }
         details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
     UpdateSettingRequest:
       type: object
@@ -789,6 +1434,31 @@ components:
       properties:
         value: { $ref: '#/components/schemas/TenantSettingValue' }
         expectedVersion: { type: integer, format: int64 }
+    UpdateMyProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [username, displayName, email, phone, expectedVersion]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 120, description: 'Must equal the current username; the username cannot be changed through this endpoint.' }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
+    UserProfile:
+      type: object
+      required: [id, tenantId, username, displayName, role, status, version, createdAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        username: { type: string, maxLength: 120 }
+        displayName: { type: string, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        role: { type: string, enum: [TenantAdmin, Staff] }
+        status: { type: string, enum: [Active, Inactive] }
+        version: { type: integer, format: int64 }
+        createdAtUtc: { type: string, format: date-time }
+        updatedAtUtc: { type: string, format: date-time, nullable: true }
     TenantSettingValue:
       oneOf:
         - { type: boolean }
@@ -804,15 +1474,94 @@ components:
         address: { type: string, nullable: true }
         phone: { type: string, nullable: true }
         taxCode: { type: string, nullable: true }
+        bankTransfer: { $ref: '#/components/schemas/BankTransferSetting' }
+    BankTransferSetting:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required: [bin, accountNumber, accountName]
+      description: Optional receiving account. Omit or set null to remove it. Used for local VietQR generation, not payment settlement.
+      properties:
+        bin: { type: string, pattern: '^[0-9]{6}$' }
+        accountNumber: { type: string, pattern: '^[0-9]{6,34}$' }
+        accountName: { type: string, minLength: 1, maxLength: 100, description: 'Nonblank, no control characters.' }
     ReceiptTemplateSetting:
       type: object
       additionalProperties: false
       required: [templateId]
       properties:
-        templateId: { type: string, minLength: 1 }
+        templateId: { type: string, enum: [Standard] }
         showStoreAddress: { type: boolean }
         showTaxBreakdown: { type: boolean }
-        footerText: { type: string, nullable: true }
+        footerText: { type: string, nullable: true, maxLength: 500 }
+        layout: { $ref: '#/components/schemas/ReceiptLayout' }
+    ReceiptLayout:
+      type: object
+      additionalProperties: false
+      required: [version, paper, showSku, showUnit, blocks]
+      description: Optional versioned print design. Absent layout uses the legacy Standard template. All amounts are invoice snapshots, never template defaults. Items and Total must each appear exactly once and remain enabled; other built-in types appear at most once.
+      properties:
+        version: { type: integer, enum: [1, 2] }
+        header:
+          type: object
+          additionalProperties: false
+          description: Only allowed in version 2. Nonempty columns replace the default store information blocks. No executable placeholders.
+          required: [left, right]
+          properties:
+            left: { type: string, maxLength: 1000 }
+            right: { type: string, maxLength: 1000 }
+        paper: { $ref: '#/components/schemas/ReceiptPaper' }
+        showSku: { type: boolean }
+        showUnit: { type: boolean }
+        blocks:
+          type: array
+          minItems: 2
+          maxItems: 40
+          description: Ordered blocks with unique stable ids. At most 10 Service blocks. Enabled controls printing only, never invoice arithmetic.
+          items:
+            oneOf:
+              - { $ref: '#/components/schemas/ReceiptBuiltInBlock' }
+              - { $ref: '#/components/schemas/ReceiptTextBlock' }
+              - { $ref: '#/components/schemas/ReceiptServiceBlock' }
+    ReceiptPaper:
+      type: object
+      additionalProperties: false
+      required: [preset, widthMm, heightMm, marginMm]
+      description: Portrait A0 through A10 use ISO 216 dimensions. Roll58/80 require matching width and null height. Custom requires a finite height. Printable width and fixed height after both margins must each be at least 10 mm.
+      properties:
+        preset: { type: string, enum: [Roll58, Roll80, A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, Custom] }
+        widthMm: { type: number, minimum: 25, maximum: 1500 }
+        heightMm: { type: number, nullable: true, minimum: 25, maximum: 2000 }
+        marginMm: { type: number, minimum: 0, maximum: 10 }
+    ReceiptBuiltInBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [StoreName, StoreAddress, StorePhone, TaxCode, InvoiceNumber, DateTime, Cashier, Customer, Items, Discount, Tax, Total, Footer] }
+        enabled: { type: boolean }
+    ReceiptTextBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled, text, align]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [Text] }
+        enabled: { type: boolean }
+        text: { type: string, minLength: 1, maxLength: 1000, description: Plain text only; whitespace-only is invalid. No HTML or executable placeholders. }
+        align: { type: string, enum: [Left, Center, Right] }
+    ReceiptServiceBlock:
+      type: object
+      additionalProperties: false
+      required: [id, type, enabled, label, hideWhenZero]
+      description: Service definition only; no amount or price may be stored in the template. Future invoice entry defaults each amount to 0, permits non-negative amounts and adds fees to the total; hiding a printed block must not remove incurred fees from arithmetic.
+      properties:
+        id: { type: string, minLength: 1, maxLength: 80 }
+        type: { type: string, enum: [Service] }
+        enabled: { type: boolean }
+        label: { type: string, minLength: 1, maxLength: 120 }
+        hideWhenZero: { type: boolean, description: New editor defaults to true. }
     ProductDisplaySetting:
       type: object
       additionalProperties: false
@@ -829,7 +1578,7 @@ components:
       required: [clientOperationId, payloadVersion, invoice]
       properties:
         clientOperationId: { type: string, format: uuid }
-        payloadVersion: { type: integer, minimum: 1 }
+        payloadVersion: { type: integer, enum: [1, 2], description: Version 1 remains supported without service fees. Version 2 snapshots configured service charges. }
         invoice: { $ref: '#/components/schemas/SaleInvoiceRequest' }
     SaleInvoiceRequest:
       type: object
@@ -847,7 +1596,21 @@ components:
         taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         roundingAmount: { type: number, format: decimal }
         totalAmount: { type: number, format: decimal }
+        serviceTotal: { type: number, format: decimal, minimum: 0 }
+        serviceCharges:
+          type: array
+          maxItems: 10
+          description: Version 2 only for nonempty snapshots. Unique serviceIds; preserve zero amounts. Total must match the sum of amounts.
+          items: { $ref: '#/components/schemas/InvoiceServiceChargeRequest' }
         details: { type: array, minItems: 1, items: { $ref: '#/components/schemas/SaleInvoiceDetailRequest' } }
+    InvoiceServiceChargeRequest:
+      type: object
+      additionalProperties: false
+      required: [serviceId, labelSnapshot, amount]
+      properties:
+        serviceId: { type: string, minLength: 1, maxLength: 80 }
+        labelSnapshot: { type: string, minLength: 1, maxLength: 120 }
+        amount: { type: number, format: decimal, minimum: 0, maximum: 999999999999999.9999, multipleOf: 0.0001 }
     SaleInvoiceDetailRequest:
       type: object
       additionalProperties: false
@@ -855,8 +1618,10 @@ components:
       properties:
         lineNumber: { type: integer, minimum: 1 }
         productId: { type: string, format: uuid }
+        productVariantId: { type: string, format: uuid, nullable: true, description: Omit only for legacy clients; resolves to product's default variant. }
         skuSnapshot: { type: string, maxLength: 64 }
         productNameSnapshot: { type: string, maxLength: 200 }
+        variantNameSnapshot: { type: string, maxLength: 200, nullable: true }
         unitSnapshot: { type: string, maxLength: 32 }
         quantity: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_INVALID_QUANTITY }
         unitPrice: { type: number, format: decimal, minimum: 0, exclusiveMinimum: true, x-error-code: ERR_PRICE_MUST_BE_POSITIVE }
@@ -864,6 +1629,14 @@ components:
         taxRate: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         taxAmount: { type: number, format: decimal, enum: [0], x-error-code: ERR_INVALID_FIELD }
         lineTotal: { type: number, format: decimal }
+    InvoiceStatus:
+      type: string
+      description: Business status of a server-persisted invoice. This is not the client's synchronization state.
+      enum: [Active, Reversed]
+    SyncStatus:
+      type: string
+      description: Client-local outbox state only; never returned or accepted by server API endpoints.
+      enum: [Draft, Pending, Sending, Queued, Synced, Failed]
     Invoice:
       type: object
       required: [id, invoiceNumber, invoiceType, status, currencyCode, totalAmount, details]
@@ -871,7 +1644,7 @@ components:
         id: { type: string, format: uuid }
         invoiceNumber: { type: string }
         invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
-        status: { type: string }
+        status: { $ref: '#/components/schemas/InvoiceStatus' }
         customerId: { type: string, format: uuid, nullable: true }
         createdByUserId: { type: string, format: uuid }
         deviceId: { type: string }
@@ -884,6 +1657,17 @@ components:
         currencyCode: { type: string, minLength: 3, maxLength: 3 }
         totalAmount: { type: number, format: decimal }
         originalInvoiceId: { type: string, format: uuid, nullable: true }
+        serviceTotal: { type: number, format: decimal, description: Immutable service snapshot total; negative for a reversal. Absent on legacy responses. }
+        serviceCharges:
+          type: array
+          description: Historical labels and amounts, never replaced from the current template. Reversals carry negative amounts.
+          items:
+            type: object
+            required: [serviceId, labelSnapshot, amount]
+            properties:
+              serviceId: { type: string }
+              labelSnapshot: { type: string }
+              amount: { type: number, format: decimal }
         details:
           type: array
           items:
@@ -891,8 +1675,11 @@ components:
             properties:
               lineNumber: { type: integer, nullable: true }
               productId: { type: string, format: uuid }
+              productVariantId: { type: string, format: uuid, nullable: true }
               skuSnapshot: { type: string, nullable: true }
               productNameSnapshot: { type: string }
+              variantNameSnapshot: { type: string, nullable: true }
+              variantExtraDataSnapshot: { type: object, nullable: true }
               unitSnapshot: { type: string }
               quantity: { type: number, format: decimal }
               unitPrice: { type: number, format: decimal }
@@ -902,32 +1689,57 @@ components:
               lineTotal: { type: number, format: decimal }
     Product:
       type: object
+      required: [id, sku, name, unit, basePrice, listedPrice, calculationQuantity, taxRate, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid, nullable: true }
+        extraData: { $ref: '#/components/schemas/ProductExtraData' }
         sku: { type: string }
         barcode: { type: string, nullable: true }
         name: { type: string }
         unit: { type: string }
         basePrice: { type: number, format: decimal }
+        basePriceText: { type: string, description: Exact invariant decimal companion for new clients, example: '25200.1234' }
+        listedPrice: { type: number, format: decimal }
+        listedPriceText: { type: string, description: Exact invariant decimal companion for listedPrice. }
+        calculationQuantity: { type: number, format: decimal }
+        calculationQuantityText: { type: string, description: Exact invariant decimal companion for calculationQuantity. }
         taxRate: { type: number, format: decimal }
+        isActive: { type: boolean }
         version: { type: integer, format: int64 }
         updatedAtUtc: { type: string, format: date-time }
     Category:
       type: object
+      required: [id, code, name, isActive, sortOrder, version, updatedAtUtc, productCount, roundSalePriceToThousands]
       properties:
         id: { type: string, format: uuid }
         code: { type: string }
         name: { type: string }
         parentId: { type: string, format: uuid, nullable: true }
+        isActive: { type: boolean }
+        sortOrder: { type: integer }
+        version: { type: integer, format: int64 }
+        updatedAtUtc: { type: string, format: date-time }
+        productCount: { type: integer, minimum: 0, description: All direct tenant product references including inactive products; excludes variants and descendant categories. }
+        roundSalePriceToThousands: { type: boolean, default: false }
+    ProductVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     Customer:
       type: object
-      required: [id, code, fullName, isActive, updatedAtUtc]
+      required: [id, code, fullName, isActive, version, updatedAtUtc]
       properties:
         id: { type: string, format: uuid }
         code: { type: string, maxLength: 64 }
         fullName: { type: string, maxLength: 160 }
         phone: { type: string, maxLength: 32, nullable: true }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        address: { type: string, maxLength: 500, nullable: true }
         isActive: { type: boolean }
+        version: { type: integer, format: int64 }
         updatedAtUtc: { type: string, format: date-time }
     PlatformTenant:
       type: object
@@ -940,6 +1752,19 @@ components:
         timeZone: { type: string, maxLength: 64 }
         currencyCode: { type: string, minLength: 3, maxLength: 3 }
         isDeleted: { type: boolean }
+        version: { type: integer, format: int64 }
+        createdAtUtc: { type: string, format: date-time }
+        updatedAtUtc: { type: string, format: date-time, nullable: true }
+    TenantProfile:
+      type: object
+      required: [id, code, name, status, timeZone, currencyCode, version, createdAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 160 }
+        status: { type: string, enum: [Active, Suspended, Closed] }
+        timeZone: { type: string, maxLength: 64 }
+        currencyCode: { type: string, minLength: 3, maxLength: 3 }
         version: { type: integer, format: int64 }
         createdAtUtc: { type: string, format: date-time }
         updatedAtUtc: { type: string, format: date-time, nullable: true }
@@ -998,6 +1823,40 @@ components:
         version: { type: integer, format: int64 }
         createdAtUtc: { type: string, format: date-time }
         updatedAtUtc: { type: string, format: date-time, nullable: true }
+    TenantStaffAccount:
+      type: object
+      required: [id, tenantId, username, displayName, status, version, createdAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        username: { type: string, maxLength: 120 }
+        displayName: { type: string, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        status: { type: string, enum: [Active, Inactive] }
+        version: { type: integer, format: int64 }
+        createdAtUtc: { type: string, format: date-time }
+        updatedAtUtc: { type: string, format: date-time, nullable: true }
+    CreateTenantStaffRequest:
+      type: object
+      additionalProperties: false
+      required: [username, initialPassword, displayName]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 120 }
+        initialPassword: { type: string, format: password, minLength: 12, maxLength: 128 }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+    UpdateTenantStaffRequest:
+      type: object
+      additionalProperties: false
+      required: [username, displayName, expectedVersion]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 120 }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        email: { type: string, format: email, maxLength: 254, nullable: true }
+        phone: { type: string, maxLength: 32, nullable: true }
+        expectedVersion: { type: integer, format: int64, minimum: 1 }
     CreateTenantAdminRequest:
       type: object
       additionalProperties: false
@@ -1093,6 +1952,9 @@ components:
     SuccessLoginResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/LoginResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessUserProfileResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/UserProfile' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessTokenResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/TokenResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
@@ -1132,6 +1994,15 @@ components:
     SuccessProductListResponse:
       type: object
       properties: { data: { type: array, items: { $ref: '#/components/schemas/Product' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductVariantResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/ProductVariant' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessProductVariantListResponse:
+      type: object
+      properties: { data: { type: array, items: { $ref: '#/components/schemas/ProductVariant' } }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessBulkPriceResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/BulkPriceResult' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessCategoryResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/Category' }, meta: { $ref: '#/components/schemas/Meta' } }
@@ -1147,15 +2018,67 @@ components:
     SuccessInvoiceResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/Invoice' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessInvoiceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              invoiceNumber: { type: string }
+              invoiceType: { type: string, enum: [Sale, Reverse, Correction] }
+              status: { $ref: '#/components/schemas/InvoiceStatus' }
+              customerId: { type: string, format: uuid, nullable: true }
+              createdByUserId: { type: string, format: uuid }
+              clientCreatedAtUtc: { type: string, format: date-time }
+              syncedAtUtc: { type: string, format: date-time, nullable: true }
+              totalAmount: { type: number, format: decimal }
+              currencyCode: { type: string, minLength: 3, maxLength: 3 }
+              originalInvoiceId: { type: string, format: uuid, nullable: true }
+        meta: { $ref: '#/components/schemas/Meta' }
     SuccessSettingsResponse:
       type: object
-      properties: { data: { type: object, additionalProperties: true }, meta: { $ref: '#/components/schemas/Meta' } }
+      properties: { data: { $ref: '#/components/schemas/EffectiveSettings' }, meta: { $ref: '#/components/schemas/Meta' } }
+    EffectiveSettings:
+      type: object
+      additionalProperties: true
+      properties:
+        EnableWifiPrint: { type: boolean, default: false }
+        storeProfile:
+          description: Effective store display values; storeName may be null before the tenant configures it.
+          type: object
+          additionalProperties: true
+          properties:
+            storeName: { type: string, nullable: true }
+            address: { type: string, nullable: true }
+            phone: { type: string, nullable: true }
+            taxCode: { type: string, nullable: true }
+            bankTransfer: { $ref: '#/components/schemas/BankTransferSetting' }
+        receiptTemplate: { $ref: '#/components/schemas/ReceiptTemplateSetting' }
+        productDisplay: { $ref: '#/components/schemas/ProductDisplaySetting' }
+        settingsVersion: { type: integer, format: int64, minimum: 0, description: Aggregate cache version; never use this as the expectedVersion for a setting write. }
+        settingVersions:
+          type: object
+          description: Tenant override versions by canonical setting key. Zero means no tenant override, including when the effective value comes from a global setting. New editors require this additive field.
+          additionalProperties: { type: integer, format: int64, minimum: 0 }
+          properties:
+            StoreProfile: { type: integer, format: int64, minimum: 0 }
+            ReceiptTemplate: { type: integer, format: int64, minimum: 0 }
+            ProductDisplay: { type: integer, format: int64, minimum: 0 }
+            AutoRoundMoney: { type: integer, format: int64, minimum: 0 }
+            EnableBluetoothPrint: { type: integer, format: int64, minimum: 0 }
+            EnableWifiPrint: { type: integer, format: int64, minimum: 0 }
     SuccessTenantAdminResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/TenantAdminAccount' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessPlatformTenantResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/PlatformTenant' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessTenantProfileResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/TenantProfile' }, meta: { $ref: '#/components/schemas/Meta' } }
     SuccessCreatePlatformTenantResponse:
       type: object
       properties: { data: { $ref: '#/components/schemas/CreatePlatformTenantResponse' }, meta: { $ref: '#/components/schemas/Meta' } }
@@ -1171,6 +2094,14 @@ components:
       type: object
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/TenantAdminAccount' } }
+        meta: { $ref: '#/components/schemas/Meta' }
+    SuccessTenantStaffResponse:
+      type: object
+      properties: { data: { $ref: '#/components/schemas/TenantStaffAccount' }, meta: { $ref: '#/components/schemas/Meta' } }
+    SuccessTenantStaffListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/TenantStaffAccount' } }
         meta: { $ref: '#/components/schemas/Meta' }
     SuccessFeatureFlagResponse:
       type: object

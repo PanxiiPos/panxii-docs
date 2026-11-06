@@ -2,7 +2,12 @@
 
 ## 1. Mục tiêu
 
-Hệ thống POS SaaS chạy multi-tenant, offline-first và i18n. Backend dùng ASP.NET Core 8 Clean Architecture; mobile Flutter BLoC; MySQL là server database; SQLite/SQLCipher là local source of truth cho UI; RabbitMQ xử lý asynchronous event; SignalR báo hiệu đồng bộ.
+Hệ thống POS SaaS chạy multi-tenant, offline-first và i18n. Backend dùng ASP.NET Core 10 LTS Clean Architecture; mobile Flutter BLoC; MySQL là server database; SQLite/SQLCipher là local source of truth cho UI; RabbitMQ xử lý asynchronous event; SignalR báo hiệu đồng bộ.
+
+Ngày 2026-11-02: runtime API/Worker 10.0.14; ORM tạm giữ EF Core
+8.0.33/Pomelo 8.0.3 theo quyết định owner, không phải toàn stack LTS.
+EF 8 EOL 2026-11-10; provider strategy còn là
+[gate production](../release/production_readiness_plan.md).
 
 ## 2. Kiến trúc tổng thể
 
