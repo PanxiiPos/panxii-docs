@@ -35,6 +35,7 @@
 - Chính sách giá được áp dụng theo phạm vi phê duyệt; dữ liệu ngoài phạm vi
   được giữ nguyên. Thiết bị có thể còn cache cũ; đồng bộ và xử lý cache theo
   quy trình có phạm vi. Không chạy lại thao tác bảo trì.
+
 ### Cập nhật trạng thái triển khai backend
 
 - Bản backend đã qua các gate triển khai và được áp dụng cho API/Worker.
@@ -47,6 +48,7 @@
   thực tế vẫn còn chờ. Chi tiết source, CI, migration và bằng chứng release
   được lưu trong hồ sơ vận hành nội bộ.
 - Thông tin bên dưới là lịch sử; không dùng làm căn cứ để thao tác dữ liệu live.
+
 ### Lịch sử deploy và chuẩn bị dữ liệu lúc 21:25 ngày 04/11/2026
 
 - Owner duyệt PR #1 đã merge và yêu cầu deploy: live application/source

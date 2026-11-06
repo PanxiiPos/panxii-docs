@@ -68,7 +68,7 @@ Admin revoke device; mobile nhận `401 ERR_DEVICE_REVOKED`, dừng worker, xóa
 Ngày 2026-11-02: dọn build cache và APT cache, thu hồi thực tế **6,72 GiB**;
 đĩa từ **34% xuống 20%**, còn **37,66 GiB** khả dụng. Giữ nguyên 23 images
 (bao gồm rollback), 7 containers đang chạy và 3 volumes; soak giữ PID/mẫu mới,
-host monitor pass. Evidence root-only trên VPS: hồ sơ vận hành nội bộ.
+host monitor pass. Evidence chi tiết được lưu trong hồ sơ vận hành nội bộ.
 Không cài lịch tự động prune hoặc thay đổi chính sách backup.
 
 Ngày 2026-11-05 lúc 00:03: dọn Docker build cache không dùng và APT cache,
@@ -77,7 +77,7 @@ thực tế **5,04 GiB**; đĩa từ **32% xuống 21%**, còn **36,84 GiB** kh�
 Đối chiếu giữ nguyên đủ 35 image IDs (gồm rollback), 7 container IDs,
 image/start time/mounts và 3 volumes. Không restart service, không xóa backup,
 APK, source release, log hoặc dữ liệu nghiệp vụ. Build cache còn 0; host
-monitor và public health pass. Evidence root-only: hồ sơ vận hành nội bộ.
+monitor và public health pass. Evidence chi tiết được lưu trong hồ sơ vận hành nội bộ.
 Không bật lịch dọn tự động; lần build sau phải tạo lại cache.
 
 ## 10. Sự cố hiệu năng DNS
